@@ -1,0 +1,75 @@
+# DevScope Docker Compose 配置
+# 开发环境: docker-compose up -d
+# 生产环境: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库（带 pgvector 扩展）
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: devscope-postgres
+    environment:
+      POSTGRES_DB: devscope
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - devscope-network
+
+  # API 服务
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: devscope-api
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/devscope
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - devscope-network
+
+  # Web 服务
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: devscope-web
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://api:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - devscope-network
+
+networks:
+  devscope-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
