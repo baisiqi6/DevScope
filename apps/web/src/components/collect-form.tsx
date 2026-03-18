@@ -24,16 +24,28 @@ export function CollectForm({ onCollected }: CollectFormProps) {
   const collectMutation = trpc.collectRepository.useMutation({
     onSuccess: (data) => {
       setIsCollecting(false);
-      const baseMessage = `采集完成！收集了 ${data.chunksCollected} 个文本块`;
+
+      // 处理失败状态
+      if (data.status === "failed") {
+        setResult({
+          success: false,
+          message: `❌ 采集失败\n\n${data.error || "未知错误"}\n\n请检查：\n• 仓库名称格式是否正确 (owner/repo)\n• 仓库是否存在或为公开仓库\n• GitHub Token 是否有效`,
+        });
+        return;
+      }
+
+      // 处理成功状态
+      const baseMessage = `✅ 采集完成！收集了 ${data.chunksCollected} 个文本块`;
       const embeddingInfo = data.embeddingsGenerated > 0
         ? `，生成 ${data.embeddingsGenerated} 个向量嵌入。`
         : `。`;
       const warning = data.warning ? `\n\n⚠️ ${data.warning}` : "";
 
       setResult({
-        success: data.status === "completed",
+        success: true,
         message: baseMessage + embeddingInfo + warning,
       });
+
       if (data.status === "completed") {
         onCollected();
       }
@@ -51,9 +63,12 @@ export function CollectForm({ onCollected }: CollectFormProps) {
     e.preventDefault();
     if (!repo.trim()) return;
 
+    const repoInput = repo.trim();
+    console.log("[CollectForm] 准备采集仓库:", repoInput);
+
     setIsCollecting(true);
     setResult(null);
-    collectMutation.mutate({ repo: repo.trim() });
+    collectMutation.mutate({ repo: repoInput });
   };
 
   return (

@@ -27,11 +27,13 @@ import { registerWebhookRoute } from "./webhook/langtum";
 
 /**
  * 创建 Fastify 服务器实例
- * @description 配置日志记录器
+ * @description 配置日志记录器和 body parser
  */
 const fastify = Fastify({
   /** 启用请求日志 */
   logger: true,
+  /** 配置 body parser */
+  bodyLimit: 10 * 1024 * 1024, // 10MB
 });
 
 // ============================================================================
@@ -73,26 +75,44 @@ function createTRPCHandle() {
         const query = req.query as Record<string, string>;
         if (query.input) {
           try {
-            input = JSON.parse(query.input);
+            const parsed = JSON.parse(query.input);
+            console.log("[tRPC] 🔍 DEBUG GET - Parsed input:", JSON.stringify(parsed, null, 2));
+
+            // 处理 httpBatchLink 格式: { "0": { id: 3 } }
+            if (parsed["0"]) {
+              console.log("[tRPC] ✅ Detected GET httpBatchLink format");
+              input = parsed["0"];
+            } else {
+              input = parsed;
+            }
           } catch {
             input = query.input as any;
           }
         }
       } else {
         // POST 请求：支持批量请求格式
-        const body = await req.body;
-        const requestBody = body as any;
-
-        // 🔍 调试日志：打印接收到的原始请求体
+        // 🔍 调试日志：打印原始请求信息
         console.log("[tRPC] 🔍 DEBUG - Path:", path);
         console.log("[tRPC] 🔍 DEBUG - Method:", req.method);
-        console.log("[tRPC] 🔍 DEBUG - Raw body:", JSON.stringify(requestBody, null, 2));
+        console.log("[tRPC] 🔍 DEBUG - Content-Type:", req.headers["content-type"]);
+        console.log("[tRPC] 🔍 DEBUG - Query params:", JSON.stringify(req.query));
+
+        const body = await req.body;
+        const requestBody = body as any;
+        console.log("[tRPC] 🔍 DEBUG - Body type:", typeof body);
+        console.log("[tRPC] 🔍 DEBUG - Body keys:", body ? Object.keys(body) : "null/undefined");
+        console.log("[tRPC] 🔍 DEBUG - Body value:", JSON.stringify(requestBody, null, 2));
 
         if (requestBody) {
           // httpBatchLink 批量请求格式: { "0": { "json": { ... } } }
           if (requestBody["0"]?.json) {
-            console.log("[tRPC] ✅ Detected httpBatchLink format");
+            console.log("[tRPC] ✅ Detected httpBatchLink format with json wrapper");
             input = requestBody["0"].json;
+          }
+          // httpBatchLink 格式 (无 json 包装): { "0": { repo: "..." } }
+          else if (requestBody["0"]) {
+            console.log("[tRPC] ✅ Detected httpBatchLink format (direct)");
+            input = requestBody["0"];
           }
           // 标准 tRPC 格式: { "json": { ... } }
           else if (requestBody.json !== undefined) {
