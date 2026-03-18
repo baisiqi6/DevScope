@@ -526,6 +526,129 @@ export class EmbeddingProvider {
 }
 
 // ============================================================================
+// BGE-M3 Embedding Provider 类
+// ============================================================================
+
+/**
+ * BGE-M3 Embedding 提供者配置选项
+ */
+export interface BGEEmbeddingConfig {
+  /** BGE-M3 API 基础 URL（默认：http://localhost:9999/v1） */
+  baseURL?: string;
+  /** API Key（某些服务需要） */
+  apiKey?: string;
+  /** 模型名称（默认：bge-m3） */
+  modelName?: string;
+}
+
+/**
+ * BGE-M3 Embedding 向量提供者类
+ * @description 支持通过本地 API 使用 BGE-M3 模型生成向量
+ *
+ * BGE-M3 是由 BAAI 开发的多语言、多粒度 embedding 模型：
+ * - 向量维度：1024
+ * - 支持多语言（中文、英文等 100+ 种语言）
+ * - 最大输入长度：8192 tokens
+ * - 支持三种粒度：短文本、长文本、文档
+ *
+ * @example
+ * ```typescript
+ * // 使用默认配置（Xinference 本地服务）
+ * const embedder = new BGEEmbeddingProvider();
+ * const vector = await embedder.embed("你好世界");
+ * console.log(vector.length); // 1024
+ *
+ * // 自定义 API 地址
+ * const embedder = new BGEEmbeddingProvider({
+ *   baseURL: "http://localhost:8000/v1"
+ * });
+ * ```
+ */
+export class BGEEmbeddingProvider {
+  /** HTTP 客户端 */
+  private client: OpenAI;
+  /** 默认模型名称 */
+  private readonly defaultModel: string;
+  /** BGE-M3 向量维度 */
+  public readonly DIMENSIONS = 1024;
+
+  /**
+   * 创建 BGEEmbeddingProvider 实例
+   * @param config 配置选项
+   */
+  constructor(config: BGEEmbeddingConfig = {}) {
+    // 使用 OpenAI SDK 作为 HTTP 客户端（兼容 OpenAI API 格式）
+    this.client = new OpenAI({
+      apiKey: config.apiKey || "dummy-key", // 某些本地服务不需要 API Key
+      baseURL: config.baseURL || process.env.BGE_API_URL || "http://localhost:9999/v1",
+    });
+
+    this.defaultModel = config.modelName || "bge-m3";
+  }
+
+  /**
+   * 生成文本向量嵌入
+   *
+   * @param text - 输入文本
+   * @returns 1024 维向量数组
+   *
+   * @example
+   * ```typescript
+   * const embedder = new BGEEmbeddingProvider();
+   * const vector = await embedder.embed("Hello, World!");
+   * console.log(vector.length); // 1024
+   * ```
+   */
+  async embed(text: string): Promise<number[]> {
+    const response = await this.client.embeddings.create({
+      model: this.defaultModel,
+      input: text,
+    });
+
+    return response.data[0].embedding;
+  }
+
+  /**
+   * 批量生成文本向量嵌入
+   *
+   * @param texts - 输入文本数组
+   * @returns 向量数组（与输入文本一一对应）
+   *
+   * @example
+   * ```typescript
+   * const embedder = new BGEEmbeddingProvider();
+   * const vectors = await embedder.embedBatch([
+   *   "第一个文档",
+   *   "第二个文档"
+   * ]);
+   * console.log(vectors.length); // 2
+   * console.log(vectors[0].length); // 1024
+   * ```
+   */
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    const response = await this.client.embeddings.create({
+      model: this.defaultModel,
+      input: texts,
+    });
+
+    // 按输入顺序排序结果
+    const sortedResults = response.data
+      .sort((a, b) => a.index - b.index)
+      .map((data) => data.embedding);
+
+    return sortedResults;
+  }
+
+  /**
+   * 获取向量维度
+   * @returns BGE-M3 的固定维度 1024
+   */
+  getDimensions(): number {
+    return 1024;
+  }
+}
+
+// ============================================================================
 // 工厂函数
 // ============================================================================
 
@@ -543,6 +666,23 @@ export class EmbeddingProvider {
  */
 export function createEmbedding(config?: EmbeddingConfig): EmbeddingProvider {
   return new EmbeddingProvider(config);
+}
+
+/**
+ * 创建 BGEEmbeddingProvider 实例的工厂函数
+ *
+ * @param config - 配置选项
+ * @returns BGEEmbeddingProvider 实例
+ *
+ * @example
+ * ```typescript
+ * const embedder = createBGEEmbedding();
+ * const vector = await embedder.embed("你好");
+ * console.log(vector.length); // 1024
+ * ```
+ */
+export function createBGEEmbedding(config?: BGEEmbeddingConfig): BGEEmbeddingProvider {
+  return new BGEEmbeddingProvider(config);
 }
 
 // ============================================================================

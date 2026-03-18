@@ -7,15 +7,19 @@
  * @module index
  */
 
+// 加载环境变量（必须在最顶部）
+import path from "path";
+import dotenv from "dotenv";
+
+// 从项目根目录加载 .env 文件
+const envPath = path.resolve(process.cwd(), "../../.env");
+dotenv.config({ path: envPath });
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
 import { appRouter } from "./router";
-import { createTRPCHandle } from "./trpc";
 import { registerWebhookRoute } from "./webhook/langtum";
-
-// 导出类型供前端使用 - 使用 typeof 来避免循环引用
-export type AppRouter = typeof appRouter;
 
 // ============================================================================
 // 服务器初始化
@@ -31,45 +35,124 @@ const fastify = Fastify({
 });
 
 // ============================================================================
-// 中间件配置
+// Webhook 路由配置
 // ============================================================================
 
 /**
- * 注册 CORS 中间件
- * @description 允许跨域请求
+ * 注册 Langtum Webhook 路由（可选）
+ * @description 接收来自 Langtum 平台的工作流状态通知
+ * 仅当设置了 LANGTUM_API_KEY 时才注册此路由
  */
-await fastify.register(cors, {
-  /** 允许所有来源（开发环境） */
-  origin: true,
-  /** 允许发送凭证 */
-  credentials: true,
-});
+if (process.env.LANGTUM_API_KEY) {
+  registerWebhookRoute(fastify, "/api/webhook/langtum");
+  console.log("[Webhook] Langtum webhook registered");
+} else {
+  console.log("[Webhook] LANGTUM_API_KEY not set, skipping Langtum webhook registration");
+}
 
 // ============================================================================
-// tRPC 路由配置
+// tRPC 路由配置（手动实现，支持批量请求）
 // ============================================================================
 
 /**
- * 创建 tRPC 处理器
- * @description 将 tRPC 路由挂载到 Fastify
+ * 创建 tRPC 路由处理器（支持批量请求）
  */
-const trpcHandle = createTRPCHandle({ router: appRouter, createContext });
+function createTRPCHandle() {
+  return async (req: any, reply: any) => {
+    const path = (req.params as { path: string }).path;
+
+    try {
+      const context = await createContext({ req, res: reply.raw, info: {} as any });
+      const caller = appRouter.createCaller(context);
+
+      // 解析输入 - 支持批量请求格式
+      let input: any = undefined;
+
+      if (req.method === "GET") {
+        // GET 请求：从查询参数获取
+        const query = req.query as Record<string, string>;
+        if (query.input) {
+          try {
+            input = JSON.parse(query.input);
+          } catch {
+            input = query.input as any;
+          }
+        }
+      } else {
+        // POST 请求：支持批量请求格式
+        const body = await req.body;
+        const requestBody = body as any;
+
+        // 🔍 调试日志：打印接收到的原始请求体
+        console.log("[tRPC] 🔍 DEBUG - Path:", path);
+        console.log("[tRPC] 🔍 DEBUG - Method:", req.method);
+        console.log("[tRPC] 🔍 DEBUG - Raw body:", JSON.stringify(requestBody, null, 2));
+
+        if (requestBody) {
+          // httpBatchLink 批量请求格式: { "0": { "json": { ... } } }
+          if (requestBody["0"]?.json) {
+            console.log("[tRPC] ✅ Detected httpBatchLink format");
+            input = requestBody["0"].json;
+          }
+          // 标准 tRPC 格式: { "json": { ... } }
+          else if (requestBody.json !== undefined) {
+            console.log("[tRPC] ✅ Detected standard tRPC format");
+            input = requestBody.json;
+          }
+          // 兼容旧格式: { "input": { ... } }
+          else if (requestBody.input !== undefined) {
+            console.log("[tRPC] ✅ Detected legacy format");
+            input = requestBody.input;
+          }
+          // 直接使用请求体
+          else if (Object.keys(requestBody).length > 0) {
+            console.log("[tRPC] ✅ Using body as direct input");
+            input = requestBody;
+          }
+        }
+
+        console.log("[tRPC] 🔍 DEBUG - Parsed input:", JSON.stringify(input, null, 2));
+      }
+
+      // 调用路由
+      const result = await (caller as any)[path](input);
+
+      // 返回结果（支持批量请求响应格式）
+      reply.send({
+        result: {
+          data: result,
+        },
+      });
+    } catch (error: any) {
+      console.error("[tRPC] Error:", error);
+      // Zod 验证错误
+      if (error.code === "invalid_type") {
+        reply.code(400).send({
+          error: {
+            message: error.message,
+            code: "BAD_REQUEST",
+            issues: [error],
+          },
+        });
+        return;
+      }
+      // 其他错误
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      reply.code(500).send({
+        error: {
+          message: errorMessage,
+          code: -32603,
+        },
+      });
+    }
+  };
+}
 
 /**
  * 注册 tRPC 路由
  * @description 所有 tRPC 请求通过 /trpc/:path 处理
  */
-fastify.all("/trpc/:path", trpcHandle);
-
-// ============================================================================
-// Webhook 路由配置
-// ============================================================================
-
-/**
- * 注册 Langtum Webhook 路由
- * @description 接收来自 Langtum 平台的工作流状态通知
- */
-registerWebhookRoute(fastify, "/api/webhook/langtum");
+fastify.all("/trpc/:path", createTRPCHandle());
 
 // ============================================================================
 // 服务器启动
@@ -81,8 +164,28 @@ registerWebhookRoute(fastify, "/api/webhook/langtum");
  */
 const start = async () => {
   try {
-    /** 从环境变量读取端口，默认 3001 */
-    const port = Number(process.env.PORT) || 3001;
+    // 注册 CORS 中间件
+    await fastify.register(cors, {
+      origin: true,
+      credentials: true,
+    });
+
+    // 检查环境变量配置
+    const hasGitHubToken = !!process.env.GITHUB_TOKEN;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+    const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+    const hasDbUrl = !!process.env.DATABASE_URL;
+
+    console.log("=".repeat(50));
+    console.log("🔧 环境变量检查:");
+    console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  OPENAI_API_KEY: ${hasOpenAIKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  ANTHROPIC_API_KEY: ${hasAnthropicKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log("=".repeat(50));
+
+    /** 从环境变量读取端口，默认 3100 */
+    const port = Number(process.env.PORT || process.env.API_PORT) || 3100;
     /** 监听所有网络接口 */
     await fastify.listen({ port, host: "0.0.0.0" });
     console.log(`🚀 API Server listening on port ${port}`);

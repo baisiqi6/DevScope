@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -19,28 +19,19 @@ interface RepositoryDetailPageProps {
   }>;
 }
 
-export default function RepositoryDetailPage({ params }: RepositoryDetailPageProps) {
+/**
+ * 仓库详情内容组件
+ * 只在 id 有效时才渲染，避免 tRPC 查询验证问题
+ */
+function RepositoryDetailContent({ id }: { id: number }) {
   const router = useRouter();
-  const [id, setId] = useState<number | null>(null);
-
-  useEffect(() => {
-    params.then((p) => setId(parseInt(p.id, 10)));
-  }, [params]);
 
   const { data: repository, isLoading, error } = trpc.getRepository.useQuery(
-    { id: id! },
+    { id },
     {
-      enabled: id !== null,
+      retry: false,
     }
   );
-
-  if (id === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-muted-foreground">加载中...</div>
-      </div>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -168,5 +159,27 @@ export default function RepositoryDetailPage({ params }: RepositoryDetailPagePro
         )}
       </div>
     </main>
+  );
+}
+
+export default function RepositoryDetailPage({ params }: RepositoryDetailPageProps) {
+  const [id, setId] = useState<number | null>(null);
+
+  useEffect(() => {
+    params.then((p) => setId(parseInt(p.id, 10)));
+  }, [params]);
+
+  if (id === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center text-muted-foreground">加载中...</div>
+      </div>
+    );
+  }
+
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center text-muted-foreground">加载中...</div></div>}>
+      <RepositoryDetailContent id={id} />
+    </Suspense>
   );
 }

@@ -342,7 +342,7 @@ export type RepoCollectionInput = z.infer<typeof repoCollectionInputSchema>;
 /**
  * 采集状态枚举
  */
-export const collectionStatusSchema = z.enum(["pending", "processing", "completed", "failed"]);
+export const collectionStatusSchema = z.enum(["pending", "processing", "completed", "failed", "success"]);
 
 /** 采集状态类型 */
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
@@ -409,16 +409,19 @@ export type HnCollectionInput = z.infer<typeof hnCollectionInputSchema>;
  * 完整采集 Pipeline 结果 Schema
  */
 export const collectionResultSchema = z.object({
-  /** 仓库信息 */
+  /** 仓库信息（采集失败时可能不存在） */
   repository: z.object({
+    id: z.number().optional(),
     fullName: z.string(),
     name: z.string(),
     owner: z.string(),
     description: z.string().optional(),
-    stars: z.number(),
-    forks: z.number(),
-    language: z.string().optional(),
-  }),
+    stars: z.number().nullable(),
+    forks: z.number().nullable(),
+    openIssues: z.number().nullable().optional(),
+    language: z.string().nullable().optional(),
+    url: z.string().optional(),
+  }).optional(),
   /** 采集的分块数量 */
   chunksCollected: z.number(),
   /** embedding 生成数量 */
@@ -429,6 +432,8 @@ export const collectionResultSchema = z.object({
   status: collectionStatusSchema,
   /** 错误信息（如果有） */
   error: z.string().optional(),
+  /** 警告信息（如果有） */
+  warning: z.string().optional(),
   /** 采集耗时（毫秒） */
   duration: z.number(),
 });
@@ -469,6 +474,65 @@ export const repositorySchema = z.object({
 
 /** 仓库信息类型 */
 export type Repository = z.infer<typeof repositorySchema>;
+
+/**
+ * 仓库分块统计 Schema
+ */
+export const chunkStatsSchema = z.object({
+  /** 总分块数 */
+  total: z.number(),
+  /** README 分块数 */
+  readme: z.number(),
+  /** Issues 分块数 */
+  issues: z.number(),
+  /** Commits 分块数 */
+  commits: z.number(),
+});
+
+/** 仓库分块统计类型 */
+export type ChunkStats = z.infer<typeof chunkStatsSchema>;
+
+/**
+ * 仓库详情 Schema
+ * @description 包含完整信息的仓库详情，包括分块统计和 README
+ */
+export const repositoryDetailSchema = z.object({
+  /** 仓库唯一标识 */
+  id: z.number(),
+  /** GitHub 仓库全名 (owner/repo) */
+  fullName: z.string(),
+  /** 仓库名 */
+  name: z.string(),
+  /** 仓库所有者 */
+  owner: z.string(),
+  /** 仓库描述 */
+  description: z.string().nullable().optional(),
+  /** GitHub URL */
+  url: z.string(),
+  /** Stars 数量（可为 null） */
+  stars: z.number().nullable(),
+  /** Forks 数量（可为 null） */
+  forks: z.number().nullable(),
+  /** 开放 Issues 数量（可为 null） */
+  openIssues: z.number().nullable(),
+  /** 主要语言 */
+  language: z.string().nullable().optional(),
+  /** 许可证 */
+  license: z.string().nullable().optional(),
+  /** README 内容（原始 markdown） */
+  readme: z.string().nullable().optional(),
+  /** README 的 raw URL */
+  readmeUrl: z.string().nullable().optional(),
+  /** 最后采集时间 */
+  lastFetchedAt: z.string().nullable().optional(),
+  /** 创建时间 */
+  createdAt: z.string(),
+  /** 分块统计 */
+  chunkStats: chunkStatsSchema,
+});
+
+/** 仓库详情类型 */
+export type RepositoryDetail = z.infer<typeof repositoryDetailSchema>;
 
 // ============================================================================
 // 语义搜索类型 (Semantic Search Types)
@@ -552,3 +616,225 @@ export const semanticSearchResponseSchema = z.object({
 
 /** 语义搜索响应类型 */
 export type SemanticSearchResponse = z.infer<typeof semanticSearchResponseSchema>;
+
+// ============================================================================
+// OSSInsight 类型 (OSSInsight Types)
+// ============================================================================
+
+/**
+ * 事件类型枚举
+ */
+export const eventTypeSchema = z.enum([
+  "fork",
+  "star",
+  "issues",
+  "pull_request",
+  "commit",
+  "watch",
+]);
+
+/** 事件类型 */
+export type EventType = z.infer<typeof eventTypeSchema>;
+
+/**
+ * 趋势仓库 Schema
+ */
+export const trendingRepoSchema = z.object({
+  /** 仓库全名 */
+  fullName: z.string(),
+  /** 仓库名 */
+  name: z.string(),
+  /** 所有者 */
+  owner: z.string(),
+  /** 描述 */
+  description: z.string().nullable(),
+  /** Stars 数量 */
+  stars: z.number(),
+  /** Forks 数量 */
+  forks: z.number(),
+  /** 开放 Issues 数量 */
+  openIssues: z.number(),
+  /** 主要语言 */
+  language: z.string().nullable(),
+  /** 新增 Stars 数量 */
+  starsSince: z.number(),
+  /** 贡献者数量 */
+  contributors: z.number(),
+  /** Pull Requests 数量 */
+  pullRequests: z.number(),
+});
+
+/** 趋势仓库类型 */
+export type TrendingRepo = z.infer<typeof trendingRepoSchema>;
+
+/**
+ * 仓库事件统计 Schema
+ */
+export const repoEventSchema = z.object({
+  /** 事件 ID */
+  id: z.number(),
+  /** 事件类型 */
+  eventType: eventTypeSchema,
+  /** 事件数量 */
+  count: z.number(),
+  /** 日期 (ISO 8601) */
+  date: z.string(),
+});
+
+/** 仓库事件类型 */
+export type RepoEvent = z.infer<typeof repoEventSchema>;
+
+/**
+ * 贡献者统计 Schema
+ */
+export const contributorStatsSchema = z.object({
+  /** 用户登录名 */
+  login: z.string(),
+  /** 用户名称 */
+  name: z.string().nullable(),
+  /** 头像 URL */
+  avatar: z.string(),
+  /** 提交次数 */
+  commits: z.number(),
+  /** 代码增加行数 */
+  additions: z.number(),
+  /** 代码删除行数 */
+  deletions: z.number(),
+  /** 创建的 PR 数量 */
+  prsCreated: z.number(),
+  /** 合并的 PR 数量 */
+  prsMerged: z.number(),
+  /** 创建的 Issue 数量 */
+  issuesCreated: z.number(),
+  /** 评论的 Issue 数量 */
+  issuesCommented: z.number(),
+});
+
+/** 贡献者统计类型 */
+export type ContributorStats = z.infer<typeof contributorStatsSchema>;
+
+/**
+ * 创建者统计 Schema
+ */
+export const creatorStatsSchema = z.object({
+  /** 用户登录名 */
+  login: z.string(),
+  /** 用户名称 */
+  name: z.string().nullable(),
+  /** 头像 URL */
+  avatar: z.string(),
+  /** 创建数量 */
+  count: z.number(),
+  /** 平均响应时间（小时） */
+  averageTime: z.number().nullable(),
+});
+
+/** 创建者统计类型 */
+export type CreatorStats = z.infer<typeof creatorStatsSchema>;
+
+/**
+ * 仓库统计数据 Schema
+ */
+export const repoStatsSchema = z.object({
+  /** Stars 历史数据 */
+  starsHistory: z.array(repoEventSchema),
+  /** Forks 历史数据 */
+  forksHistory: z.array(repoEventSchema),
+  /** Issues 历史数据 */
+  issuesHistory: z.array(repoEventSchema),
+  /** PR 历史数据 */
+  prHistory: z.array(repoEventSchema),
+  /** Commits 历史数据 */
+  commitHistory: z.array(repoEventSchema),
+  /** 贡献者列表 */
+  contributors: z.array(contributorStatsSchema),
+  /** Issue 创建者排名 */
+  topIssueCreators: z.array(creatorStatsSchema),
+  /** PR 创建者排名 */
+  topPRCreators: z.array(creatorStatsSchema),
+});
+
+/** 仓库统计数据类型 */
+export type RepoStats = z.infer<typeof repoStatsSchema>;
+
+/**
+ * Stargazer Schema
+ */
+export const stargazerSchema = z.object({
+  /** 用户登录名 */
+  login: z.string(),
+  /** 用户名称 */
+  name: z.string().nullable(),
+  /** 头像 URL */
+  avatar: z.string(),
+  /** Star 时间 */
+  starredAt: z.string(),
+});
+
+/** Stargazer 类型 */
+export type Stargazer = z.infer<typeof stargazerSchema>;
+
+/**
+ * 集合统计 Schema
+ */
+export const collectionStatsSchema = z.object({
+  /** 总仓库数量 */
+  totalCount: z.number(),
+  /** 仓库列表 */
+  repositories: z.array(trendingRepoSchema),
+  /** 更新时间 */
+  updatedSince: z.string(),
+});
+
+/** 集合统计类型 */
+export type CollectionStats = z.infer<typeof collectionStatsSchema>;
+
+/**
+ * 仓库洞察 Schema
+ * @description 仓库的综合分析结果
+ */
+export const repoInsightsSchema = z.object({
+  /** 仓库统计数据 */
+  stats: repoStatsSchema,
+  /** 顶级贡献者 */
+  topContributors: z.array(contributorStatsSchema),
+  /** 顶级 Issue 创建者 */
+  topIssueCreators: z.array(creatorStatsSchema),
+  /** 顶级 PR 创建者 */
+  topPRCreators: z.array(creatorStatsSchema),
+});
+
+/** 仓库洞察类型 */
+export type RepoInsights = z.infer<typeof repoInsightsSchema>;
+
+/**
+ * 趋势仓库请求 Schema
+ */
+export const trendingReposRequestSchema = z.object({
+  /** 返回数量限制 (1-50) */
+  limit: z.number().min(1).max(50).default(10),
+  /** 时间周期 */
+  period: z.enum(["24h", "7d", "30d"]).default("7d"),
+  /** 编程语言过滤 */
+  language: z.string().optional(),
+});
+
+/** 趋势仓库请求类型 */
+export type TrendingReposRequest = z.infer<typeof trendingReposRequestSchema>;
+
+/**
+ * 仓库洞察请求 Schema
+ */
+export const repoInsightsRequestSchema = z.object({
+  /** 仓库所有者 */
+  owner: z.string().min(1),
+  /** 仓库名称 */
+  repo: z.string().min(1),
+  /** 历史天数 */
+  days: z.number().min(1).max(365).default(30),
+  /** 贡献者数量限制 */
+  contributorsLimit: z.number().min(1).max(100).default(10),
+});
+
+/** 仓库洞察请求类型 */
+export type RepoInsightsRequest = z.infer<typeof repoInsightsRequestSchema>;

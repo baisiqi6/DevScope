@@ -92,8 +92,8 @@ export const repoChunks = pgTable("repo_chunks", {
   sourceId: text("source_id"),
   /** 分块序号 */
   chunkIndex: integer("chunk_index").notNull(),
-  /** 向量嵌入 (1536 维) */
-  embedding: vector("embedding", { dimensions: 1536 }),
+  /** 向量嵌入 (1024 维 - BGE-M3) */
+  embedding: vector("embedding", { dimensions: 1024 }),
   /** token 数量 */
   tokenCount: integer("token_count"),
   /** 创建时间 */
@@ -153,10 +153,10 @@ export const documents = pgTable("documents", {
   content: text("content").notNull(),
   /**
    * 向量嵌入
-   * @description 使用 pgvector 存储的 1536 维向量
+   * @description 使用 pgvector 存储的 1024 维向量 (BGE-M3)
    * 用于语义搜索和相似度计算
    */
-  embedding: vector("embedding", { dimensions: 1536 }),
+  embedding: vector("embedding", { dimensions: 1024 }),
   /** 创建时间 */
   createdAt: timestamp("created_at").defaultNow().notNull(),
   /** 最后更新时间 */

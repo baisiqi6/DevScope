@@ -4,14 +4,17 @@
   "private": true,
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
+      "require": "./dist/index.mjs",
+      "default": "./dist/index.mjs",
       "types": "./dist/index.d.mts"
     },
     "./langtum": {
       "import": "./dist/langtum.mjs",
+      "require": "./dist/langtum.mjs",
+      "default": "./dist/langtum.mjs",
       "types": "./dist/langtum.d.mts"
     }
   },

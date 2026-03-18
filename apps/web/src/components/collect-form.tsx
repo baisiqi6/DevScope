@@ -24,9 +24,15 @@ export function CollectForm({ onCollected }: CollectFormProps) {
   const collectMutation = trpc.collectRepository.useMutation({
     onSuccess: (data) => {
       setIsCollecting(false);
+      const baseMessage = `采集完成！收集了 ${data.chunksCollected} 个文本块`;
+      const embeddingInfo = data.embeddingsGenerated > 0
+        ? `，生成 ${data.embeddingsGenerated} 个向量嵌入。`
+        : `。`;
+      const warning = data.warning ? `\n\n⚠️ ${data.warning}` : "";
+
       setResult({
         success: data.status === "completed",
-        message: `采集完成！收集了 ${data.chunksCollected} 个文本块，生成 ${data.embeddingsGenerated} 个向量嵌入。`,
+        message: baseMessage + embeddingInfo + warning,
       });
       if (data.status === "completed") {
         onCollected();

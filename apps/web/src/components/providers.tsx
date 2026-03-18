@@ -33,7 +33,8 @@ export function TRPCProvider({
     trpc.createClient({
       links: [
         httpBatchLink({
-          url: "http://localhost:3001/trpc",
+          // 使用相对路径，通过 Next.js 代理转发到后端
+          url: "/api/trpc",
         }),
       ],
     })

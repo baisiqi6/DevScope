@@ -36,11 +36,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       '@fastify/cors':
-        specifier: ^9.0.1
-        version: 9.0.1
+        specifier: ^11.2.0
+        version: 11.2.0
       '@trpc/server':
-        specifier: ^11.12.0
-        version: 11.12.0(typescript@5.9.3)
+        specifier: 11.13.4
+        version: 11.13.4(typescript@5.9.3)
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@types/pg@8.18.0)(@types/react@19.2.14)(pg@8.20.0)(react@19.2.4)
@@ -105,9 +108,12 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.90.21
         version: 5.90.21(react@19.2.4)
+      '@trpc/client':
+        specifier: 11.13.4
+        version: 11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3)
       '@trpc/react-query':
-        specifier: ^11.12.0
-        version: 11.12.0(@tanstack/react-query@5.90.21(react@19.2.4))(@trpc/client@11.12.0(@trpc/server@11.12.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.12.0(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)
+        specifier: ^11.13.4
+        version: 11.13.4(@tanstack/react-query@5.90.21(react@19.2.4))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -766,8 +772,8 @@ packages:
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
 
-  '@fastify/cors@9.0.1':
-    resolution: {integrity: sha512-YY9Ho3ovI+QHIL2hW+9X4XqQjXLjJqsU+sMV/xFsxZkE8p3GNnYVFpoOxF7SsP5ZL76gwvbo3V9L+FIekBGU4Q==}
+  '@fastify/cors@11.2.0':
+    resolution: {integrity: sha512-LbLHBuSAdGdSFZYTLVA3+Ch2t+sA6nq3Ejc6XLAKiQ6ViS2qFnvicpj0htsx03FyYeLs04HfRNBsz/a8SvbcUw==}
 
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
@@ -1719,23 +1725,23 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
-  '@trpc/client@11.12.0':
-    resolution: {integrity: sha512-zTwFKQdE99pvNm7kXFdHo5xIQpGqpQJHtqVkT9o+i8h/0fbDOUBEEbFVICiMsNA+GiXskoaDRX2l+z6ir+Ug3w==}
+  '@trpc/client@11.13.4':
+    resolution: {integrity: sha512-AOM7u2blAjjpAzEyDXm4bk8f1HML0sFLuSXPsqZHQX3XCIVo7+mlArEAGMbwEtTwW8hUocI0i3/9tVYUF4Nu0g==}
     peerDependencies:
-      '@trpc/server': 11.12.0
+      '@trpc/server': 11.13.4
       typescript: '>=5.7.2'
 
-  '@trpc/react-query@11.12.0':
-    resolution: {integrity: sha512-SLJLlQw0XVc+oVD5RITLl0G7cAFJ4oSJXUcblTS8CKUET+J4r/Ot2hKfX+qhENcFM1ChllbwMrCbUHNOH7qU1A==}
+  '@trpc/react-query@11.13.4':
+    resolution: {integrity: sha512-YGdm8zl2iypiO3Uyw99oToGgnZ51BMoT0YLPkLod0bT7QqJX2oHzBzIBFOOfMupyLEH1pzdEC27F+fw9sAtQsA==}
     peerDependencies:
       '@tanstack/react-query': ^5.80.3
-      '@trpc/client': 11.12.0
-      '@trpc/server': 11.12.0
+      '@trpc/client': 11.13.4
+      '@trpc/server': 11.13.4
       react: '>=18.2.0'
       typescript: '>=5.7.2'
 
-  '@trpc/server@11.12.0':
-    resolution: {integrity: sha512-rpZnf5FUjNndE/AjGIy+FvEHR52iBd0u0wySqWCwXj67wraj3qCuBr5Opcf0Te/g67C/YztqceFkLoG0r4mp4Q==}
+  '@trpc/server@11.13.4':
+    resolution: {integrity: sha512-SZmLwi43KSp1D3jp2aPuzqhC644gIy87hgFuD9xWCTwFspH9Pr5DO2/JmpWjCqybTG2fTuKYzxFYLUGjTY5LGg==}
     peerDependencies:
       typescript: '>=5.7.2'
 
@@ -2352,6 +2358,10 @@ packages:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
 
+  dotenv@16.6.1:
+    resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
+    engines: {node: '>=12'}
+
   drizzle-kit@0.30.6:
     resolution: {integrity: sha512-U4wWit0fyZuGuP7iNmRleQyK2V8wCuv57vf5l3MnG4z4fzNTjY/U13M8owyQ5RavqvqxBifWORaR3wIUzlN64g==}
     hasBin: true
@@ -2694,8 +2704,8 @@ packages:
   fast-uri@3.1.0:
     resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
 
-  fastify-plugin@4.5.1:
-    resolution: {integrity: sha512-stRHYGeuqpEZTL1Ef0Ovr2ltazUT9g844X5z/zEBFLG8RYlpDiOCIG+ATvYEp+/zmc7sN29mcIMp8gvYplYPIQ==}
+  fastify-plugin@5.1.0:
+    resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
 
   fastify@5.8.2:
     resolution: {integrity: sha512-lZmt3navvZG915IE+f7/TIVamxIwmBd+OMB+O9WBzcpIwOo6F0LTh0sluoMFk5VkrKTvvrwIaoJPkir4Z+jtAg==}
@@ -3182,9 +3192,6 @@ packages:
   mlly@1.8.1:
     resolution: {integrity: sha512-SnL6sNutTwRWWR/vcmCYHSADjiEesp5TGQQ0pXyLhW5IoeibRlF/CbSLailbB3CNqJUk9cVJ9dUDnbD7GrcHBQ==}
 
-  mnemonist@0.39.6:
-    resolution: {integrity: sha512-A/0v5Z59y63US00cRSLiloEIw3t5G+MiKz4BhX21FI+YBJXBOGW0ohFxTxO08dsOYlzxo87T7vGfZKYp2bcAWA==}
-
   mrmime@2.0.1:
     resolution: {integrity: sha512-Y3wQdFg2Va6etvQ5I82yUhGdsKrcYox6p7FfL1LbK2J4V01F9TGlepTIhnK24t7koZibmg82KGglhA1XK5IsLQ==}
     engines: {node: '>=10'}
@@ -3289,9 +3296,6 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
-
-  obliterator@2.0.5:
-    resolution: {integrity: sha512-42CPE9AhahZRsMNslczq0ctAEtqk8Eka26QofnqC346BZdHDySk3LWka23LI7ULIw11NmltpiLagIq8gBozxTw==}
 
   octokit@5.0.5:
     resolution: {integrity: sha512-4+/OFSqOjoyULo7eN7EA97DE0Xydj/PW5aIckxqQIoFjFwqXKuFCvXUJObyJfBF9Khu4RL/jlDRI9FPaMGfPnw==}
@@ -4540,10 +4544,10 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.18.0)
       fast-uri: 3.1.0
 
-  '@fastify/cors@9.0.1':
+  '@fastify/cors@11.2.0':
     dependencies:
-      fastify-plugin: 4.5.1
-      mnemonist: 0.39.6
+      fastify-plugin: 5.1.0
+      toad-cache: 3.7.0
 
   '@fastify/error@4.2.0': {}
 
@@ -5379,20 +5383,20 @@ snapshots:
       '@tanstack/query-core': 5.90.20
       react: 19.2.4
 
-  '@trpc/client@11.12.0(@trpc/server@11.12.0(typescript@5.9.3))(typescript@5.9.3)':
+  '@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
-      '@trpc/server': 11.12.0(typescript@5.9.3)
+      '@trpc/server': 11.13.4(typescript@5.9.3)
       typescript: 5.9.3
 
-  '@trpc/react-query@11.12.0(@tanstack/react-query@5.90.21(react@19.2.4))(@trpc/client@11.12.0(@trpc/server@11.12.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.12.0(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)':
+  '@trpc/react-query@11.13.4(@tanstack/react-query@5.90.21(react@19.2.4))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)':
     dependencies:
       '@tanstack/react-query': 5.90.21(react@19.2.4)
-      '@trpc/client': 11.12.0(@trpc/server@11.12.0(typescript@5.9.3))(typescript@5.9.3)
-      '@trpc/server': 11.12.0(typescript@5.9.3)
+      '@trpc/client': 11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server': 11.13.4(typescript@5.9.3)
       react: 19.2.4
       typescript: 5.9.3
 
-  '@trpc/server@11.12.0(typescript@5.9.3)':
+  '@trpc/server@11.13.4(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
@@ -6030,6 +6034,8 @@ snapshots:
     dependencies:
       esutils: 2.0.3
 
+  dotenv@16.6.1: {}
+
   drizzle-kit@0.30.6:
     dependencies:
       '@drizzle-team/brocli': 0.10.2
@@ -6504,7 +6510,7 @@ snapshots:
 
   fast-uri@3.1.0: {}
 
-  fastify-plugin@4.5.1: {}
+  fastify-plugin@5.1.0: {}
 
   fastify@5.8.2:
     dependencies:
@@ -7022,10 +7028,6 @@ snapshots:
       pkg-types: 1.3.1
       ufo: 1.6.3
 
-  mnemonist@0.39.6:
-    dependencies:
-      obliterator: 2.0.5
-
   mrmime@2.0.1: {}
 
   ms@2.1.3: {}
@@ -7125,8 +7127,6 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.1
-
-  obliterator@2.0.5: {}
 
   octokit@5.0.5:
     dependencies:

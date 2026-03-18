@@ -17,6 +17,7 @@ import {
   createPipeline,
   repositories,
   repoChunks,
+  createOSSInsightClient,
 } from "@devscope/db";
 import { eq } from "drizzle-orm";
 import {
@@ -24,6 +25,12 @@ import {
   repositoryAnalysisSchema,
   semanticSearchRequestSchema,
   semanticSearchResponseSchema,
+  trendingReposRequestSchema,
+  repoInsightsRequestSchema,
+  repoInsightsSchema,
+  trendingRepoSchema,
+  collectionStatsSchema,
+  repositoryDetailSchema,
   type RepositoryAnalysis,
   type CollectionResult,
 } from "@devscope/shared";
@@ -49,6 +56,84 @@ export const appRouter = router({
   workflow: workflowRouter,
 
   /**
+   * 获取趋势仓库列表
+   * @description 从 OSSInsight 获取当前热门的 GitHub 仓库
+   */
+  getTrendingRepos: publicProcedure
+    .input(trendingReposRequestSchema.partial())
+    .output(z.array(trendingRepoSchema))
+    .query(async ({ input }) => {
+      const client = createOSSInsightClient();
+
+      const limit = input?.limit ?? 10;
+      const period = input?.period ?? "7d";
+      const language = input?.language;
+
+      return await client.getTrendingRepos(limit, period, language);
+    }),
+
+  /**
+   * 按语言获取趋势仓库
+   * @description 获取指定编程语言的热门仓库
+   */
+  getTrendingByLanguage: publicProcedure
+    .input(z.object({
+      language: z.string().min(1),
+      limit: z.number().min(1).max(50).default(10),
+    }))
+    .output(z.array(trendingRepoSchema))
+    .query(async ({ input }) => {
+      const client = createOSSInsightClient();
+      return await client.getTrendingByLanguage(input.language, input.limit);
+    }),
+
+  /**
+   * 获取仓库深度洞察
+   * @description 从 OSSInsight 获取仓库的综合分析数据
+   */
+  getRepoInsights: publicProcedure
+    .input(repoInsightsRequestSchema.partial())
+    .output(repoInsightsSchema)
+    .query(async ({ input }) => {
+      const client = createOSSInsightClient();
+
+      if (!input?.owner || !input?.repo) {
+        throw new Error("owner and repo are required");
+      }
+
+      return await client.getRepoInsights(input.owner, input.repo);
+    }),
+
+  /**
+   * 获取集合统计
+   * @description 获取 OSSInsight 预定义的项目集合数据
+   */
+  getCollection: publicProcedure
+    .input(z.object({
+      collectionId: z.string().min(1),
+    }))
+    .output(collectionStatsSchema)
+    .query(async ({ input }) => {
+      const client = createOSSInsightClient();
+      return await client.getCollection(input.collectionId);
+    }),
+
+  /**
+   * 搜索仓库
+   * @description 使用 OSSInsight API 搜索 GitHub 仓库
+   */
+  searchRepos: publicProcedure
+    .input(z.object({
+      query: z.string().min(1),
+      limit: z.number().min(1).max(50).default(10),
+    }))
+    .output(z.array(trendingRepoSchema))
+    .query(async ({ input }) => {
+      const client = createOSSInsightClient();
+      return await client.searchRepos(input.query, input.limit);
+    }),
+
+  /**
    * 获取仓库列表
    * @description 获取已采集的仓库列表
    */
@@ -58,31 +143,42 @@ export const appRouter = router({
       offset: z.number().min(0).default(0),
     }).optional())
     .query(async ({ input }) => {
+      console.log("[getRepositories] Starting...");
       const db = createDb();
       const limit = input?.limit ?? 20;
       const offset = input?.offset ?? 0;
 
-      const repos = await db
-        .select()
-        .from(repositories)
-        .orderBy(repositories.stars)
-        .limit(limit)
-        .offset(offset);
+      try {
+        const repos = await db
+          .select()
+          .from(repositories)
+          .orderBy(repositories.stars)
+          .limit(limit)
+          .offset(offset);
 
-      return repos.map((repo) => ({
-        id: repo.id,
-        fullName: repo.fullName,
-        name: repo.name,
-        owner: repo.owner,
-        description: repo.description,
-        url: repo.url,
-        stars: repo.stars,
-        forks: repo.forks,
-        openIssues: repo.openIssues,
-        language: repo.language,
-        license: repo.license,
-        lastFetchedAt: repo.lastFetchedAt?.toISOString(),
-      }));
+        console.log("[getRepositories] Found repos:", repos.length);
+        return repos.map((repo) => ({
+          id: repo.id,
+          fullName: repo.fullName,
+          name: repo.name,
+          owner: repo.owner,
+          description: repo.description,
+          url: repo.url,
+          stars: repo.stars,
+          forks: repo.forks,
+          openIssues: repo.openIssues,
+          language: repo.language,
+          license: repo.license,
+          lastFetchedAt: repo.lastFetchedAt?.toISOString(),
+        }));
+      } catch (err) {
+        console.error("[getRepositories] Error:", err);
+        if (err instanceof Error) {
+          console.error("[getRepositories] Error message:", err.message);
+          console.error("[getRepositories] Error stack:", err.stack);
+        }
+        throw err;
+      }
     }),
 
   /**
@@ -93,6 +189,7 @@ export const appRouter = router({
     .input(z.object({
       id: z.number(),
     }))
+    .output(repositoryDetailSchema)
     .query(async ({ input }) => {
       const db = createDb();
 
@@ -153,9 +250,16 @@ export const appRouter = router({
       const db = createDb();
       const pipeline = createPipeline(db);
 
-      const result: CollectionResult = await pipeline.run({ repo: input.repo });
+      console.log("[collectRepository] Starting collection for:", input.repo);
 
-      return result;
+      try {
+        const result: CollectionResult = await pipeline.run({ repo: input.repo });
+        console.log("[collectRepository] Result:", result);
+        return result;
+      } catch (err) {
+        console.error("[collectRepository] Error:", err);
+        throw err;
+      }
     }),
 
   /**

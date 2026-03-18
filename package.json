@@ -5,9 +5,11 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:clean": "node scripts/kill-ports.js && turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean",
+    "kill-ports": "node scripts/kill-ports.js",
     "db:generate": "pnpm --filter @devscope/db db:generate",
     "db:migrate": "pnpm --filter @devscope/db db:migrate",
     "db:push": "pnpm --filter @devscope/db db:push",

@@ -82,3 +82,8 @@ export * from "./github";
  * 数据采集 Pipeline
  */
 export * from "./pipeline";
+
+/**
+ * OSSInsight API 客户端
+ */
+export * from "./ossinsight";

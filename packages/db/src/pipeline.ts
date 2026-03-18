@@ -9,13 +9,53 @@
 
 import { upsertRepository, insertRepoChunks, insertHackernewsItems } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
-import { TextChunker, EmbeddingProvider } from "@devscope/ai";
+import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
 import type { Db } from "./index";
-import type { CollectionResult, CollectionStatus } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
 // ============================================================================
+
+/**
+ * 采集状态
+ */
+type CollectionStatus = "pending" | "processing" | "completed" | "failed" | "success";
+
+/**
+ * 文本分块结果（本地定义，避免导入问题）
+ */
+interface TextChunk {
+  content: string;
+  sourceId?: string;
+  chunkType?: string;
+  chunkIndex: number;
+  tokenCount?: number;
+}
+
+/**
+ * 采集结果
+ */
+interface CollectionResult {
+  status: CollectionStatus;
+  error?: string;
+  warning?: string;
+  repository?: {
+    id: number;
+    fullName: string;
+    name: string;
+    owner: string;
+    stars: number;
+    forks: number;
+    openIssues: number;
+    language?: string;
+    description?: string;
+    url: string;
+  };
+  chunksCollected: number;
+  embeddingsGenerated: number;
+  hnItemsCollected: number;
+  duration: number;
+}
 
 /**
  * Pipeline 配置
@@ -23,8 +63,8 @@ import type { CollectionResult, CollectionStatus } from "@devscope/shared";
 export interface PipelineConfig {
   /** GitHub Token（可选） */
   githubToken?: string;
-  /** OpenAI Token（用于 embedding） */
-  openaiToken?: string;
+  /** BGE-M3 API 基础 URL（默认：http://localhost:9999/v1） */
+  bgeApiUrl?: string;
   /** 数据库连接字符串 */
   dbUrl?: string;
   /** 分块最大 token 数 */
@@ -45,6 +85,8 @@ export interface PipelineConfig {
   includeHackernews?: boolean;
   /** Hacker News 采集数量 */
   hnLimit?: number;
+  /** 是否跳过 Embedding 生成（当 embedding 服务不可用时） */
+  skipEmbeddings?: boolean;
 }
 
 /**
@@ -68,8 +110,8 @@ export interface PipelineInput {
 export class DataCollectionPipeline {
   private db: Db;
   private github: GitHubCollector;
-  private chunker: TextChunker;
-  private embedder: EmbeddingProvider;
+  private chunker: InstanceType<typeof TextChunker>;
+  private embedder: InstanceType<typeof BGEEmbeddingProvider>;
   private config: Required<PipelineConfig>;
 
   constructor(db: Db, config: PipelineConfig = {}) {
@@ -78,7 +120,7 @@ export class DataCollectionPipeline {
     // 设置默认值
     this.config = {
       githubToken: config.githubToken || process.env.GITHUB_TOKEN || "",
-      openaiToken: config.openaiToken || process.env.OPENAI_API_KEY || "",
+      bgeApiUrl: config.bgeApiUrl || process.env.BGE_API_URL || "http://localhost:9999/v1",
       dbUrl: config.dbUrl || process.env.DATABASE_URL || "",
       chunkMaxTokens: config.chunkMaxTokens || 500,
       chunkOverlapTokens: config.chunkOverlapTokens || 50,
@@ -89,6 +131,7 @@ export class DataCollectionPipeline {
       commitsLimit: config.commitsLimit || 10,
       includeHackernews: config.includeHackernews ?? true,
       hnLimit: config.hnLimit || 20,
+      skipEmbeddings: config.skipEmbeddings ?? false,
     };
 
     // 初始化组件
@@ -97,7 +140,7 @@ export class DataCollectionPipeline {
       maxTokens: this.config.chunkMaxTokens,
       overlapTokens: this.config.chunkOverlapTokens,
     });
-    this.embedder = new EmbeddingProvider({ apiKey: this.config.openaiToken });
+    this.embedder = new BGEEmbeddingProvider({ baseURL: this.config.bgeApiUrl });
   }
 
   /**
@@ -107,14 +150,30 @@ export class DataCollectionPipeline {
     const startTime = Date.now();
     const { owner, repo } = parseRepoFullName(input.repo);
 
+    console.log("[Pipeline] ======= PIPELINE START =======");
+    console.log("[Pipeline] Input repo:", input.repo);
+    console.log("[Pipeline] Parsed owner:", owner, "repo:", repo);
+    console.log("[Pipeline] Config:", JSON.stringify({
+      githubToken: this.config.githubToken ? "***" : "not set",
+      bgeApiUrl: this.config.bgeApiUrl,
+      dbUrl: this.config.dbUrl ? "***" : "not set",
+      includeReadme: this.config.includeReadme,
+      includeIssues: this.config.includeIssues,
+      includeHackernews: this.config.includeHackernews,
+      skipEmbeddings: this.config.skipEmbeddings,
+    }, null, 2));
+
     let status: CollectionStatus = "processing";
     let error: string | undefined;
+    let warning: string | undefined;
     let repository: CollectionResult["repository"];
     let chunksCollected = 0;
     let embeddingsGenerated = 0;
     let hnItemsCollected = 0;
 
     try {
+      console.log("[Pipeline] Step 1: Collecting GitHub data...");
+
       // 1. 采集 GitHub 数据
       const githubData = await this.github.collectRepository(owner, repo, {
         includeReadme: this.config.includeReadme,
@@ -142,14 +201,18 @@ export class DataCollectionPipeline {
       });
 
       repository = {
+        id: savedRepo.id,
         fullName: githubData.repository.fullName,
         name: githubData.repository.name,
         owner: githubData.repository.owner,
         description: githubData.repository.description || undefined,
+        url: githubData.repository.url,
         stars: githubData.repository.stars,
         forks: githubData.repository.forks,
+        openIssues: githubData.repository.openIssues,
         language: githubData.repository.language || undefined,
       };
+      console.log("[Pipeline] Step 2: Repository saved, ID:", savedRepo.id);
 
       // 3. 准备文本分块
       const textSources: Array<{ text: string; sourceId?: string; chunkType: string }> = [];
@@ -187,34 +250,83 @@ export class DataCollectionPipeline {
       }
 
       // 4. 执行文本分块
-      const chunks = this.chunker.chunkMultiple(textSources);
+      console.log("[Pipeline] Step 3: Chunking text sources, count:", textSources.length);
+      const chunks: TextChunk[] = this.chunker.chunkMultiple(textSources);
       chunksCollected = chunks.length;
+      console.log("[Pipeline] Step 3 complete: Chunks created:", chunksCollected);
 
       // 5. 生成 Embedding 并存储
+      console.log("[Pipeline] Step 4: Generating embeddings and storing chunks...");
       if (chunks.length > 0) {
-        // 批量生成 embedding
-        const texts = chunks.map((c) => c.content);
-        const embeddings = await this.embedder.embedBatch(texts);
+        // 检查是否跳过 embedding 生成
+        if (this.config.skipEmbeddings) {
+          console.log("[Pipeline] Embeddings skipped (skipEmbeddings=true)");
+          // 存储不含 embedding 的分块
+          const dbChunks = chunks.map((chunk: TextChunk) => ({
+            repoId: savedRepo.id,
+            content: chunk.content,
+            chunkType: chunk.chunkType || "description",
+            sourceId: chunk.sourceId || null,
+            chunkIndex: chunk.chunkIndex,
+            embedding: null, // 无 embedding
+            tokenCount: chunk.tokenCount,
+          }));
+          await insertRepoChunks(this.db, dbChunks);
+          chunksCollected = dbChunks.length;
+          console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
+        } else {
+          try {
+            // 批量生成 embedding
+            const texts = chunks.map((c: TextChunk) => c.content);
+            console.log("[Pipeline] Generating embeddings for", texts.length, "texts...");
+            const embeddings = await this.embedder.embedBatch(texts);
+            console.log("[Pipeline] Embeddings generated, count:", embeddings.length);
 
-        // 准备数据库插入数据
-        const dbChunks = chunks.map((chunk, index) => ({
-          repoId: savedRepo.id,
-          content: chunk.content,
-          chunkType: chunk.chunkType,
-          sourceId: chunk.sourceId,
-          chunkIndex: chunk.chunkIndex,
-          embedding: embeddings[index],
-          tokenCount: chunk.tokenCount,
-        }));
+            // 准备数据库插入数据
+            const dbChunks = chunks.map((chunk: TextChunk, index: number) => ({
+              repoId: savedRepo.id,
+              content: chunk.content,
+              chunkType: chunk.chunkType || "description",
+              sourceId: chunk.sourceId || null,
+              chunkIndex: chunk.chunkIndex,
+              embedding: embeddings[index],
+              tokenCount: chunk.tokenCount,
+            }));
 
-        await insertRepoChunks(this.db, dbChunks);
-        embeddingsGenerated = dbChunks.length;
+            await insertRepoChunks(this.db, dbChunks);
+            embeddingsGenerated = dbChunks.length;
+            console.log("[Pipeline] Step 4 complete: Stored", embeddingsGenerated, "chunks");
+          } catch (embedError) {
+            // Embedding 服务不可用时的降级处理
+            console.warn("[Pipeline] Embedding generation failed:", embedError);
+            console.warn("[Pipeline] Falling back to storing chunks without embeddings...");
+            warning = `Embedding 服务不可用，已存储文本分块但未生成向量。请检查 BGE_API_URL 配置（当前：${this.config.bgeApiUrl}）。`;
+
+            // 存储不含 embedding 的分块
+            const dbChunks = chunks.map((chunk: TextChunk) => ({
+              repoId: savedRepo.id,
+              content: chunk.content,
+              chunkType: chunk.chunkType || "description",
+              sourceId: chunk.sourceId || null,
+              chunkIndex: chunk.chunkIndex,
+              embedding: null, // 无 embedding
+              tokenCount: chunk.tokenCount,
+            }));
+            await insertRepoChunks(this.db, dbChunks);
+            chunksCollected = dbChunks.length;
+            console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
+          }
+        }
+      } else {
+        console.log("[Pipeline] Step 4 skipped: No chunks to process");
       }
 
       // 6. 采集 Hacker News 数据
+      console.log("[Pipeline] Step 5: Fetching Hacker News data...");
       if (this.config.includeHackernews) {
         const hnItems = await this.fetchHackerNews(repo, this.config.hnLimit);
         hnItemsCollected = hnItems.length;
+        console.log("[Pipeline] Hacker News items fetched:", hnItemsCollected);
 
         if (hnItems.length > 0) {
           const dbHnItems = hnItems.map((item) => ({
@@ -230,13 +342,33 @@ export class DataCollectionPipeline {
           }));
 
           await insertHackernewsItems(this.db, dbHnItems);
+          console.log("[Pipeline] Hacker News items stored:", dbHnItems.length);
         }
+      } else {
+        console.log("[Pipeline] Step 5 skipped: includeHackernews is false");
       }
 
       status = "completed";
+      console.log("[Pipeline] ======= PIPELINE COMPLETED SUCCESSFULLY =======");
     } catch (err) {
       status = "failed";
-      error = err instanceof Error ? err.message : String(err);
+      console.error("[Pipeline] ======= ERROR START =======");
+      console.error("[Pipeline] Error:", err);
+      console.error("[Pipeline] Error type:", typeof err);
+      if (err instanceof Error) {
+        error = err.message || String(err);
+        console.error("[Pipeline] Error message:", err.message);
+        console.error("[Pipeline] Error name:", err.name);
+        console.error("[Pipeline] Error stack:", err.stack);
+      } else if (err && typeof err === "object") {
+        // Handle objects that might not be Error instances
+        error = JSON.stringify(err);
+        console.error("[Pipeline] Error object:", JSON.stringify(err, null, 2));
+      } else {
+        error = String(err);
+        console.error("[Pipeline] Error (string):", err);
+      }
+      console.error("[Pipeline] ======= ERROR END =======");
     }
 
     const duration = Date.now() - startTime;
@@ -248,6 +380,7 @@ export class DataCollectionPipeline {
       hnItemsCollected,
       status,
       error,
+      warning,
       duration,
     };
   }
