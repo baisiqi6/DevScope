@@ -8,13 +8,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { RepositoryCard } from "@/components/repository-card";
 import { CollectForm } from "@/components/collect-form";
+import { FollowingList } from "@/components/following-list";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"collect" | "following">("collect");
 
   // 获取仓库列表
   const { data: repositories, isLoading, error, refetch } = trpc.getRepositories.useQuery(
@@ -31,6 +34,13 @@ export default function HomePage() {
 
   const handleCollected = () => {
     refetch();
+  };
+
+  const handleSelectFromFollowing = (fullName: string) => {
+    // 切换到采集标签并触发采集
+    setActiveTab("collect");
+    // CollectForm 组件会在下次渲染时收到这个 repo
+    (window as any).__pendingCollectRepo = fullName;
   };
 
   return (
@@ -52,9 +62,32 @@ export default function HomePage() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-8 lg:grid-cols-3">
-          {/* 左侧：采集表单 */}
+          {/* 左侧：标签页 */}
           <div className="lg:col-span-1">
-            <CollectForm onCollected={handleCollected} />
+            {/* 标签切换 */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                size="sm"
+                variant={activeTab === "collect" ? "default" : "outline"}
+                onClick={() => setActiveTab("collect")}
+              >
+                采集仓库
+              </Button>
+              <Button
+                size="sm"
+                variant={activeTab === "following" ? "default" : "outline"}
+                onClick={() => setActiveTab("following")}
+              >
+                我的关注
+              </Button>
+            </div>
+
+            {/* 标签内容 */}
+            {activeTab === "collect" ? (
+              <CollectForm onCollected={handleCollected} />
+            ) : (
+              <FollowingList onSelectRepo={handleSelectFromFollowing} />
+            )}
           </div>
 
           {/* 右侧：仓库列表 */}

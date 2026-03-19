@@ -61,6 +61,20 @@ export interface GitHubCommit {
   date: Date;
 }
 
+/**
+ * 用户关注的仓库
+ */
+export interface GitHubFollowingRepo {
+  fullName: string;
+  name: string;
+  owner: string;
+  description: string | null;
+  url: string;
+  stars: number;
+  language: string | null;
+  updatedAt: Date;
+}
+
 // ============================================================================
 // GitHub 客户端
 // ============================================================================
@@ -197,6 +211,58 @@ export class GitHubCollector {
       author: item.commit.author?.name || "unknown",
       date: new Date(item.commit.author?.date || ""),
     }));
+  }
+
+  /**
+   * 获取用户关注的仓库列表
+   *
+   * @param username - GitHub 用户名（不传则获取认证用户的关注列表）
+   * @param limit - 返回数量限制，默认 100
+   * @returns 用户关注的仓库列表
+   */
+  async getFollowing(username?: string, limit: number = 100): Promise<GitHubFollowingRepo[]> {
+    const repos: GitHubFollowingRepo[] = [];
+    let page = 1;
+    const perPage = 100;
+
+    while (repos.length < limit) {
+      // 使用 Octokit 的 watch.list（获取用户订阅的仓库）或 users.listFollowingForUser
+      // 这里使用 users.listFollowingForUser 获取用户关注的仓库
+      const endpoint = username
+        ? this.octokit.rest.activity.listReposStarredByUser
+        : this.octokit.rest.activity.listReposStarredByAuthenticatedUser;
+
+      const { data } = await endpoint({
+        username: username || "",
+        per_page: perPage,
+        page,
+      });
+
+      if (data.length === 0) break;
+
+      for (const item of data) {
+        if (repos.length >= limit) break;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const repo = (item as any).repo || item;
+
+        repos.push({
+          fullName: repo.full_name,
+          name: repo.name,
+          owner: repo.owner.login,
+          description: repo.description,
+          url: repo.html_url,
+          stars: repo.stargazers_count,
+          language: repo.language,
+          updatedAt: new Date(repo.updated_at),
+        });
+      }
+
+      if (data.length < perPage) break;
+      page++;
+    }
+
+    return repos;
   }
 
   /**

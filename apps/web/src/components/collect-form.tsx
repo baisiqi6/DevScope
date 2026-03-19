@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -59,6 +59,15 @@ export function CollectForm({ onCollected }: CollectFormProps) {
     },
   });
 
+  // 检查是否有待处理的采集请求（从关注列表传入）
+  useEffect(() => {
+    const pendingRepo = (window as any).__pendingCollectRepo;
+    if (pendingRepo) {
+      setRepo(pendingRepo);
+      (window as any).__pendingCollectRepo = undefined;
+    }
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!repo.trim()) return;
@@ -97,7 +106,7 @@ export function CollectForm({ onCollected }: CollectFormProps) {
           </Button>
           {result && (
             <div
-              className={`p-3 rounded-md text-sm ${
+              className={`p-3 rounded-md text-sm whitespace-pre-line ${
                 result.success
                   ? "bg-green-50 text-green-800 border border-green-200"
                   : "bg-red-50 text-red-800 border border-red-200"

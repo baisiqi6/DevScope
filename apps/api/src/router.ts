@@ -18,6 +18,8 @@ import {
   repositories,
   repoChunks,
   createOSSInsightClient,
+  createGitHubCollector,
+  type GitHubFollowingRepo,
 } from "@devscope/db";
 import { eq } from "drizzle-orm";
 import {
@@ -131,6 +133,29 @@ export const appRouter = router({
     .query(async ({ input }) => {
       const client = createOSSInsightClient();
       return await client.searchRepos(input.query, input.limit);
+    }),
+
+  /**
+   * 获取用户关注的仓库列表
+   * @description 从 GitHub API 获取认证用户关注的仓库列表
+   */
+  getFollowing: publicProcedure
+    .input(z.object({
+      limit: z.number().min(1).max(100).default(30),
+    }).optional())
+    .query(async ({ input }) => {
+      console.log("[getFollowing] Fetching following repos...");
+      const github = createGitHubCollector();
+      const limit = input?.limit ?? 30;
+
+      try {
+        const repos = await github.getFollowing(undefined, limit);
+        console.log("[getFollowing] Found repos:", repos.length);
+        return repos;
+      } catch (err) {
+        console.error("[getFollowing] Error:", err);
+        throw err;
+      }
     }),
 
   /**
