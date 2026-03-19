@@ -106,6 +106,32 @@ export interface WorkflowExecutionDetail extends WorkflowExecutionResponse {
 }
 
 /**
+ * Langcore 平台实际返回的响应结构
+ */
+export interface LangcoreWorkflowResponse {
+  status: "success" | "error";
+  output?: {
+    output?: {
+      output?: string;
+    };
+    logId?: string;
+    fullLog?: {
+      id: string;
+      workflowId: string;
+      status: string;
+      startTimetamp: number;
+      endTimetamp: number;
+      input: Record<string, unknown>;
+      output: {
+        output: string;
+      };
+      runDetails: unknown[];
+    };
+  };
+  error?: string;
+}
+
+/**
  * Webhook 事件类型
  */
 export type WebhookEventType =
@@ -199,7 +225,7 @@ export class LangtumClient {
     this.baseURL =
       config.baseURL ||
       process.env.LANGTUM_BASE_URL ||
-      "https://api.langtum.com";
+      "https://demo.langcore.cn";
 
     if (!this.apiKey) {
       throw new Error("LANGTUM_API_KEY is required");
@@ -209,6 +235,38 @@ export class LangtumClient {
   // ========================================================================
   // 工作流触发方法
   // ========================================================================
+
+  /**
+   * 触发任意工作流（通用方法）
+   *
+   * @param workflowName 工作流名称
+   * @param input 工作流输入
+   * @returns 执行响应，包含 execution_id
+   */
+  private async triggerWorkflow(
+    workflowName: string,
+    input: WorkflowTriggerInput
+  ): Promise<WorkflowExecutionResponse> {
+    const url = `${this.baseURL}/api/v1/workflows/${workflowName}/trigger`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(
+        `Failed to trigger workflow: ${response.status} ${response.statusText} - ${error}`
+      );
+    }
+
+    return (await response.json()) as WorkflowExecutionResponse;
+  }
 
   /**
    * 触发每日健康度报告工作流
@@ -261,17 +319,31 @@ export class LangtumClient {
   }
 
   /**
-   * 触发任意工作流
+   * 触发自定义工作流（Langcore 平台）
    *
-   * @param workflowName 工作流名称
-   * @param input 工作流输入
-   * @returns 执行响应，包含 execution_id
+   * @param workflowId 工作流 ID（如 cmmlmarrt010hgjpg0qi53204）
+   * @param input 工作流输入对象（包含 shuru 等字段）
+   * @param runMode 运行模式（默认 sync）
+   * @returns 执行响应
+   *
+   * @example
+   * ```typescript
+   * const response = await client.triggerCustomWorkflow(
+   *   "cmmlmarrt010hgjpg0qi53204",
+   *   { shuru: "owner/repo1,owner/repo2" },
+   *   "sync"
+   * );
+   * ```
    */
-  async triggerWorkflow(
-    workflowName: string,
-    input: WorkflowTriggerInput
-  ): Promise<WorkflowExecutionResponse> {
-    const url = `${this.baseURL}/api/v1/workflows/${workflowName}/trigger`;
+  async triggerCustomWorkflow(
+    workflowId: string,
+    input: Record<string, unknown>,
+    runMode: "sync" | "async" = "sync"
+  ): Promise<WorkflowExecutionDetail> {
+    const url = `${this.baseURL}/api/workflow/run/${workflowId}`;
+
+    console.log(`[LangtumClient] Request URL: ${url}`);
+    console.log(`[LangtumClient] Request body:`, JSON.stringify({ input, runMode }, null, 2));
 
     const response = await fetch(url, {
       method: "POST",
@@ -279,7 +351,10 @@ export class LangtumClient {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        input,
+        runMode,
+      }),
     });
 
     if (!response.ok) {
@@ -289,7 +364,32 @@ export class LangtumClient {
       );
     }
 
-    return (await response.json()) as WorkflowExecutionResponse;
+    const rawData = await response.json() as LangcoreWorkflowResponse;
+    console.log(`[LangtumClient] Raw response:`, JSON.stringify(rawData, null, 2));
+
+    // 转换 Langcore 响应格式为标准的 WorkflowExecutionDetail 格式
+    const result = rawData.output?.output?.output;
+
+    const detail: WorkflowExecutionDetail = {
+      execution_id: rawData.output?.fullLog?.id || this.generateExecutionId(),
+      workflow_id: rawData.output?.fullLog?.workflowId || workflowId,
+      status: rawData.status === "success" ? "completed" :
+              rawData.status === "error" ? "failed" : "running",
+      started_at: rawData.output?.fullLog?.startTimetamp ?
+        new Date(rawData.output.fullLog.startTimetamp).toISOString() :
+        new Date().toISOString(),
+      result: result,
+      completed_at: rawData.output?.fullLog?.endTimetamp ?
+        new Date(rawData.output.fullLog.endTimetamp).toISOString() :
+        undefined,
+      duration_ms: rawData.output?.fullLog?.startTimetamp && rawData.output?.fullLog?.endTimetamp ?
+        rawData.output.fullLog.endTimetamp - rawData.output.fullLog.startTimetamp :
+        undefined,
+    };
+
+    console.log(`[LangtumClient] Converted response:`, JSON.stringify(detail, null, 2));
+
+    return detail;
   }
 
   // ========================================================================
@@ -476,6 +576,15 @@ export class LangtumClient {
    */
   static generateExecutionId(): string {
     return randomUUID();
+  }
+
+  /**
+   * 生成唯一执行 ID（实例方法）
+   *
+   * @returns UUID 格式的执行 ID
+   */
+  private generateExecutionId(): string {
+    return LangtumClient.generateExecutionId();
   }
 
   /**

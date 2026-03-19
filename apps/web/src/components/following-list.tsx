@@ -8,6 +8,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -28,7 +29,10 @@ interface FollowingListProps {
 }
 
 export function FollowingList({ onSelectRepo }: FollowingListProps) {
+  const router = useRouter();
   const [limit, setLimit] = useState(30);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingRepo, setAnalyzingRepo] = useState<string | null>(null);
 
   const { data: following, isLoading, error, refetch } = trpc.getFollowing.useQuery(
     { limit },
@@ -37,6 +41,36 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
       refetchOnWindowFocus: false,
     }
   );
+
+  // 一键分析（所有仓库）
+  const analyzeAllMutation = trpc.workflow.analyzeFollowing.useMutation({
+    onSuccess: (data) => {
+      setIsAnalyzing(false);
+      // 保存结果到 sessionStorage
+      sessionStorage.setItem("analysisResult", JSON.stringify(data));
+      // 跳转到分析结果页面
+      router.push(`/analysis?executionId=${data.execution_id}`);
+    },
+    onError: (error) => {
+      setIsAnalyzing(false);
+      alert(`分析失败: ${error.message}`);
+    },
+  });
+
+  // 单个仓库分析
+  const analyzeSingleMutation = trpc.workflow.analyzeRepo.useMutation({
+    onSuccess: (data) => {
+      setAnalyzingRepo(null);
+      // 保存结果到 sessionStorage
+      sessionStorage.setItem("analysisResult", JSON.stringify(data));
+      // 跳转到分析结果页面
+      router.push(`/analysis?executionId=${data.execution_id}`);
+    },
+    onError: (error) => {
+      setAnalyzingRepo(null);
+      alert(`分析失败: ${error.message}`);
+    },
+  });
 
   const handleCollect = (fullName: string) => {
     if (onSelectRepo) {
@@ -66,6 +100,17 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
                 加载更多
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="default"
+              disabled={isAnalyzing}
+              onClick={() => {
+                setIsAnalyzing(true);
+                analyzeAllMutation.mutate({ limit });
+              }}
+            >
+              {isAnalyzing ? "分析中..." : "一键分析"}
+            </Button>
           </div>
         </CardTitle>
       </CardHeader>
@@ -124,13 +169,33 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
                       )}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCollect(repo.fullName)}
-                  >
-                    采集
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCollect(repo.fullName)}
+                    >
+                      采集
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => window.location.href = `/repo-stats?repo=${encodeURIComponent(repo.fullName)}`}
+                    >
+                      统计
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      disabled={analyzingRepo === repo.fullName}
+                      onClick={() => {
+                        setAnalyzingRepo(repo.fullName);
+                        analyzeSingleMutation.mutate({ repo: repo.fullName });
+                      }}
+                    >
+                      {analyzingRepo === repo.fullName ? "分析中..." : "分析"}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
