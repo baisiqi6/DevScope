@@ -12,6 +12,9 @@ import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AnimatedBackground } from "@/components/animated-background";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 interface RepositoryStats {
   repository: {
@@ -148,9 +151,14 @@ function StatsContent() {
   const healthScore = calculateHealthScore(stats);
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="space-y-6"
+    >
       {/* 健康度评分 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>仓库健康度评分</span>
@@ -174,14 +182,14 @@ function StatsContent() {
               style={{ width: `${healthScore}%` }}
             />
           </div>
-          <p className="text-sm text-muted-foreground mt-2">
+          <p className="text-sm text-slate-600 mt-2">
             {healthScore >= 80 ? "健康" : healthScore >= 60 ? "良好" : "需要关注"}
           </p>
         </CardContent>
       </Card>
 
       {/* 基础信息 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>基础信息</CardTitle>
         </CardHeader>
@@ -197,34 +205,34 @@ function StatsContent() {
                 {stats.repository.fullName}
               </a>
               {stats.repository.description && (
-                <p className="text-muted-foreground">{stats.repository.description}</p>
+                <p className="text-slate-600">{stats.repository.description}</p>
               )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">⭐ Stars</p>
+                <p className="text-sm text-slate-600">⭐ Stars</p>
                 <p className="font-semibold">{formatNumber(stats.repository.stars)}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">🍴 Forks</p>
+                <p className="text-sm text-slate-600">🍴 Forks</p>
                 <p className="font-semibold">{formatNumber(stats.repository.forks)}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">🔷 Language</p>
+                <p className="text-sm text-slate-600">🔷 Language</p>
                 <p className="font-semibold">{stats.repository.language || "N/A"}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">📄 License</p>
+                <p className="text-sm text-slate-600">📄 License</p>
                 <p className="font-semibold">{stats.repository.license || "N/A"}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">创建时间</p>
+                <p className="text-slate-600">创建时间</p>
                 <p>{formatDate(stats.repository.createdAt)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">最后更新</p>
+                <p className="text-slate-600">最后更新</p>
                 <p>{formatDate(stats.repository.updatedAt)}</p>
               </div>
             </div>
@@ -233,41 +241,41 @@ function StatsContent() {
       </Card>
 
       {/* 代码活跃度 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>代码活跃度</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground">最近提交</p>
+              <p className="text-sm text-slate-600">最近提交</p>
               <p className="font-semibold">{formatDate(stats.commitFrequency.lastCommitDate)}</p>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
                 <p className="text-2xl font-bold text-blue-600">{stats.commitFrequency.commitsLast7Days}</p>
-                <p className="text-sm text-muted-foreground">过去 7 天提交</p>
+                <p className="text-sm text-slate-600">过去 7 天提交</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
                 <p className="text-2xl font-bold text-green-600">{stats.commitFrequency.commitsLast30Days}</p>
-                <p className="text-sm text-muted-foreground">过去 30 天提交</p>
+                <p className="text-sm text-slate-600">过去 30 天提交</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg border border-purple-200/50">
                 <p className="text-2xl font-bold text-purple-600">{stats.commitFrequency.commitsLast90Days}</p>
-                <p className="text-sm text-muted-foreground">过去 90 天提交</p>
+                <p className="text-sm text-slate-600">过去 90 天提交</p>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">分支数</p>
+                <p className="text-slate-600">分支数</p>
                 <p className="font-semibold">{stats.commitFrequency.totalBranches}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">标签数</p>
+                <p className="text-slate-600">标签数</p>
                 <p className="font-semibold">{stats.commitFrequency.totalTags}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">默认分支</p>
+                <p className="text-slate-600">默认分支</p>
                 <p className="font-semibold">{stats.commitFrequency.defaultBranch}</p>
               </div>
             </div>
@@ -276,33 +284,33 @@ function StatsContent() {
       </Card>
 
       {/* Issues 统计 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>Issues 管理</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg border border-yellow-200/50">
                 <p className="text-2xl font-bold text-yellow-600">{stats.issuesStats.openIssues}</p>
-                <p className="text-sm text-muted-foreground">开放中</p>
+                <p className="text-sm text-slate-600">开放中</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
                 <p className="text-2xl font-bold text-green-600">{stats.issuesStats.closedIssues}</p>
-                <p className="text-sm text-muted-foreground">已关闭</p>
+                <p className="text-sm text-slate-600">已关闭</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
                 <p className="text-2xl font-bold text-blue-600">{stats.issuesStats.totalIssues}</p>
-                <p className="text-sm text-muted-foreground">总计</p>
+                <p className="text-sm text-slate-600">总计</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">平均解决时间</p>
+                <p className="text-slate-600">平均解决时间</p>
                 <p className="font-semibold">{formatHours(stats.issuesStats.avgResolutionTime)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">解决率</p>
+                <p className="text-slate-600">解决率</p>
                 <p className="font-semibold">
                   {stats.issuesStats.totalIssues > 0
                     ? Math.round((stats.issuesStats.closedIssues / stats.issuesStats.totalIssues) * 100)
@@ -310,13 +318,13 @@ function StatsContent() {
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">7 天新增/关闭</p>
+                <p className="text-slate-600">7 天新增/关闭</p>
                 <p className="font-semibold">
                   +{stats.issuesStats.openIssuesLast7Days} / -{stats.issuesStats.closedIssuesLast7Days}
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">超过 30 天未处理</p>
+                <p className="text-slate-600">超过 30 天未处理</p>
                 <p className="font-semibold text-orange-600">{stats.issuesStats.issuesStaleOver30Days}</p>
               </div>
             </div>
@@ -325,33 +333,33 @@ function StatsContent() {
       </Card>
 
       {/* Pull Requests 统计 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>Pull Requests 管理</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg border border-yellow-200/50">
                 <p className="text-2xl font-bold text-yellow-600">{stats.prStats.openPRs}</p>
-                <p className="text-sm text-muted-foreground">开放中</p>
+                <p className="text-sm text-slate-600">开放中</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
                 <p className="text-2xl font-bold text-green-600">{stats.prStats.mergedPRs}</p>
-                <p className="text-sm text-muted-foreground">已合并</p>
+                <p className="text-sm text-slate-600">已合并</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/50">
                 <p className="text-2xl font-bold text-gray-600">{stats.prStats.closedPRs}</p>
-                <p className="text-sm text-muted-foreground">已关闭</p>
+                <p className="text-sm text-slate-600">已关闭</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">平均合并时间</p>
+                <p className="text-slate-600">平均合并时间</p>
                 <p className="font-semibold">{formatHours(stats.prStats.avgMergeTime)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">合并率</p>
+                <p className="text-slate-600">合并率</p>
                 <p className="font-semibold">
                   {stats.prStats.totalPRs > 0
                     ? Math.round((stats.prStats.mergedPRs / stats.prStats.totalPRs) * 100)
@@ -359,13 +367,13 @@ function StatsContent() {
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">7 天新增/合并</p>
+                <p className="text-slate-600">7 天新增/合并</p>
                 <p className="font-semibold">
                   +{stats.prStats.openPRsLast7Days} / ✓{stats.prStats.mergedPRsLast7Days}
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground">超过 30 天未处理</p>
+                <p className="text-slate-600">超过 30 天未处理</p>
                 <p className="font-semibold text-orange-600">{stats.prStats.prsStaleOver30Days}</p>
               </div>
             </div>
@@ -374,27 +382,27 @@ function StatsContent() {
       </Card>
 
       {/* 贡献者 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>贡献者</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
                 <p className="text-2xl font-bold text-blue-600">{stats.contributorsStats.totalContributors}</p>
-                <p className="text-sm text-muted-foreground">总贡献者数</p>
+                <p className="text-sm text-slate-600">总贡献者数</p>
               </div>
-              <div className="p-3 border rounded-lg">
+              <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
                 <p className="text-2xl font-bold text-green-600">{stats.contributorsStats.newContributorsLast30Days}</p>
-                <p className="text-sm text-muted-foreground">30 天新贡献者</p>
+                <p className="text-sm text-slate-600">30 天新贡献者</p>
               </div>
             </div>
             <div>
               <p className="text-sm font-semibold mb-2">Top 10 贡献者</p>
               <div className="space-y-2">
                 {stats.contributorsStats.topContributors.map((contributor) => (
-                  <div key={contributor.login} className="flex items-center justify-between p-2 border rounded">
+                  <div key={contributor.login} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 transition-colors">
                     <a
                       href={`https://github.com/${contributor.login}`}
                       target="_blank"
@@ -413,7 +421,7 @@ function StatsContent() {
       </Card>
 
       {/* 社区文件 */}
-      <Card>
+      <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
         <CardHeader>
           <CardTitle>社区文件</CardTitle>
         </CardHeader>
@@ -432,24 +440,26 @@ function StatsContent() {
       {/* 操作按钮 */}
       <div className="flex justify-center gap-4">
         <Button
-          onClick={() => window.location.href = "/"}
+          onClick={() => router.push("/")}
+          className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
         >
           返回首页
         </Button>
         <Button
           variant="outline"
           onClick={() => window.open(stats.repository.url, "_blank")}
+          className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
         >
           在 GitHub 上查看
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function FileCheck({ name, has }: { name: string; has: boolean }) {
   return (
-    <div className={`flex items-center gap-2 p-2 border rounded ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+    <div className={`flex items-center gap-2 p-2 border rounded transition-colors ${has ? "bg-green-50 border-green-200 hover:bg-green-100" : "bg-gray-50 border-gray-200 hover:bg-gray-100"}`}>
       <span className={has ? "text-green-600" : "text-gray-400"}>
         {has ? "✓" : "✗"}
       </span>
@@ -505,17 +515,30 @@ function calculateHealthScore(stats: RepositoryStats): number {
 }
 
 export default function RepoStatsPage() {
+  const router = useRouter();
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen">
+      {/* 动画背景 */}
+      <AnimatedBackground />
+
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">DevScope - 仓库统计</h1>
-          <nav className="flex gap-4">
-            <Button variant="ghost" onClick={() => window.location.href = "/"}>
-              返回首页
-            </Button>
-          </nav>
+          <motion.h1
+            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            DevScope - 仓库统计
+          </motion.h1>
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/")}
+            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+          >
+            返回首页
+          </Button>
         </div>
       </header>
 

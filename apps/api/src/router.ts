@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { router, publicProcedure } from "./trpc";
-import { createAI, EmbeddingProvider } from "@devscope/ai";
+import { createAI, BGEEmbeddingProvider } from "@devscope/ai";
 import {
   createDb,
   semanticSearchRepoChunks,
@@ -359,7 +359,7 @@ export const appRouter = router({
     .mutation(async ({ input }) => {
       const startTime = Date.now();
       const db = createDb();
-      const embedder = new EmbeddingProvider();
+      const embedder = new BGEEmbeddingProvider();
 
       // 1. 解析仓库名称并验证格式
       const parts = input.repo.split("/");

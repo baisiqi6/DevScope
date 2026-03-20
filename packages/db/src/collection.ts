@@ -144,11 +144,14 @@ export async function semanticSearchRepoChunks(
   limit: number = 5
 ): Promise<RepoChunk[]> {
   // 使用 pgvector 的 cosine distance 进行相似度搜索
+  // 将 embedding 数组转换为向量字面量格式: '[x1,x2,x3,...]'
+  const vectorLiteral = `'[${embedding.join(",")}]'`;
+
   const results = await db
     .select()
     .from(repoChunks)
     .where(eq(repoChunks.repoId, repoId))
-    .orderBy(sql`${repoChunks.embedding} <=> ${embedding}`)
+    .orderBy(sql`${repoChunks.embedding} <=> ${sql.raw(vectorLiteral)}::vector`)
     .limit(limit);
 
   return results;

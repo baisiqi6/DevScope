@@ -11,6 +11,9 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AnimatedBackground } from "@/components/animated-background";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 interface RepoData {
   full_name: string;
@@ -262,17 +265,30 @@ function AnalysisContent() {
 }
 
 export default function AnalysisPage() {
+  const router = useRouter();
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen">
+      {/* 动画背景 */}
+      <AnimatedBackground />
+
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">DevScope - 分析结果</h1>
-          <nav className="flex gap-4">
-            <Button variant="ghost" onClick={() => window.location.href = "/"}>
-              返回首页
-            </Button>
-          </nav>
+          <motion.h1
+            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            DevScope - 分析结果
+          </motion.h1>
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/")}
+            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+          >
+            返回首页
+          </Button>
         </div>
       </header>
 

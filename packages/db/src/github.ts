@@ -284,48 +284,7 @@ export class GitHubCollector {
     }
   }
 
-  /**
-   * 获取 Issues（包括已关闭的）
-   */
-  async getIssues(
-    owner: string,
-    repo: string,
-    options: {
-      state?: "open" | "closed" | "all";
-      limit?: number;
-      sort?: "created" | "updated" | "comments";
-    } = {}
-  ): Promise<GitHubIssue[]> {
-    const { state = "open", limit = 100, sort = "updated" } = options;
 
-    const { data } = await this.octokit.rest.issues.listForRepo({
-      owner,
-      repo,
-      state,
-      per_page: limit,
-      sort,
-      direction: "desc",
-    });
-
-    // 过滤掉 pull requests
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const issues = data.filter((item: any) => !item.pull_request);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return issues.map((item: any) => ({
-      number: item.number,
-      title: item.title,
-      state: item.state,
-      author: item.user?.login || "unknown",
-      createdAt: new Date(item.created_at),
-      updatedAt: new Date(item.updated_at),
-      closedAt: item.closed_at ? new Date(item.closed_at) : null,
-      comments: item.comments,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      labels: item.labels.map((l: any) => (typeof l === "string" ? l : l.name)),
-      body: item.body,
-    }));
-  }
 
   /**
    * 获取 Commits

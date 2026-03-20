@@ -12,6 +12,7 @@ import path from "path";
 import dotenv from "dotenv";
 
 // 从项目根目录加载 .env 文件
+// API 服务器运行时在 apps/api 目录，需要向上两级
 const envPath = path.resolve(process.cwd(), "../../.env");
 dotenv.config({ path: envPath });
 
@@ -192,16 +193,18 @@ const start = async () => {
 
     // 检查环境变量配置
     const hasGitHubToken = !!process.env.GITHUB_TOKEN;
-    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-    const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
     const hasDbUrl = !!process.env.DATABASE_URL;
+    const hasDeepSeekKey = !!process.env.DEEPSEEK_API_KEY;
+    const hasSiliconFlowKey = !!process.env.SILICONFLOW_API_KEY;
+    const hasLangtumKey = !!process.env.LANGTUM_API_KEY;
 
     console.log("=".repeat(50));
     console.log("🔧 环境变量检查:");
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  OPENAI_API_KEY: ${hasOpenAIKey ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  ANTHROPIC_API_KEY: ${hasAnthropicKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  DEEPSEEK_API_KEY: ${hasDeepSeekKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  LANGTUM_API_KEY: ${hasLangtumKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log("=".repeat(50));
 
     /** 从环境变量读取端口，默认 3100 */

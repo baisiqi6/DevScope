@@ -14,6 +14,8 @@ import { RepositoryCard } from "@/components/repository-card";
 import { CollectForm } from "@/components/collect-form";
 import { FollowingList } from "@/components/following-list";
 import { Button } from "@/components/ui/button";
+import { AnimatedBackground, FadeInItem } from "@/components/animated-background";
+import { motion } from "framer-motion";
 
 export default function HomePage() {
   const router = useRouter();
@@ -44,16 +46,34 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen">
+      {/* 动画背景 */}
+      <AnimatedBackground />
+
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">DevScope</h1>
+          <motion.h1
+            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            DevScope
+          </motion.h1>
           <nav className="flex gap-4">
-            <Button variant="ghost" onClick={() => router.push("/")}>
+            <Button
+              variant="ghost"
+              onClick={() => router.push("/")}
+              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            >
               仓库列表
             </Button>
-            <Button variant="ghost" onClick={() => router.push("/search")}>
+            <Button
+              variant="ghost"
+              onClick={() => router.push("/search")}
+              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            >
               语义搜索
             </Button>
           </nav>
@@ -119,12 +139,13 @@ export default function HomePage() {
 
             {repositories && repositories.length > 0 && (
               <div className="grid gap-4">
-                {repositories.map((repo) => (
-                  <RepositoryCard
-                    key={repo.id}
-                    repository={repo}
-                    onViewDetails={handleViewDetails}
-                  />
+                {repositories.map((repo, index) => (
+                  <FadeInItem key={repo.id} index={index}>
+                    <RepositoryCard
+                      repository={repo}
+                      onViewDetails={handleViewDetails}
+                    />
+                  </FadeInItem>
                 ))}
               </div>
             )}

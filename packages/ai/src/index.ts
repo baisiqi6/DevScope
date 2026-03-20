@@ -17,14 +17,21 @@ import { z } from "zod";
 // ============================================================================
 
 /**
+ * AI 提供者类型
+ */
+export type AIProviderType = "anthropic" | "openai-compatible";
+
+/**
  * AI 提供者配置选项
  */
 export interface AIConfig {
-  /** Anthropic API Key（默认从环境变量 ANTHROPIC_API_KEY 读取） */
+  /** AI 提供者类型（默认：anthropic） */
+  provider?: AIProviderType;
+  /** API Key（根据 provider 类型从不同环境变量读取） */
   apiKey?: string;
-  /** 自定义 API 基础 URL */
+  /** 自定义 API 基础 URL（用于 openai-compatible 模式） */
   baseURL?: string;
-  /** 默认模型名称（默认：claude-3-5-sonnet-20241022） */
+  /** 默认模型名称 */
   defaultModel?: string;
   /** 默认最大 token 数（默认：4096） */
   maxTokens?: number;
@@ -70,18 +77,32 @@ interface StructuredOutputOptions<T> {
 
 /**
  * AI 提供者类
- * @description 封装 Anthropic Claude API 的核心类
+ * @description 支持多种 AI 提供商的统一接口
  *
  * @example
  * ```typescript
- * const ai = new AIProvider({ apiKey: "sk-..." });
+ * // 使用 Anthropic Claude
+ * const ai = new AIProvider({ provider: "anthropic" });
+ *
+ * // 使用 DeepSeek (OpenAI 兼容)
+ * const ai = new AIProvider({
+ *   provider: "openai-compatible",
+ *   baseURL: "https://api.deepseek.com",
+ *   apiKey: "sk-xxx",
+ *   defaultModel: "deepseek-chat"
+ * });
+ *
  * const response = await ai.complete("你好，请介绍一下自己");
  * console.log(response);
  * ```
  */
 export class AIProvider {
+  /** AI 提供者类型 */
+  private providerType: AIProviderType;
   /** Anthropic SDK 客户端实例 */
-  private client: Anthropic;
+  private anthropicClient: Anthropic | null;
+  /** OpenAI SDK 客户端实例（用于兼容 API） */
+  private openaiClient: OpenAI | null;
   /** 默认使用的模型 */
   private defaultModel: string;
   /** 默认最大 token 数 */
@@ -92,18 +113,48 @@ export class AIProvider {
    * @param config 配置选项
    */
   constructor(config: AIConfig = {}) {
-    // 初始化 Anthropic 客户端
-    this.client = new Anthropic({
-      // 优先使用传入的 apiKey，否则从环境变量读取
-      apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
-      // 支持自定义 API 地址（用于代理等场景）
-      baseURL: config.baseURL,
-    });
-
-    // 设置默认模型
-    this.defaultModel = config.defaultModel || "claude-3-5-sonnet-20241022";
-    // 设置默认最大 token 数
+    this.providerType = config.provider || this.detectProviderFromEnv();
     this.maxTokens = config.maxTokens || 4096;
+
+    // 根据提供商类型初始化客户端
+    if (this.providerType === "anthropic") {
+      this.anthropicClient = new Anthropic({
+        apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
+        baseURL: config.baseURL,
+      });
+      this.openaiClient = null;
+      this.defaultModel = config.defaultModel || "claude-3-5-sonnet-20241022";
+    } else {
+      // OpenAI 兼容模式（DeepSeek、通义千问等）
+      const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
+      const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+
+      if (!apiKey) {
+        throw new Error("API Key is required for openai-compatible provider. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
+      }
+
+      this.openaiClient = new OpenAI({
+        apiKey,
+        baseURL,
+      });
+      this.anthropicClient = null;
+      this.defaultModel = config.defaultModel || "deepseek-chat";
+    }
+
+    // 打印初始化信息（开发模式）
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
+    }
+  }
+
+  /**
+   * 从环境变量自动检测提供商类型
+   */
+  private detectProviderFromEnv(): AIProviderType {
+    if (process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_COMPATIBLE_BASE_URL) {
+      return "openai-compatible";
+    }
+    return "anthropic";
   }
 
   // ========================================================================
@@ -127,21 +178,45 @@ export class AIProvider {
     prompt: string,
     options: CompletionOptions = {}
   ): Promise<string> {
-    // 调用 Anthropic Messages API
-    const response = await this.client.messages.create({
-      model: options.model || this.defaultModel,
-      max_tokens: options.maxTokens || this.maxTokens,
-      system: options.system,
-      messages: [{ role: "user", content: prompt }],
-      temperature: options.temperature,
-    });
+    if (this.providerType === "anthropic" && this.anthropicClient) {
+      // 调用 Anthropic Messages API
+      const response = await this.anthropicClient.messages.create({
+        model: options.model || this.defaultModel,
+        max_tokens: options.maxTokens || this.maxTokens,
+        system: options.system,
+        messages: [{ role: "user", content: prompt }],
+        temperature: options.temperature,
+      });
 
-    // 提取返回的文本内容
-    const block = response.content[0];
-    if (block.type === "text") {
-      return block.text;
+      // 提取返回的文本内容
+      const block = response.content[0];
+      if (block.type === "text") {
+        return block.text;
+      }
+      throw new Error("Unexpected response type from Anthropic API");
+    } else if (this.providerType === "openai-compatible" && this.openaiClient) {
+      // 调用 OpenAI 兼容 API（DeepSeek、通义千问等）
+      type Message = { role: "system" | "user" | "assistant"; content: string };
+      const messages: Message[] = [];
+
+      // 如果有 system 消息，添加到开头
+      if (options.system) {
+        messages.push({ role: "system", content: options.system });
+      }
+
+      messages.push({ role: "user", content: prompt });
+
+      const response = await this.openaiClient.chat.completions.create({
+        model: options.model || this.defaultModel,
+        messages: messages as any,
+        max_tokens: options.maxTokens || this.maxTokens,
+        temperature: options.temperature,
+      });
+
+      return response.choices[0]?.message?.content || "";
     }
-    throw new Error("Unexpected response type from Anthropic API");
+
+    throw new Error("No AI client initialized");
   }
 
   /**
@@ -164,22 +239,26 @@ export class AIProvider {
     onChunk: (text: string) => void,
     options: CompletionOptions = {}
   ): Promise<void> {
-    // 创建流式请求
-    const stream = await this.client.messages.create({
-      model: options.model || this.defaultModel,
-      max_tokens: options.maxTokens || this.maxTokens,
-      system: options.system,
-      messages: [{ role: "user", content: prompt }],
-      temperature: options.temperature,
-      stream: true,  // 启用流式输出
-    });
+    if (this.providerType === "anthropic" && this.anthropicClient) {
+      // 创建流式请求
+      const stream = await this.anthropicClient.messages.create({
+        model: options.model || this.defaultModel,
+        max_tokens: options.maxTokens || this.maxTokens,
+        system: options.system,
+        messages: [{ role: "user", content: prompt }],
+        temperature: options.temperature,
+        stream: true,  // 启用流式输出
+      });
 
-    // 逐块处理返回的数据
-    for await (const event of stream) {
-      // 当收到新的文本块时，调用回调函数
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        onChunk(event.delta.text);
+      // 逐块处理返回的数据
+      for await (const event of stream) {
+        // 当收到新的文本块时，调用回调函数
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          onChunk(event.delta.text);
+        }
       }
+    } else {
+      throw new Error("Stream not yet supported for openai-compatible provider");
     }
   }
 
@@ -236,38 +315,66 @@ export class AIProvider {
     // 将 Zod Schema 转换为 JSON Schema 格式
     const jsonSchema = this.zodToJsonSchema(schema) as any;
 
-    // 调用 Anthropic Messages API，使用工具调用
-    const response = await this.client.messages.create({
-      model: completionOptions.model || this.defaultModel,
-      max_tokens: completionOptions.maxTokens || this.maxTokens,
-      system: completionOptions.system,
-      messages: [{ role: "user", content: prompt }],
-      temperature: completionOptions.temperature,
-      tools: [
-        {
+    if (this.providerType === "anthropic" && this.anthropicClient) {
+      // 调用 Anthropic Messages API，使用工具调用
+      const response = await this.anthropicClient.messages.create({
+        model: completionOptions.model || this.defaultModel,
+        max_tokens: completionOptions.maxTokens || this.maxTokens,
+        system: completionOptions.system,
+        messages: [{ role: "user", content: prompt }],
+        temperature: completionOptions.temperature,
+        tools: [
+          {
+            name: toolName,
+            description: toolDescription,
+            input_schema: jsonSchema,
+          },
+        ],
+        // 强制使用工具
+        tool_choice: {
+          type: "tool",
           name: toolName,
-          description: toolDescription,
-          input_schema: jsonSchema,
         },
-      ],
-      // 强制使用工具
-      tool_choice: {
-        type: "tool",
-        name: toolName,
-      },
-    });
+      });
 
-    // 提取工具调用结果
-    const block = response.content[0];
-    if (block.type === "tool_use" && block.name === toolName) {
-      const rawData = block.input as Record<string, unknown>;
+      // 提取工具调用结果
+      const block = response.content[0];
+      if (block.type === "tool_use" && block.name === toolName) {
+        const rawData = block.input as Record<string, unknown>;
 
-      // 使用 Zod 验证返回的数据
-      const validatedData = schema.parse(rawData);
-      return validatedData;
+        // 使用 Zod 验证返回的数据
+        const validatedData = schema.parse(rawData);
+        return validatedData;
+      }
+
+      throw new Error("Unexpected response from Anthropic API: expected tool_use");
+    } else if (this.providerType === "openai-compatible" && this.openaiClient) {
+      // 使用 JSON 模式调用 OpenAI 兼容 API
+      const messages: Array<{ role: string; content: string }> = [];
+
+      if (completionOptions.system) {
+        messages.push({ role: "system", content: completionOptions.system });
+      }
+
+      messages.push({
+        role: "user",
+        content: `${prompt}\n\n请以 JSON 格式返回结果，符合以下 schema:\n${JSON.stringify(jsonSchema)}`,
+      });
+
+      const response = await this.openaiClient.chat.completions.create({
+        model: completionOptions.model || this.defaultModel,
+        messages: messages as any,
+        max_tokens: completionOptions.maxTokens || this.maxTokens,
+        temperature: completionOptions.temperature,
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices[0]?.message?.content || "{}";
+      const parsed = JSON.parse(content);
+      return schema.parse(parsed);
     }
 
-    throw new Error("Unexpected response from Anthropic API: expected tool_use");
+    throw new Error("No AI client initialized");
   }
 
   /**
@@ -533,17 +640,17 @@ export class EmbeddingProvider {
  * BGE-M3 Embedding 提供者配置选项
  */
 export interface BGEEmbeddingConfig {
-  /** BGE-M3 API 基础 URL（默认：http://localhost:9999/v1） */
+  /** BGE-M3 API 基础 URL（默认：从环境变量 BGE_API_URL 读取，否则使用本地 Xinference） */
   baseURL?: string;
-  /** API Key（某些服务需要） */
+  /** API Key（云服务需要，默认从环境变量 SILICONFLOW_API_KEY 读取） */
   apiKey?: string;
-  /** 模型名称（默认：bge-m3） */
+  /** 模型名称（默认：从环境变量 BGE_MODEL_NAME 读取，否则使用 bge-m3） */
   modelName?: string;
 }
 
 /**
  * BGE-M3 Embedding 向量提供者类
- * @description 支持通过本地 API 使用 BGE-M3 模型生成向量
+ * @description 支持通过本地 API 或云服务使用 BGE-M3 模型生成向量
  *
  * BGE-M3 是由 BAAI 开发的多语言、多粒度 embedding 模型：
  * - 向量维度：1024
@@ -551,16 +658,33 @@ export interface BGEEmbeddingConfig {
  * - 最大输入长度：8192 tokens
  * - 支持三种粒度：短文本、长文本、文档
  *
+ * 支持的服务提供商：
+ * 1. **硅基流动（推荐）**：云服务，无需本地部署
+ *    - 环境变量：`SILICONFLOW_API_KEY`
+ *    - 模型：`BAAI/bge-m3`
+ * 2. **Xinference（本地）**：需要在本地部署模型
+ *    - 安装：`pip install xinference`
+ *    - 启动：`xinference launch --model-name bge-m3 --model-type embedding`
+ * 3. **其他 OpenAI 兼容服务**：LocalAI、自定义服务等
+ *
  * @example
  * ```typescript
- * // 使用默认配置（Xinference 本地服务）
+ * // 使用默认配置（自动检测环境变量）
  * const embedder = new BGEEmbeddingProvider();
  * const vector = await embedder.embed("你好世界");
  * console.log(vector.length); // 1024
  *
- * // 自定义 API 地址
+ * // 使用硅基流动云服务
  * const embedder = new BGEEmbeddingProvider({
- *   baseURL: "http://localhost:8000/v1"
+ *   apiKey: "sk-xxx",
+ *   baseURL: "https://api.siliconflow.cn/v1",
+ *   modelName: "BAAI/bge-m3"
+ * });
+ *
+ * // 使用本地 Xinference 服务
+ * const embedder = new BGEEmbeddingProvider({
+ *   baseURL: "http://localhost:9997/v1",
+ *   modelName: "bge-m3"
  * });
  * ```
  */
@@ -577,13 +701,37 @@ export class BGEEmbeddingProvider {
    * @param config 配置选项
    */
   constructor(config: BGEEmbeddingConfig = {}) {
+    // 确定使用的 API Key（优先配置，其次环境变量，最后本地服务使用 dummy-key）
+    const apiKey = config.apiKey ||
+                   process.env.SILICONFLOW_API_KEY ||
+                   "dummy-key"; // 本地服务通常不需要 API Key
+
+    // 确定基础 URL（优先配置，其次环境变量，最后默认本地 Xinference）
+    const baseURL = config.baseURL ||
+                    process.env.BGE_API_URL ||
+                    "http://localhost:9997/v1";
+
+    // 确定模型名称（优先配置，其次环境变量，最后默认 bge-m3）
+    const modelName = config.modelName ||
+                      process.env.BGE_MODEL_NAME ||
+                      "bge-m3";
+
     // 使用 OpenAI SDK 作为 HTTP 客户端（兼容 OpenAI API 格式）
     this.client = new OpenAI({
-      apiKey: config.apiKey || "dummy-key", // 某些本地服务不需要 API Key
-      baseURL: config.baseURL || process.env.BGE_API_URL || "http://localhost:9999/v1",
+      apiKey,
+      baseURL,
     });
 
-    this.defaultModel = config.modelName || "bge-m3";
+    this.defaultModel = modelName;
+
+    // 打印配置信息（便于调试）
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[BGEEmbeddingProvider] Initialized with:`, {
+        baseURL,
+        modelName,
+        hasApiKey: !!apiKey && apiKey !== "dummy-key",
+      });
+    }
   }
 
   /**
@@ -676,9 +824,17 @@ export function createEmbedding(config?: EmbeddingConfig): EmbeddingProvider {
  *
  * @example
  * ```typescript
+ * // 使用默认配置（自动检测环境变量）
  * const embedder = createBGEEmbedding();
  * const vector = await embedder.embed("你好");
  * console.log(vector.length); // 1024
+ *
+ * // 使用硅基流动云服务
+ * const embedder = createBGEEmbedding({
+ *   apiKey: "sk-xxx",
+ *   baseURL: "https://api.siliconflow.cn/v1",
+ *   modelName: "BAAI/bge-m3"
+ * });
  * ```
  */
 export function createBGEEmbedding(config?: BGEEmbeddingConfig): BGEEmbeddingProvider {
