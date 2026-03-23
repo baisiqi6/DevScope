@@ -10,17 +10,23 @@
 // 加载环境变量（必须在最顶部）
 import path from "path";
 import dotenv from "dotenv";
-
-// 从项目根目录加载 .env 文件
-// API 服务器运行时在 apps/api 目录，需要向上两级
-const envPath = path.resolve(process.cwd(), "../../.env");
-dotenv.config({ path: envPath });
-
+import fs from 'fs';
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
 import { appRouter } from "./router";
 import { registerWebhookRoute } from "./webhook/langtum";
+import { registerDocsRoute } from "./docs";
+
+// 从项目根目录加载 .env 文件
+// API 服务器运行时在 apps/api 目录，需要向上两级
+const envPath = path.resolve(process.cwd(), "../../.env");
+console.log(`[Env] Loading .env from: ${envPath}`);
+console.log(`[Env] File exists: ${fs.existsSync(envPath)}`);
+dotenv.config({ path: envPath });
+console.log(`[Env] SILICONFLOW_API_KEY loaded: ${!!process.env.SILICONFLOW_API_KEY ? 'Yes (length: ' + process.env.SILICONFLOW_API_KEY.length + ')' : 'No'}`);
+console.log(`[Env] BGE_API_URL loaded: ${process.env.BGE_API_URL || 'Not set'}`);
+console.log(`[Env] BGE_MODEL_NAME loaded: ${process.env.BGE_MODEL_NAME || 'Not set'}`);
 
 // ============================================================================
 // 服务器初始化
@@ -145,25 +151,37 @@ function createTRPCHandle() {
         },
       });
     } catch (error: any) {
-      console.error("[tRPC] Error:", error);
+      console.error("[tRPC] Error caught in createTRPCHandle:");
+      console.error("[tRPC] Error type:", typeof error);
+      console.error("[tRPC] Error name:", error?.name);
+      console.error("[tRPC] Error message:", error?.message);
+      console.error("[tRPC] Error stack:", error?.stack);
+
       // Zod 验证错误
-      if (error.code === "invalid_type") {
+      if (error.code === "invalid_type" || error.code === "ZodError") {
+        console.error("[tRPC] Zod validation error");
         reply.code(400).send({
           error: {
-            message: error.message,
+            message: error.message || "Validation failed",
             code: "BAD_REQUEST",
-            issues: [error],
+            issues: error.issues || [error],
           },
         });
         return;
       }
-      // 其他错误
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+      // 其他错误 - 返回详细的错误信息
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorDetails = {
+        message: errorMessage,
+        code: -32603,
+        name: error?.name,
+        ...(process.env.NODE_ENV === "development" && { stack: error?.stack }),
+      };
+
+      console.error("[tRPC] Sending error response:", errorDetails);
       reply.code(500).send({
-        error: {
-          message: errorMessage,
-          code: -32603,
-        },
+        error: errorDetails,
       });
     }
   };
@@ -174,6 +192,9 @@ function createTRPCHandle() {
  * @description 所有 tRPC 请求通过 /trpc/:path 处理
  */
 fastify.all("/trpc/:path", createTRPCHandle());
+
+// 兼容前端可能使用的 /api/trpc/:path 路径
+fastify.all("/api/trpc/:path", createTRPCHandle());
 
 // ============================================================================
 // 服务器启动
@@ -191,20 +212,27 @@ const start = async () => {
       credentials: true,
     });
 
+    // 注册 API 文档路由
+    await registerDocsRoute(fastify);
+
     // 检查环境变量配置
     const hasGitHubToken = !!process.env.GITHUB_TOKEN;
     const hasDbUrl = !!process.env.DATABASE_URL;
     const hasDeepSeekKey = !!process.env.DEEPSEEK_API_KEY;
     const hasSiliconFlowKey = !!process.env.SILICONFLOW_API_KEY;
     const hasLangtumKey = !!process.env.LANGTUM_API_KEY;
+    const hasBgeApiUrl = !!process.env.BGE_API_URL;
+    const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
 
     console.log("=".repeat(50));
     console.log("🔧 环境变量检查:");
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DEEPSEEK_API_KEY: ${hasDeepSeekKey ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"} ${hasSiliconFlowKey ? `(value: ${process.env.SILICONFLOW_API_KEY?.substring(0, 10)}...)` : ""}`);
     console.log(`  LANGTUM_API_KEY: ${hasLangtumKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  BGE_API_URL: ${hasBgeApiUrl ? "✅ 已配置" : "❌ 未配置"} ${hasBgeApiUrl ? `(${process.env.BGE_API_URL})` : ""}`);
+    console.log(`  BGE_MODEL_NAME: ${hasBgeModelName ? "✅ 已配置" : "❌ 未配置"} ${hasBgeModelName ? `(${process.env.BGE_MODEL_NAME})` : ""}`);
     console.log("=".repeat(50));
 
     /** 从环境变量读取端口，默认 3100 */

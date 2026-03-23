@@ -11,6 +11,20 @@
 import { pgTable, serial, text, timestamp, vector, integer, jsonb, index, boolean, pgEnum } from "drizzle-orm/pg-core";
 
 // ============================================================================
+// 枚举定义
+// ============================================================================
+
+/**
+ * 向量化状态枚举
+ */
+export const embeddingStatusEnum = pgEnum("embedding_status", [
+  "pending",     // 待处理（快速采集完成后）
+  "processing",  // 处理中
+  "completed",   // 已完成
+  "failed",      // 失败
+]);
+
+// ============================================================================
 // 数据表定义
 // ============================================================================
 
@@ -68,6 +82,20 @@ export const repositories = pgTable("repositories", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   /** 最后采集时间 */
   lastFetchedAt: timestamp("last_fetched_at"),
+  /** 向量化状态 */
+  embeddingStatus: embeddingStatusEnum("embedding_status").default("pending"),
+  /** 向量化进度百分比 (0-100) */
+  embeddingProgress: integer("embedding_progress").default(0),
+  /** 向量化总块数 */
+  embeddingTotalChunks: integer("embedding_total_chunks").default(0),
+  /** 向量化已完成块数 */
+  embeddingCompletedChunks: integer("embedding_completed_chunks").default(0),
+  /** 向量化开始时间 */
+  embeddingStartedAt: timestamp("embedding_started_at"),
+  /** 向量化完成时间 */
+  embeddingCompletedAt: timestamp("embedding_completed_at"),
+  /** 向量化错误信息 */
+  embeddingError: text("embedding_error"),
 }, (table) => ({
   ownerIdx: index("repositories_owner_idx").on(table.owner),
   starsIdx: index("repositories_stars_idx").on(table.stars),

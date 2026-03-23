@@ -725,13 +725,16 @@ export class BGEEmbeddingProvider {
     this.defaultModel = modelName;
 
     // 打印配置信息（便于调试）
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[BGEEmbeddingProvider] Initialized with:`, {
-        baseURL,
-        modelName,
-        hasApiKey: !!apiKey && apiKey !== "dummy-key",
-      });
-    }
+    // 总是打印，便于问题排查
+    console.log(`[BGEEmbeddingProvider] Initialized with:`, {
+      baseURL,
+      modelName,
+      hasApiKey: !!apiKey && apiKey !== "dummy-key",
+      apiKeyPresent: !!apiKey,
+      apiKeyIsDummy: apiKey === "dummy-key",
+      apiKeyPrefix: apiKey ? `${apiKey.substring(0, 10)}...` : 'empty',
+      apiKeyLength: apiKey?.length || 0,
+    });
   }
 
   /**
@@ -748,12 +751,31 @@ export class BGEEmbeddingProvider {
    * ```
    */
   async embed(text: string): Promise<number[]> {
-    const response = await this.client.embeddings.create({
-      model: this.defaultModel,
-      input: text,
-    });
+    try {
+      console.log(`[BGEEmbeddingProvider.embed] Calling embeddings API with model: ${this.defaultModel}, baseURL: ${this.client.baseURL}`);
+      console.log(`[BGEEmbeddingProvider.embed] API Key present: ${!!this.client.apiKey}, starts with: ${this.client.apiKey?.substring(0, 10)}...`);
 
-    return response.data[0].embedding;
+      const response = await this.client.embeddings.create({
+        model: this.defaultModel,
+        input: text,
+      });
+
+      console.log(`[BGEEmbeddingProvider.embed] Success! Received embedding of length: ${response.data[0].embedding.length}`);
+      return response.data[0].embedding;
+    } catch (error: any) {
+      console.error(`[BGEEmbeddingProvider.embed] Error calling embeddings API:`);
+      console.error(`[BGEEmbeddingProvider.embed] BaseURL: ${this.client.baseURL}`);
+      console.error(`[BGEEmbeddingProvider.embed] Model: ${this.defaultModel}`);
+      console.error(`[BGEEmbeddingProvider.embed] API Key: ${this.client.apiKey ? `${this.client.apiKey.substring(0, 10)}...` : 'NOT SET'}`);
+      console.error(`[BGEEmbeddingProvider.embed] Error details:`, error);
+      console.error(`[BGEEmbeddingProvider.embed] Error message: ${error.message}`);
+      console.error(`[BGEEmbeddingProvider.embed] Error status: ${error.status}`);
+      console.error(`[BGEEmbeddingProvider.embed] Error code: ${error.code}`);
+      console.error(`[BGEEmbeddingProvider.embed] Error type: ${error.type}`);
+
+      // 重新抛出错误以保持原有行为
+      throw error;
+    }
   }
 
   /**
@@ -774,17 +796,92 @@ export class BGEEmbeddingProvider {
    * ```
    */
   async embedBatch(texts: string[]): Promise<number[][]> {
-    const response = await this.client.embeddings.create({
-      model: this.defaultModel,
-      input: texts,
-    });
+    // 硅基流动等云服务有请求体大小限制，需要分批处理
+    // 设置每批最多 10 个文本（保守值，避免 413 Payload Too Large 错误）
+    const BATCH_SIZE = 10;
 
-    // 按输入顺序排序结果
-    const sortedResults = response.data
-      .sort((a, b) => a.index - b.index)
-      .map((data) => data.embedding);
+    if (texts.length <= BATCH_SIZE) {
+      // 文本数量少，直接处理
+      const response = await this.client.embeddings.create({
+        model: this.defaultModel,
+        input: texts,
+      });
 
-    return sortedResults;
+      return response.data
+        .sort((a, b) => a.index - b.index)
+        .map((data) => data.embedding);
+    }
+
+    // 分批处理大量文本
+    console.log(`[BGEEmbeddingProvider] Processing ${texts.length} texts in batches of ${BATCH_SIZE}...`);
+    const results: (number[] | null)[] = new Array(texts.length).fill(null);
+    let successCount = 0;
+    let errorCount = 0;
+
+    // 添加延迟以避免 API 速率限制
+    const RATE_LIMIT_DELAY = 3000; // 每批之间延迟 3 秒
+
+    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+      const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
+      const batch = texts.slice(i, i + BATCH_SIZE);
+
+      // 添加延迟（跳过第一批）
+      if (batchIndex > 1) {
+        console.log(`[BGEEmbeddingProvider] Waiting ${RATE_LIMIT_DELAY}ms to avoid rate limiting...`);
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+      }
+
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`[BGEEmbeddingProvider] Processing batch ${batchIndex}/${totalBatches} (${batch.length} texts)...`);
+
+          const response = await this.client.embeddings.create({
+            model: this.defaultModel,
+            input: batch,
+          });
+
+          // 按输入顺序收集结果
+          for (const data of response.data) {
+            results[i + data.index] = data.embedding;
+            successCount++;
+          }
+          break; // 成功，跳出重试循环
+        } catch (error: any) {
+          retryCount++;
+          const isRetryable = error.status === 429 || error.status === 400 || error.code === 'rate_limit_exceeded';
+
+          if (isRetryable && retryCount < maxRetries) {
+            const waitTime = retryCount * 5000; // 指数退避：5s, 10s, 15s
+            console.warn(`[BGEEmbeddingProvider] Batch ${batchIndex} failed (attempt ${retryCount}/${maxRetries}): ${error.message || error}`);
+            console.warn(`[BGEEmbeddingProvider] Retrying after ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          } else {
+            errorCount += batch.length;
+            console.warn(`[BGEEmbeddingProvider] Batch ${batchIndex}/${totalBatches} permanently failed: ${error.message || error}`);
+            console.warn(`[BGEEmbeddingProvider] Skipping ${batch.length} texts from this batch...`);
+
+            // 标记这些文本为 null（失败）
+            for (let j = 0; j < batch.length; j++) {
+              results[i + j] = null;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    console.log(`[BGEEmbeddingProvider] Completed: ${successCount} success, ${errorCount} failed`);
+
+    // 如果有失败的批次，抛出警告但继续
+    if (errorCount > 0) {
+      console.warn(`[BGEEmbeddingProvider] Warning: ${errorCount} texts failed to generate embeddings`);
+    }
+
+    return results as number[][];
   }
 
   /**

@@ -3,6 +3,7 @@
  * @description 仓库采集表单组件
  *
  * 用于触发 GitHub 仓库数据采集的表单。
+ * 采集完成后自动在后台进行向量化，支持实时进度显示。
  */
 
 "use client";
@@ -11,6 +12,7 @@ import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
+import { EmbeddingProgress } from "./embedding-progress";
 
 interface CollectFormProps {
   onCollected: () => void;
@@ -19,7 +21,8 @@ interface CollectFormProps {
 export function CollectForm({ onCollected }: CollectFormProps) {
   const [repo, setRepo] = useState("");
   const [isCollecting, setIsCollecting] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; message: string; repoId?: number } | null>(null);
+  const [collectedRepoId, setCollectedRepoId] = useState<number | null>(null);
 
   const collectMutation = trpc.collectRepository.useMutation({
     onSuccess: (data) => {
@@ -35,16 +38,20 @@ export function CollectForm({ onCollected }: CollectFormProps) {
       }
 
       // 处理成功状态
-      const baseMessage = `✅ 采集完成！收集了 ${data.chunksCollected} 个文本块`;
-      const embeddingInfo = data.embeddingsGenerated > 0
-        ? `，生成 ${data.embeddingsGenerated} 个向量嵌入。`
-        : `。`;
-      const warning = data.warning ? `\n\n⚠️ ${data.warning}` : "";
+      const baseMessage = `✅ 数据采集完成！收集了 ${data.chunksCollected} 个文本块`;
+      const embeddingMessage = data.embeddingInBackground
+        ? `\n\n🔄 向量化正在后台进行中，您可以先查看仓库信息。`
+        : `\n\nℹ️ 已跳过向量化。`;
 
       setResult({
         success: true,
-        message: baseMessage + embeddingInfo + warning,
+        message: baseMessage + embeddingMessage,
+        repoId: data.repository?.id,
       });
+
+      if (data.repository?.id) {
+        setCollectedRepoId(data.repository.id);
+      }
 
       if (data.status === "completed") {
         onCollected();
@@ -77,7 +84,19 @@ export function CollectForm({ onCollected }: CollectFormProps) {
 
     setIsCollecting(true);
     setResult(null);
-    collectMutation.mutate({ repo: repoInput });
+    setCollectedRepoId(null);
+    collectMutation.mutate({ repo: repoInput, skipEmbeddings: false }); // 始终启用后台向量化
+  };
+
+  const handleEmbeddingComplete = () => {
+    // 向量化完成后刷新消息
+    if (result?.repoId) {
+      setResult({
+        success: true,
+        message: `✅ 数据采集完成！\n\n✨ 向量化已完成，现在可以使用语义搜索功能。`,
+        repoId: result.repoId,
+      });
+    }
   };
 
   return (
@@ -108,11 +127,19 @@ export function CollectForm({ onCollected }: CollectFormProps) {
             <div
               className={`p-3 rounded-md text-sm whitespace-pre-line ${
                 result.success
-                  ? "bg-green-50 text-green-800 border border-green-200"
-                  : "bg-red-50 text-red-800 border border-red-200"
+                  ? "bg-green-50 text-green-800 border border-green-200 dark:bg-green-950/20 dark:text-green-300 dark:border-green-800"
+                  : "bg-red-50 text-red-800 border border-red-200 dark:bg-red-950/20 dark:text-red-300 dark:border-red-800"
               }`}
             >
               {result.message}
+            </div>
+          )}
+          {collectedRepoId && (
+            <div className="mt-4">
+              <EmbeddingProgress
+                repoId={collectedRepoId}
+                onComplete={handleEmbeddingComplete}
+              />
             </div>
           )}
         </form>

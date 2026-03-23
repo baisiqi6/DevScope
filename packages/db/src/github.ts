@@ -404,6 +404,45 @@ export class GitHubCollector {
   }
 
   /**
+   * 获取 Issues
+   */
+  async getIssues(
+    owner: string,
+    repo: string,
+    options: {
+      state?: "open" | "closed" | "all";
+      limit?: number;
+      sort?: "created" | "updated" | "comments";
+    } = {}
+  ): Promise<GitHubIssue[]> {
+    const { state = "all", limit = 100, sort = "created" } = options;
+
+    const { data } = await this.octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      state,
+      per_page: limit,
+      sort,
+      direction: "desc",
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data.map((item: any) => ({
+      number: item.number,
+      title: item.title,
+      state: item.state,
+      author: item.user?.login || "unknown",
+      createdAt: new Date(item.created_at),
+      updatedAt: new Date(item.updated_at),
+      closedAt: item.closed_at ? new Date(item.closed_at) : null,
+      comments: item.comments || 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      labels: item.labels.map((l: any) => (typeof l === "string" ? l : l.name)),
+      body: item.body || null,
+    }));
+  }
+
+  /**
    * 获取贡献者列表
    */
   async getContributors(

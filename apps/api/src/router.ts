@@ -270,21 +270,91 @@ export const appRouter = router({
   collectRepository: publicProcedure
     .input(z.object({
       repo: z.string().min(1), // 格式: owner/repo
+      skipEmbeddings: z.boolean().optional(), // 是否跳过向量化（快速采集模式）
     }))
     .mutation(async ({ input }) => {
       const db = createDb();
       const pipeline = createPipeline(db);
 
-      console.log("[collectRepository] Starting collection for:", input.repo);
+      console.log("[collectRepository] Starting collection for:", input.repo, "skipEmbeddings:", input.skipEmbeddings);
 
       try {
-        const result: CollectionResult = await pipeline.run({ repo: input.repo });
-        console.log("[collectRepository] Result:", result);
+        // 始终执行快速采集
+        const result: CollectionResult = await pipeline.run({
+          repo: input.repo,
+          config: { skipEmbeddings: true }, // 始终先快速采集
+        });
+        console.log("[collectRepository] Quick collection result:", result);
+
+        // 如果用户没有选择跳过向量化，启动后台向量化任务
+        if (!input.skipEmbeddings && result.repository) {
+          console.log("[collectRepository] Starting background embedding for repo:", result.repository.id);
+
+          // 获取 chunks 用于后台向量化
+          const chunks = await db
+            .select()
+            .from(repoChunks)
+            .where(eq(repoChunks.repoId, result.repository.id));
+
+          if (chunks.length > 0) {
+            // 启动后台向量化（不等待完成）
+            pipeline.runEmbeddingsInBackground(result.repository.id, chunks as any).catch((err) => {
+              console.error("[collectRepository] Background embedding failed:", err);
+            });
+
+            result.embeddingInBackground = true;
+          }
+        }
+
         return result;
       } catch (err) {
         console.error("[collectRepository] Error:", err);
         throw err;
       }
+    }),
+
+  /**
+   * 获取仓库向量化状态
+   * @description 查询仓库的向量化进度和状态
+   */
+  getEmbeddingStatus: publicProcedure
+    .input(z.object({
+      repoId: z.number(),
+    }))
+    .query(async ({ input }) => {
+      const db = createDb();
+
+      const repoList = await db
+        .select({
+          id: repositories.id,
+          embeddingStatus: repositories.embeddingStatus,
+          embeddingProgress: repositories.embeddingProgress,
+          embeddingTotalChunks: repositories.embeddingTotalChunks,
+          embeddingCompletedChunks: repositories.embeddingCompletedChunks,
+          embeddingStartedAt: repositories.embeddingStartedAt,
+          embeddingCompletedAt: repositories.embeddingCompletedAt,
+          embeddingError: repositories.embeddingError,
+        })
+        .from(repositories)
+        .where(eq(repositories.id, input.repoId))
+        .limit(1);
+
+      if (repoList.length === 0) {
+        throw new Error(`Repository with ID ${input.repoId} not found`);
+      }
+
+      const repo = repoList[0];
+
+      return {
+        repoId: repo.id,
+        status: repo.embeddingStatus || 'pending',
+        progress: repo.embeddingProgress || 0,
+        totalChunks: repo.embeddingTotalChunks || 0,
+        completedChunks: repo.embeddingCompletedChunks || 0,
+        startedAt: repo.embeddingStartedAt?.toISOString() || null,
+        completedAt: repo.embeddingCompletedAt?.toISOString() || null,
+        error: repo.embeddingError || null,
+      };
     }),
 
   /**

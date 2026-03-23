@@ -7,10 +7,11 @@
  * @module pipeline
  */
 
-import { upsertRepository, insertRepoChunks, insertHackernewsItems } from "./index";
+import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, repositories } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
 import type { Db } from "./index";
+import { eq } from "drizzle-orm";
 
 // ============================================================================
 // 类型定义
@@ -55,6 +56,21 @@ interface CollectionResult {
   embeddingsGenerated: number;
   hnItemsCollected: number;
   duration: number;
+  /** 向量化是否在后台进行 */
+  embeddingInBackground?: boolean;
+}
+
+/**
+ * 向量化进度回调
+ */
+export interface EmbeddingProgressCallback {
+  (progress: {
+    current: number;
+    total: number;
+    percent: number;
+    status: 'processing' | 'completed' | 'failed';
+    error?: string;
+  }): void | Promise<void>;
 }
 
 /**
@@ -135,12 +151,217 @@ export class DataCollectionPipeline {
     };
 
     // 初始化组件
-    this.github = new GitHubCollector(this.config.githubToken);
-    this.chunker = new TextChunker({
-      maxTokens: this.config.chunkMaxTokens,
-      overlapTokens: this.config.chunkOverlapTokens,
+    console.log("[Pipeline] Initializing components...");
+    try {
+      this.github = new GitHubCollector(this.config.githubToken);
+      console.log("[Pipeline] GitHubCollector initialized");
+    } catch (err) {
+      console.error("[Pipeline] Failed to initialize GitHubCollector:", err);
+      throw new Error(`Failed to initialize GitHubCollector: ${err}`);
+    }
+
+    try {
+      this.chunker = new TextChunker({
+        maxTokens: this.config.chunkMaxTokens,
+        overlapTokens: this.config.chunkOverlapTokens,
+      });
+      console.log("[Pipeline] TextChunker initialized");
+    } catch (err) {
+      console.error("[Pipeline] Failed to initialize TextChunker:", err);
+      throw new Error(`Failed to initialize TextChunker: ${err}`);
+    }
+
+    try {
+      this.embedder = new BGEEmbeddingProvider({ baseURL: this.config.bgeApiUrl });
+      console.log("[Pipeline] BGEEmbeddingProvider initialized");
+    } catch (err) {
+      console.error("[Pipeline] Failed to initialize BGEEmbeddingProvider:", err);
+      throw new Error(`Failed to initialize BGEEmbeddingProvider: ${err}`);
+    }
+  }
+
+  /**
+   * 更新仓库的向量化状态
+   */
+  private async updateEmbeddingStatus(
+    repoId: number,
+    status: 'pending' | 'processing' | 'completed' | 'failed',
+    progress: { current: number; total: number },
+    error?: string
+  ): Promise<void> {
+    const updateData: any = {
+      embeddingStatus: status,
+      embeddingProgress: progress.total > 0 ? Math.floor((progress.current / progress.total) * 100) : 0,
+      embeddingCompletedChunks: progress.current,
+      embeddingTotalChunks: progress.total,
+    };
+
+    if (status === 'processing' && !updateData.embeddingStartedAt) {
+      updateData.embeddingStartedAt = new Date();
+    }
+
+    if (status === 'completed') {
+      updateData.embeddingCompletedAt = new Date();
+      updateData.embeddingProgress = 100;
+    }
+
+    if (status === 'failed' && error) {
+      updateData.embeddingError = error;
+    }
+
+    await this.db
+      .update(repositories)
+      .set(updateData)
+      .where(eq(repositories.id, repoId));
+
+    console.log(`[Pipeline] Updated embedding status: ${status}, progress: ${progress.current}/${progress.total}`);
+  }
+
+  /**
+   * 执行快速采集（不包含向量化）
+   */
+  async runQuick(input: PipelineInput): Promise<CollectionResult> {
+    return await this.run({
+      ...input,
+      config: { ...input.config, skipEmbeddings: true },
     });
-    this.embedder = new BGEEmbeddingProvider({ baseURL: this.config.bgeApiUrl });
+  }
+
+  /**
+   * 后台执行向量化
+   * @param repoId 仓库 ID
+   * @param chunks 文本分块数组
+   * @param onProgress 进度回调
+   */
+  async runEmbeddingsInBackground(
+    repoId: number,
+    chunks: TextChunk[],
+    onProgress?: EmbeddingProgressCallback
+  ): Promise<void> {
+    const totalChunks = chunks.length;
+    console.log(`[Pipeline] Starting background embedding for ${totalChunks} chunks...`);
+
+    try {
+      await this.updateEmbeddingStatus(repoId, 'processing', { current: 0, total: totalChunks });
+
+      const texts = chunks.map((c: TextChunk) => c.content);
+
+      // 自定义 embedBatch，支持进度回调
+      const BATCH_SIZE = 10;
+      const results: (number[] | null)[] = new Array(texts.length).fill(null);
+      let successCount = 0;
+
+      for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+        const batchIndex = Math.floor(i / BATCH_SIZE);
+        const batch = texts.slice(i, i + BATCH_SIZE);
+
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (retryCount < maxRetries) {
+          try {
+            const response = await (this.embedder as any).client.embeddings.create({
+              model: (this.embedder as any).defaultModel,
+              input: batch,
+            });
+
+            for (const data of response.data) {
+              results[i + data.index] = data.embedding;
+              successCount++;
+            }
+
+            break;
+          } catch (error: any) {
+            retryCount++;
+            const isRetryable = error.status === 429 || error.status === 400;
+
+            if (isRetryable && retryCount < maxRetries) {
+              const waitTime = retryCount * 5000;
+              console.warn(`[Pipeline] Batch ${batchIndex} failed (attempt ${retryCount}/${maxRetries}), retrying after ${waitTime}ms...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+            } else {
+              console.warn(`[Pipeline] Batch ${batchIndex} permanently failed: ${error.message || error}`);
+              for (let j = 0; j < batch.length; j++) {
+                results[i + j] = null;
+              }
+              break;
+            }
+          }
+        }
+
+        // 更新进度
+        const completed = Math.min(i + BATCH_SIZE, texts.length);
+        const progress = {
+          current: completed,
+          total: totalChunks,
+          percent: Math.floor((completed / totalChunks) * 100),
+          status: 'processing' as const,
+        };
+
+        await this.updateEmbeddingStatus(repoId, 'processing', { current: completed, total: totalChunks });
+
+        if (onProgress) {
+          await onProgress(progress);
+        }
+
+        // 添加延迟避免 API 限流
+        if (i + BATCH_SIZE < texts.length) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+
+      // 删除旧的 chunks 并插入新的带 embedding 的 chunks
+      console.log(`[Pipeline] Deleting old chunks for repository: ${repoId}`);
+      await deleteRepoChunksByRepoId(this.db, repoId);
+
+      // 只插入成功的 chunks
+      const validChunks = chunks.filter((_, i) => results[i] !== null);
+      const dbChunks = validChunks.map((chunk) => {
+        const resultIndex = chunks.indexOf(chunk);
+        return {
+          repoId: repoId,
+          content: chunk.content,
+          chunkType: chunk.chunkType || "description",
+          sourceId: chunk.sourceId || null,
+          chunkIndex: chunk.chunkIndex,
+          embedding: results[resultIndex] as number[],
+          tokenCount: chunk.tokenCount,
+        };
+      });
+
+      await insertRepoChunks(this.db, dbChunks);
+
+      const failedCount = totalChunks - successCount;
+      if (failedCount > 0) {
+        console.warn(`[Pipeline] Completed with ${failedCount} failed embeddings`);
+      }
+
+      await this.updateEmbeddingStatus(repoId, 'completed', { current: totalChunks, total: totalChunks });
+
+      if (onProgress) {
+        await onProgress({
+          current: totalChunks,
+          total: totalChunks,
+          percent: 100,
+          status: 'completed',
+        });
+      }
+
+      console.log(`[Pipeline] Background embedding completed: ${successCount}/${totalChunks} chunks`);
+    } catch (err) {
+      console.error(`[Pipeline] Background embedding failed:`, err);
+      await this.updateEmbeddingStatus(repoId, 'failed', { current: 0, total: totalChunks }, err instanceof Error ? err.message : String(err));
+
+      if (onProgress) {
+        await onProgress({
+          current: 0,
+          total: totalChunks,
+          percent: 0,
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   /**
@@ -150,17 +371,23 @@ export class DataCollectionPipeline {
     const startTime = Date.now();
     const { owner, repo } = parseRepoFullName(input.repo);
 
+    // 合并配置：input.config 优先于构造时的 this.config
+    const effectiveConfig = {
+      ...this.config,
+      ...input.config,
+    };
+
     console.log("[Pipeline] ======= PIPELINE START =======");
     console.log("[Pipeline] Input repo:", input.repo);
     console.log("[Pipeline] Parsed owner:", owner, "repo:", repo);
     console.log("[Pipeline] Config:", JSON.stringify({
-      githubToken: this.config.githubToken ? "***" : "not set",
-      bgeApiUrl: this.config.bgeApiUrl,
-      dbUrl: this.config.dbUrl ? "***" : "not set",
-      includeReadme: this.config.includeReadme,
-      includeIssues: this.config.includeIssues,
-      includeHackernews: this.config.includeHackernews,
-      skipEmbeddings: this.config.skipEmbeddings,
+      githubToken: effectiveConfig.githubToken ? "***" : "not set",
+      bgeApiUrl: effectiveConfig.bgeApiUrl,
+      dbUrl: effectiveConfig.dbUrl ? "***" : "not set",
+      includeReadme: effectiveConfig.includeReadme,
+      includeIssues: effectiveConfig.includeIssues,
+      includeHackernews: effectiveConfig.includeHackernews,
+      skipEmbeddings: effectiveConfig.skipEmbeddings,
     }, null, 2));
 
     let status: CollectionStatus = "processing";
@@ -176,11 +403,11 @@ export class DataCollectionPipeline {
 
       // 1. 采集 GitHub 数据
       const githubData = await this.github.collectRepository(owner, repo, {
-        includeReadme: this.config.includeReadme,
-        includeIssues: this.config.includeIssues,
-        includeCommits: this.config.includeCommits,
-        issuesLimit: this.config.issuesLimit,
-        commitsLimit: this.config.commitsLimit,
+        includeReadme: effectiveConfig.includeReadme,
+        includeIssues: effectiveConfig.includeIssues,
+        includeCommits: effectiveConfig.includeCommits,
+        issuesLimit: effectiveConfig.issuesLimit,
+        commitsLimit: effectiveConfig.commitsLimit,
       });
 
       // 2. 保存仓库信息到数据库
@@ -258,64 +485,30 @@ export class DataCollectionPipeline {
       // 5. 生成 Embedding 并存储
       console.log("[Pipeline] Step 4: Generating embeddings and storing chunks...");
       if (chunks.length > 0) {
-        // 检查是否跳过 embedding 生成
-        if (this.config.skipEmbeddings) {
-          console.log("[Pipeline] Embeddings skipped (skipEmbeddings=true)");
-          // 存储不含 embedding 的分块
-          const dbChunks = chunks.map((chunk: TextChunk) => ({
-            repoId: savedRepo.id,
-            content: chunk.content,
-            chunkType: chunk.chunkType || "description",
-            sourceId: chunk.sourceId || null,
-            chunkIndex: chunk.chunkIndex,
-            embedding: null, // 无 embedding
-            tokenCount: chunk.tokenCount,
-          }));
-          await insertRepoChunks(this.db, dbChunks);
-          chunksCollected = dbChunks.length;
-          console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
-        } else {
-          try {
-            // 批量生成 embedding
-            const texts = chunks.map((c: TextChunk) => c.content);
-            console.log("[Pipeline] Generating embeddings for", texts.length, "texts...");
-            const embeddings = await this.embedder.embedBatch(texts);
-            console.log("[Pipeline] Embeddings generated, count:", embeddings.length);
+        // 先删除该仓库的旧 chunks（避免重复数据）
+        console.log("[Pipeline] Deleting old chunks for repository:", savedRepo.id);
+        await deleteRepoChunksByRepoId(this.db, savedRepo.id);
+        console.log("[Pipeline] Old chunks deleted, inserting new chunks...");
 
-            // 准备数据库插入数据
-            const dbChunks = chunks.map((chunk: TextChunk, index: number) => ({
-              repoId: savedRepo.id,
-              content: chunk.content,
-              chunkType: chunk.chunkType || "description",
-              sourceId: chunk.sourceId || null,
-              chunkIndex: chunk.chunkIndex,
-              embedding: embeddings[index],
-              tokenCount: chunk.tokenCount,
-            }));
+        // 新模式：始终先快速存储（不带 embedding），然后根据配置决定是否后台向量化
+        console.log("[Pipeline] Storing chunks without embeddings (quick mode)...");
+        const dbChunks = chunks.map((chunk: TextChunk) => ({
+          repoId: savedRepo.id,
+          content: chunk.content,
+          chunkType: chunk.chunkType || "description",
+          sourceId: chunk.sourceId || null,
+          chunkIndex: chunk.chunkIndex,
+          embedding: null, // 先存储为 null
+          tokenCount: chunk.tokenCount,
+        }));
+        await insertRepoChunks(this.db, dbChunks);
+        chunksCollected = dbChunks.length;
+        console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
 
-            await insertRepoChunks(this.db, dbChunks);
-            embeddingsGenerated = dbChunks.length;
-            console.log("[Pipeline] Step 4 complete: Stored", embeddingsGenerated, "chunks");
-          } catch (embedError) {
-            // Embedding 服务不可用时的降级处理
-            console.warn("[Pipeline] Embedding generation failed:", embedError);
-            console.warn("[Pipeline] Falling back to storing chunks without embeddings...");
-            warning = `Embedding 服务不可用，已存储文本分块但未生成向量。请检查 BGE_API_URL 配置（当前：${this.config.bgeApiUrl}）。`;
-
-            // 存储不含 embedding 的分块
-            const dbChunks = chunks.map((chunk: TextChunk) => ({
-              repoId: savedRepo.id,
-              content: chunk.content,
-              chunkType: chunk.chunkType || "description",
-              sourceId: chunk.sourceId || null,
-              chunkIndex: chunk.chunkIndex,
-              embedding: null, // 无 embedding
-              tokenCount: chunk.tokenCount,
-            }));
-            await insertRepoChunks(this.db, dbChunks);
-            chunksCollected = dbChunks.length;
-            console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
-          }
+        // 如果不跳过向量化，更新状态为 pending（将在后台处理）
+        if (!effectiveConfig.skipEmbeddings) {
+          await this.updateEmbeddingStatus(savedRepo.id, 'pending', { current: 0, total: chunksCollected });
+          console.log("[Pipeline] Embeddings will be processed in background");
         }
       } else {
         console.log("[Pipeline] Step 4 skipped: No chunks to process");
@@ -323,12 +516,17 @@ export class DataCollectionPipeline {
 
       // 6. 采集 Hacker News 数据
       console.log("[Pipeline] Step 5: Fetching Hacker News data...");
-      if (this.config.includeHackernews) {
-        const hnItems = await this.fetchHackerNews(repo, this.config.hnLimit);
+      if (effectiveConfig.includeHackernews) {
+        const hnItems = await this.fetchHackerNews(repo, effectiveConfig.hnLimit);
         hnItemsCollected = hnItems.length;
         console.log("[Pipeline] Hacker News items fetched:", hnItemsCollected);
 
         if (hnItems.length > 0) {
+          // 先删除该仓库的旧 HackerNews items（避免重复数据）
+          console.log("[Pipeline] Deleting old HackerNews items for repository:", savedRepo.id);
+          await deleteHackernewsItemsByRepoId(this.db, savedRepo.id);
+          console.log("[Pipeline] Old HackerNews items deleted, inserting new items...");
+
           const dbHnItems = hnItems.map((item) => ({
             repoId: savedRepo.id,
             type: item.type,

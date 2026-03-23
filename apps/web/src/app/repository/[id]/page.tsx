@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { AnimatedBackground } from "@/components/animated-background";
+import { EmbeddingProgress, EmbeddingStatusBadge } from "@/components/embedding-progress";
 import { motion } from "framer-motion";
 
 interface RepositoryDetailPageProps {
@@ -85,7 +86,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
           <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                   <a
                     href={repository.url}
                     target="_blank"
@@ -100,6 +101,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
                     </span>
                   )}
                 </div>
+                <EmbeddingStatusBadge repoId={id} />
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -159,6 +161,15 @@ function RepositoryDetailContent({ id }: { id: number }) {
               </div>
             </CardContent>
           </Card>
+        </motion.div>
+
+        {/* 向量化进度 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15 }}
+        >
+          <EmbeddingProgress repoId={id} />
         </motion.div>
 
         {/* README 预览 */}
