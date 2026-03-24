@@ -328,11 +328,16 @@ export class GitHubCollector {
         ? this.octokit.rest.activity.listReposStarredByUser
         : this.octokit.rest.activity.listReposStarredByAuthenticatedUser;
 
-      const { data } = await endpoint({
-        username: username || "",
+      // 只在指定 username 时才传递该参数（认证用户接口不需要 username）
+      const params: Record<string, number | string> = {
         per_page: perPage,
         page,
-      });
+      };
+      if (username) {
+        params.username = username;
+      }
+
+      const { data } = await endpoint(params);
 
       if (data.length === 0) break;
 

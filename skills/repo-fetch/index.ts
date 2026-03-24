@@ -26,8 +26,9 @@ import { z } from "zod";
 
 /**
  * 仓库标识符格式验证
+ * 支持: owner/repo, owner/repo.name, owner/repo-name 等
  */
-const repoIdentifierRegex = /^[\w-]+\/[\w-]+$/;
+const repoIdentifierRegex = /^[\w.-]+\/[\w.-]+$/;
 
 /**
  * 单个仓库输入 Schema
@@ -141,8 +142,9 @@ class GitHubClient {
     }
 
     return response.json();
+  }
 
-    return response  /**
+  /**
    * 获取仓库信息
    */
   async getRepository(owner: string, repo: string): Promise<RepositoryInfo> {
@@ -266,7 +268,10 @@ export async function main(args: string[]): Promise<void> {
   // 检查输入来源：管道 stdin 或命令行参数
   let inputs: z.infer<typeof RepoFetchBatchInputSchema>;
 
-  if (batch || !process.stdin.isTTY) {
+  // 判断是否为管道模式：显式指定 --batch 或 stdin 不是 TTY
+  const isPipeMode = batch || process.stdin.isTTY === false;
+
+  if (isPipeMode && !repo) {
     // 从 stdin 读取（管道模式）
     let inputText = "";
     for await (const chunk of process.stdin) {
@@ -328,3 +333,6 @@ export async function main(args: string[]): Promise<void> {
 
 // 导出类型
 export type { z };
+
+// 执行入口
+main(process.argv.slice(2));

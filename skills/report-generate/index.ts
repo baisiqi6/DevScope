@@ -290,8 +290,17 @@ export async function main(args: string[]): Promise<void> {
 
   // 从 stdin 读取数据
   let inputText = "";
-  for await (const chunk of process.stdin) {
-    inputText += chunk;
+  try {
+    for await (const chunk of process.stdin) {
+      inputText += chunk;
+    }
+  } catch (e) {
+    // stdin 读取失败，可能是没有输入
+  }
+
+  // 调试信息输出到 stderr
+  if (process.env.DEBUG) {
+    console.error(`[report-generate] Received input length: ${inputText.length}`);
   }
 
   let analyses: any[] = [];
@@ -354,3 +363,6 @@ function generateMarkdown(report: Report): string {
 
   return md;
 }
+
+// 执行入口
+main(process.argv.slice(2));

@@ -16,6 +16,12 @@
       "require": "./dist/langtum.mjs",
       "default": "./dist/langtum.mjs",
       "types": "./dist/langtum.d.mts"
+    },
+    "./agent": {
+      "import": "./dist/agent.mjs",
+      "require": "./dist/agent.mjs",
+      "default": "./dist/agent.mjs",
+      "types": "./dist/agent.d.mts"
     }
   },
   "scripts": {

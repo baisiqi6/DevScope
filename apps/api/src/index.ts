@@ -17,6 +17,7 @@ import { createContext } from "./context";
 import { appRouter } from "./router";
 import { registerWebhookRoute } from "./webhook/langtum";
 import { registerDocsRoute } from "./docs";
+import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 
 // 从项目根目录加载 .env 文件
 // API 服务器运行时在 apps/api 目录，需要向上两级
@@ -214,6 +215,9 @@ const start = async () => {
 
     // 注册 API 文档路由
     await registerDocsRoute(fastify);
+
+    // 注册 Agent 工作流 SSE 端点
+    await registerAgentWorkflowSSE(fastify);
 
     // 检查环境变量配置
     const hasGitHubToken = !!process.env.GITHUB_TOKEN;

@@ -436,6 +436,8 @@ export const collectionResultSchema = z.object({
   warning: z.string().optional(),
   /** 采集耗时（毫秒） */
   duration: z.number(),
+  /** 向量化是否在后台进行 */
+  embeddingInBackground: z.boolean().optional(),
 });
 
 /** 采集结果类型 */
@@ -838,3 +840,358 @@ export const repoInsightsRequestSchema = z.object({
 
 /** 仓库洞察请求类型 */
 export type RepoInsightsRequest = z.infer<typeof repoInsightsRequestSchema>;
+
+// ============================================================================
+// Agent Workflow 类型 (Agent Workflow Types)
+// ============================================================================
+
+/**
+ * SSE 事件类型枚举
+ */
+export const sseEventTypeSchema = z.enum([
+  "thinking",
+  "tool_use",
+  "tool_result",
+  "text",
+  "report",
+  "complete",
+]);
+
+/** SSE 事件类型 */
+export type SSEEventType = z.infer<typeof sseEventTypeSchema>;
+
+/**
+ * SSE 思考事件数据
+ */
+export const thinkingEventDataSchema = z.object({
+  text: z.string(),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 工具使用事件数据
+ */
+export const toolUseEventDataSchema = z.object({
+  name: z.string(),
+  input: z.record(z.unknown()),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 工具结果事件数据
+ */
+export const toolResultEventDataSchema = z.object({
+  name: z.string(),
+  result: z.unknown(),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 文本事件数据
+ */
+export const textEventDataSchema = z.object({
+  text: z.string(),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 报告事件数据
+ */
+export const reportEventDataSchema = z.object({
+  reportId: z.string(),
+  reportPath: z.string(),
+  summary: z.string(),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 完成事件数据
+ */
+export const completeEventDataSchema = z.object({
+  executionId: z.string(),
+  status: z.enum(["completed", "failed", "cancelled"]),
+  error: z.string().optional(),
+  timestamp: z.string(),
+});
+
+/**
+ * SSE 事件 Schema (联合类型)
+ */
+export const agentWorkflowEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("thinking"),
+    data: thinkingEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("tool_use"),
+    data: toolUseEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("tool_result"),
+    data: toolResultEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("text"),
+    data: textEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("report"),
+    data: reportEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("complete"),
+    data: completeEventDataSchema,
+  }),
+]);
+
+/** SSE 事件类型 */
+export type AgentWorkflowEvent = z.infer<typeof agentWorkflowEventSchema>;
+
+/**
+ * Agent 工作流请求 Schema
+ */
+export const agentWorkflowRequestSchema = z.object({
+  /** 要分析的仓库列表 (owner/repo) */
+  repos: z.array(z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo")),
+  /** 分析类型 */
+  analysisType: z.enum(["competitive_landscape", "health_report", "single_repo"]),
+  /** 额外上下文 */
+  context: z.string().optional(),
+  /** 用户 ID */
+  userId: z.number().optional(),
+});
+
+/** Agent 工作流请求类型 */
+export type AgentWorkflowRequest = z.infer<typeof agentWorkflowRequestSchema>;
+
+// ============================================================================
+// 竞争分析报告类型 (Competitive Analysis Report Types)
+// ============================================================================
+
+/**
+ * 分析类型枚举
+ */
+export const analysisTypeEnumSchema = z.enum([
+  "competitive_landscape",
+  "health_report",
+  "single_repo",
+]);
+
+/**
+ * 投资建议枚举
+ */
+export const investmentRecommendationSchema = z.enum(["invest", "watch", "avoid", "mixed"]);
+
+/**
+ * 置信度枚举
+ */
+export const confidenceLevelSchema = z.enum(["high", "medium", "low"]);
+
+/**
+ * 风险等级枚举
+ */
+export const riskLevelSchema = z.enum(["low", "medium", "high", "critical"]);
+
+/**
+ * 风险类别枚举
+ */
+export const riskCategorySchema = z.enum(["technical", "community", "business", "compliance"]);
+
+/**
+ * 数据来源类型枚举
+ */
+export const dataSourceTypeSchema = z.enum(["github_api", "ossinsight", "ai_analysis"]);
+
+/**
+ * 执行摘要 Schema
+ */
+export const executiveSummarySchema = z.object({
+  /** 概述 */
+  overview: z.string(),
+  /** 关键发现 */
+  keyFindings: z.array(z.string()),
+  /** 投资建议 */
+  recommendation: investmentRecommendationSchema,
+  /** 置信度 */
+  confidenceLevel: confidenceLevelSchema,
+});
+
+/**
+ * 市场定位 Schema
+ */
+export const marketPositionSchema = z.object({
+  /** 领导者 */
+  leaders: z.array(z.string()),
+  /** 挑战者 */
+  challengers: z.array(z.string()),
+  /** 细分市场 */
+  niche: z.array(z.string()),
+  /** 新兴项目 */
+  emerging: z.array(z.string()),
+});
+
+/**
+ * 技术对比项 Schema
+ */
+export const technologyComparisonItemSchema = z.object({
+  /** 仓库 */
+  repo: z.string(),
+  /** 编程语言 */
+  language: z.string().nullable(),
+  /** 许可证 */
+  license: z.string().nullable(),
+  /** Stars 数 */
+  stars: z.number(),
+  /** Forks 数 */
+  forks: z.number(),
+  /** 活跃度 */
+  activityLevel: z.enum(["high", "medium", "low", "dead"]),
+});
+
+/**
+ * 社区指标项 Schema
+ */
+export const communityMetricItemSchema = z.object({
+  /** 仓库 */
+  repo: z.string(),
+  /** 贡献者数量 */
+  contributorCount: z.number(),
+  /** Issue 解决率 */
+  issueResolutionRate: z.number(),
+  /** 提交频率 */
+  commitFrequency: z.enum(["daily", "weekly", "monthly", "sporadic"]),
+});
+
+/**
+ * 详细分析 Schema
+ */
+export const detailedAnalysisSchema = z.object({
+  /** 市场定位 */
+  marketPosition: marketPositionSchema,
+  /** 技术对比 */
+  technologyComparison: z.array(technologyComparisonItemSchema),
+  /** 社区指标 */
+  communityMetrics: z.array(communityMetricItemSchema),
+});
+
+/**
+ * 风险项 Schema
+ */
+export const riskItemSchema = z.object({
+  /** 仓库 */
+  repo: z.string(),
+  /** 风险类别 */
+  category: riskCategorySchema,
+  /** 描述 */
+  description: z.string(),
+  /** 严重程度 (1-10) */
+  severity: z.number().min(1).max(10),
+  /** 缓解措施 */
+  mitigation: z.string().optional(),
+});
+
+/**
+ * 风险矩阵 Schema
+ */
+export const riskMatrixSchema = z.object({
+  /** 总体风险等级 */
+  overallRisk: riskLevelSchema,
+  /** 风险列表 */
+  risks: z.array(riskItemSchema),
+});
+
+/**
+ * 投资建议详情 Schema
+ */
+export const investmentRecommendationsDetailSchema = z.object({
+  /** 首选项目 */
+  topPick: z.string().optional(),
+  /** 关注列表 */
+  watchList: z.array(z.string()),
+  /** 规避列表 */
+  avoidList: z.array(z.string()),
+  /** 理由 */
+  rationale: z.string(),
+});
+
+/**
+ * 数据来源项 Schema
+ */
+export const dataSourceItemSchema = z.object({
+  /** 来源类型 */
+  type: dataSourceTypeSchema,
+  /** 仓库 */
+  repo: z.string(),
+  /** 时间戳 */
+  timestamp: z.string(),
+  /** 详情 */
+  details: z.string(),
+});
+
+/**
+ * 工具输出记录 Schema
+ */
+export const toolOutputRecordSchema = z.object({
+  /** 工具名称 */
+  tool: z.string(),
+  /** 输入 */
+  input: z.record(z.unknown()),
+  /** 输出 */
+  output: z.unknown(),
+  /** 时间戳 */
+  timestamp: z.string(),
+});
+
+/**
+ * 竞争分析报告 Schema
+ */
+export const competitiveAnalysisReportSchema = z.object({
+  // 元数据
+  /** 报告 ID */
+  reportId: z.string(),
+  /** 执行 ID */
+  executionId: z.string(),
+  /** 生成时间 */
+  generatedAt: z.string(),
+  /** 分析类型 */
+  analysisType: analysisTypeEnumSchema,
+
+  // 执行摘要
+  /** 执行摘要 */
+  executiveSummary: executiveSummarySchema,
+
+  // 详细分析
+  /** 详细分析 */
+  detailedAnalysis: detailedAnalysisSchema,
+
+  // 风险矩阵
+  /** 风险矩阵 */
+  riskMatrix: riskMatrixSchema,
+
+  // 投资建议
+  /** 投资建议 */
+  investmentRecommendations: investmentRecommendationsDetailSchema,
+
+  // 数据来源 (可追溯性)
+  /** 数据来源列表 */
+  dataSources: z.array(dataSourceItemSchema),
+
+  // 工具输出记录
+  /** 工具输出记录 */
+  toolOutputs: z.array(toolOutputRecordSchema),
+});
+
+/** 竞争分析报告类型 */
+export type CompetitiveAnalysisReport = z.infer<typeof competitiveAnalysisReportSchema>;
+
+/** 执行摘要类型 */
+export type ExecutiveSummary = z.infer<typeof executiveSummarySchema>;
+
+/** 详细分析类型 */
+export type DetailedAnalysis = z.infer<typeof detailedAnalysisSchema>;
+
+/** 风险矩阵类型 */
+export type RiskMatrix = z.infer<typeof riskMatrixSchema>;
+
+/** 投资建议详情类型 */
+export type InvestmentRecommendationsDetail = z.infer<typeof investmentRecommendationsDetailSchema>;

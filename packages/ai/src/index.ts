@@ -138,7 +138,7 @@ export class AIProvider {
         baseURL,
       });
       this.anthropicClient = null;
-      this.defaultModel = config.defaultModel || "deepseek-chat";
+      this.defaultModel = config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
     }
 
     // 打印初始化信息（开发模式）
@@ -1112,3 +1112,30 @@ export {
   type WebhookHeaders,
   type WebhookRequestBody,
 } from "./langtum.js";
+
+// ============================================================================
+// Claude Agent SDK 集成
+// ============================================================================
+
+export {
+  DevScopeAgent,
+  createAgent,
+  RepoFetchToolInputSchema,
+  RepoAnalyzeToolInputSchema,
+  ReportGenerateToolInputSchema,
+  type AgentTool,
+  type DevScopeAgentConfig,
+  type AgentResult,
+  type StreamCallbacks,
+} from "./agent.js";
+
+// ============================================================================
+// 系统提示词
+// ============================================================================
+
+export {
+  COMPETITIVE_ANALYSIS_SYSTEM_PROMPT,
+  SINGLE_REPO_ANALYSIS_SYSTEM_PROMPT,
+  HEALTH_REPORT_SYSTEM_PROMPT,
+  getCompetitiveAnalysisSystemPrompt,
+} from "./prompts/competitive-analysis.js";

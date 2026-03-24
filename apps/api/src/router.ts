@@ -19,7 +19,6 @@ import {
   repoChunks,
   createOSSInsightClient,
   createGitHubCollector,
-  type GitHubFollowingRepo,
 } from "@devscope/db";
 import { eq } from "drizzle-orm";
 import {
@@ -42,8 +41,19 @@ import { workflowRouter } from "./router/workflow";
 // 初始化 AI 服务
 // ============================================================================
 
-/** 创建 AI 提供者实例 */
-const ai = createAI();
+/**
+ * 创建 AI 提供者实例
+ * 注意：延迟创建以确保环境变量已加载
+ */
+function getAI() {
+  return createAI({
+    // 显式指定使用 DeepSeek（OpenAI 兼容模式）
+    provider: "openai-compatible",
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
+    defaultModel: "deepseek-chat",
+  });
+}
 
 // ============================================================================
 // 应用路由器
@@ -287,7 +297,7 @@ export const appRouter = router({
         console.log("[collectRepository] Quick collection result:", result);
 
         // 如果用户没有选择跳过向量化，启动后台向量化任务
-        if (!input.skipEmbeddings && result.repository) {
+        if (!input.skipEmbeddings && result.repository?.id) {
           console.log("[collectRepository] Starting background embedding for repo:", result.repository.id);
 
           // 获取 chunks 用于后台向量化
@@ -396,6 +406,7 @@ export const appRouter = router({
       const prompt = buildAnalysisPrompt(owner, repo, context);
 
       // 使用 AI 的结构化输出功能
+      const ai = getAI();
       const result = await ai.structuredComplete<RepositoryAnalysis>(prompt, {
         schema: repositoryAnalysisSchema,
         toolName: "repository_analysis",
@@ -475,6 +486,7 @@ ${contextText}
 
 请提供一个简洁、准确的回答。如果搜索结果不足以回答问题，请明确说明。`;
 
+        const ai = getAI();
         answer = await ai.complete(prompt, {
           maxTokens: 500,
           temperature: 0.5,

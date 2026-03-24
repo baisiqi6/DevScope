@@ -19,6 +19,12 @@ export const metadata: Metadata = {
   title: "DevScope",
   /** 页面描述 */
   description: "AI-powered development workspace",
+  /** 图标配置 */
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/favicon.ico",
+    apple: "/icon.svg",
+  },
 };
 
 /**

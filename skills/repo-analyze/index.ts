@@ -18,6 +18,10 @@
  * cat repos.txt | ./repo-analyze/index.ts --batch
  */
 
+// 加载环境变量
+import { config } from "dotenv";
+config();
+
 import { z } from "zod";
 import { createAI } from "@devscope/ai";
 import { repositoryAnalysisSchema } from "@devscope/shared";
@@ -31,7 +35,7 @@ import { repositoryAnalysisSchema } from "@devscope/shared";
  */
 export const RepoAnalyzeInputSchema = z.object({
   /** 仓库标识符 (owner/repo) */
-  repo: z.string().regex(/^[\w-]+\/[\w-]+$/, "格式应为 owner/repo"),
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo"),
   /** 可选的额外上下文 */
   context: z.string().optional(),
 });
@@ -41,9 +45,11 @@ export const RepoAnalyzeInputSchema = z.object({
 // ============================================================================
 
 /**
- * 仓库分析结果
+ * 仓库分析结果（包含仓库信息）
  */
-export type AnalysisResult = z.infer<typeof repositoryAnalysisSchema>;
+export type AnalysisResult = z.infer<typeof repositoryAnalysisSchema> & {
+  repo?: string;
+};
 
 // ============================================================================
 // 分析函数
@@ -82,13 +88,19 @@ export async function analyzeRepository(
 
   const prompt = buildAnalysisPrompt(owner, repo, input.context);
 
-  return ai.structuredComplete(prompt, {
+  const result = await ai.structuredComplete(prompt, {
     schema: repositoryAnalysisSchema,
     toolName: "repository_analysis",
     toolDescription: "生成 GitHub 仓库健康度分析报告",
     system: `你是一个专业的开源项目分析师。请根据公开信息分析仓库的健康度，并返回结构化的分析结果。`,
     temperature: 0.3,
   });
+
+  // 添加仓库名称到结果中
+  return {
+    ...result,
+    repo: input.repo,
+  };
 }
 
 /**
@@ -128,7 +140,10 @@ export async function main(args: string[]): Promise<void> {
   // 检查输入来源
   let inputs: z.infer<typeof RepoAnalyzeInputSchema>[];
 
-  if (batch || !process.stdin.isTTY) {
+  // 判断是否为管道模式：显式指定 --batch 或 stdin 不是 TTY
+  const isPipeMode = batch || process.stdin.isTTY === false;
+
+  if (isPipeMode && !repo) {
     // 从 stdin 读取
     let inputText = "";
     for await (const chunk of process.stdin) {
@@ -179,3 +194,6 @@ export async function main(args: string[]): Promise<void> {
     process.exit(1);
   }
 }
+
+// 执行入口
+main(process.argv.slice(2));

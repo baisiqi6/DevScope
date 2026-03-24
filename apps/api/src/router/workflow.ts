@@ -14,8 +14,10 @@ import {
   createLangtumClient,
   LangtumClient,
   type WorkflowExecutionDetail,
+  createAI,
 } from "@devscope/ai";
 import { createDb, createGitHubCollector, createPipeline } from "@devscope/db";
+import { repositoryAnalysisSchema, type RepositoryAnalysis } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
@@ -489,16 +491,60 @@ export const workflowRouter = router({
         console.log(`[analyzeFollowing] result value:`, response.result);
         console.log(`[analyzeFollowing] ===== End Response =====`);
 
-        // 将 analysis_result 转换为字符串以便传输
+        // 将工作流结果用 AI 解析成结构化格式
         let analysisResult: string | undefined;
         if (response.result) {
           try {
+            const rawText = typeof response.result === "string"
+              ? response.result
+              : JSON.stringify(response.result);
+
+            // 使用 AI 将文本解析为结构化分析结果
+            console.log(`[analyzeFollowing] Parsing result with AI...`);
+            const ai = createAI({
+              provider: "openai-compatible",
+              model: "deepseek-chat",
+              apiKey: process.env.DEEPSEEK_API_KEY,
+              baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
+            });
+
+            const structuredResult = await ai.structuredComplete<RepositoryAnalysis>(
+              `请根据以下分析内容，生成结构化的仓库健康度报告。
+
+分析的仓库数量：${repos.length}
+仓库列表：${repos.join(', ')}
+
+分析内容：
+${rawText}
+
+请提取关键信息并生成健康度评分、风险因素、机会因素等结构化数据。`,
+              {
+                schema: repositoryAnalysisSchema,
+                toolName: "repository_analysis",
+                toolDescription: "生成 GitHub 仓库健康度分析报告",
+                system: `你是一个专业的开源项目分析师。你需要根据提供的分析内容，生成结构化的健康度报告。
+
+评估维度：
+1. 健康度评分（0-100）：综合考虑代码质量、文档完整性、社区活跃度等
+2. 活动级别：high/medium/low/dead
+3. 关键指标：Stars 增长率、Issue 解决率、贡献者多样性
+4. 风险因素：识别项目面临的潜在风险
+5. 机会因素：识别项目的发展机会
+6. 推荐级别：invest/watch/avoid
+
+请基于提供的分析内容进行评估。`,
+                temperature: 0.3,
+              }
+            );
+
+            analysisResult = JSON.stringify(structuredResult);
+            console.log(`[analyzeFollowing] Structured result generated successfully`);
+          } catch (e) {
+            console.error("[analyzeFollowing] Failed to parse result with AI:", e);
+            // 如果 AI 解析失败，回退到原始文本
             analysisResult = typeof response.result === "string"
               ? response.result
               : JSON.stringify(response.result);
-          } catch (e) {
-            console.error("[analyzeFollowing] Failed to stringify result:", e);
-            analysisResult = String(response.result);
           }
         }
 
@@ -591,16 +637,63 @@ export const workflowRouter = router({
         console.log(`[analyzeRepo] result value:`, response.result);
         console.log(`[analyzeRepo] ===== End Response =====`);
 
-        // 将 analysis_result 转换为字符串以便传输
+        // 将工作流结果用 AI 解析成结构化格式
         let analysisResult: string | undefined;
         if (response.result) {
           try {
+            const rawText = typeof response.result === "string"
+              ? response.result
+              : JSON.stringify(response.result);
+
+            // 使用 AI 将文本解析为结构化分析结果
+            console.log(`[analyzeRepo] Parsing result with AI...`);
+            const ai = createAI({
+              provider: "openai-compatible",
+              model: "deepseek-chat",
+              apiKey: process.env.DEEPSEEK_API_KEY,
+              baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
+            });
+
+            const structuredResult = await ai.structuredComplete<RepositoryAnalysis>(
+              `请根据以下分析内容，生成结构化的仓库健康度报告。
+
+仓库信息：
+- 名称：${repoData.full_name}
+- Stars：${repoData.stars}
+- 语言：${repoData.language || '未知'}
+- 描述：${repoData.description || '无'}
+
+分析内容：
+${rawText}
+
+请提取关键信息并生成健康度评分、风险因素、机会因素等结构化数据。`,
+              {
+                schema: repositoryAnalysisSchema,
+                toolName: "repository_analysis",
+                toolDescription: "生成 GitHub 仓库健康度分析报告",
+                system: `你是一个专业的开源项目分析师。你需要根据提供的分析内容，生成结构化的健康度报告。
+
+评估维度：
+1. 健康度评分（0-100）：综合考虑代码质量、文档完整性、社区活跃度等
+2. 活动级别：high/medium/low/dead
+3. 关键指标：Stars 增长率、Issue 解决率、贡献者多样性
+4. 风险因素：识别项目面临的潜在风险
+5. 机会因素：识别项目的发展机会
+6. 推荐级别：invest/watch/avoid
+
+请基于提供的分析内容进行评估。`,
+                temperature: 0.3,
+              }
+            );
+
+            analysisResult = JSON.stringify(structuredResult);
+            console.log(`[analyzeRepo] Structured result generated successfully`);
+          } catch (e) {
+            console.error("[analyzeRepo] Failed to parse result with AI:", e);
+            // 如果 AI 解析失败，回退到原始文本
             analysisResult = typeof response.result === "string"
               ? response.result
               : JSON.stringify(response.result);
-          } catch (e) {
-            console.error("[analyzeRepo] Failed to stringify result:", e);
-            analysisResult = String(response.result);
           }
         }
 

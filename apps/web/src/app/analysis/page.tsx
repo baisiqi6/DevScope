@@ -12,8 +12,10 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnimatedBackground } from "@/components/animated-background";
+import { AnalysisResultView } from "@/components/analysis-result-view";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import type { RepositoryAnalysis } from "@devscope/shared";
 
 interface RepoData {
   full_name: string;
@@ -229,18 +231,28 @@ function AnalysisContent() {
             </CardHeader>
             <CardContent>
               {displayResult.analysis_result ? (
-                <pre className="p-4 bg-muted rounded-lg overflow-auto max-h-[600px] text-sm">
-                  {(() => {
-                    try {
-                      // 尝试解析 JSON 字符串
-                      const parsed = JSON.parse(displayResult.analysis_result);
-                      return JSON.stringify(parsed, null, 2);
-                    } catch {
-                      // 如果不是 JSON，直接显示字符串
-                      return displayResult.analysis_result;
+                (() => {
+                  try {
+                    const parsed = JSON.parse(displayResult.analysis_result);
+                    // 检查是否是 RepositoryAnalysis 格式
+                    if (parsed.healthScore !== undefined && parsed.keyMetrics) {
+                      return <AnalysisResultView analysis={parsed as RepositoryAnalysis} />;
                     }
-                  })()}
-                </pre>
+                    // 其他格式仍显示 JSON
+                    return (
+                      <pre className="p-4 bg-muted rounded-lg overflow-auto max-h-[600px] text-sm">
+                        {JSON.stringify(parsed, null, 2)}
+                      </pre>
+                    );
+                  } catch {
+                    // 如果不是 JSON，直接显示字符串
+                    return (
+                      <div className="p-4 bg-muted rounded-lg">
+                        <p className="text-sm whitespace-pre-wrap">{displayResult.analysis_result}</p>
+                      </div>
+                    );
+                  }
+                })()
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>暂无分析结果数据</p>
