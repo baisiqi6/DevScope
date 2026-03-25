@@ -33,6 +33,8 @@ export interface AIConfig {
   baseURL?: string;
   /** 默认模型名称 */
   defaultModel?: string;
+  /** 模型名称（别名，与 defaultModel 相同） */
+  model?: string;
   /** 默认最大 token 数（默认：4096） */
   maxTokens?: number;
 }
@@ -116,6 +118,9 @@ export class AIProvider {
     this.providerType = config.provider || this.detectProviderFromEnv();
     this.maxTokens = config.maxTokens || 4096;
 
+    // 支持 model 和 defaultModel 两种属性名
+    const model = config.model || config.defaultModel;
+
     // 根据提供商类型初始化客户端
     if (this.providerType === "anthropic") {
       this.anthropicClient = new Anthropic({
@@ -123,7 +128,7 @@ export class AIProvider {
         baseURL: config.baseURL,
       });
       this.openaiClient = null;
-      this.defaultModel = config.defaultModel || "claude-3-5-sonnet-20241022";
+      this.defaultModel = model || "claude-3-5-sonnet-20241022";
     } else {
       // OpenAI 兼容模式（DeepSeek、通义千问等）
       const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
@@ -138,7 +143,7 @@ export class AIProvider {
         baseURL,
       });
       this.anthropicClient = null;
-      this.defaultModel = config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+      this.defaultModel = model || config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
     }
 
     // 打印初始化信息（开发模式）

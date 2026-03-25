@@ -232,8 +232,8 @@ function StatsContent() {
                 <p>{formatDate(stats.repository.createdAt)}</p>
               </div>
               <div>
-                <p className="text-slate-600">最后更新</p>
-                <p>{formatDate(stats.repository.updatedAt)}</p>
+                <p className="text-slate-600">最后推送</p>
+                <p>{formatDate(stats.repository.pushedAt)}</p>
               </div>
             </div>
           </div>

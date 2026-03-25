@@ -16,6 +16,31 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { AnimatedBackground } from "@/components/animated-background";
 import { EmbeddingProgress, EmbeddingStatusBadge } from "@/components/embedding-progress";
 import { motion } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
+
+interface ReleaseAsset {
+  name: string;
+  size: number;
+  downloadCount: number;
+  url: string;
+  browserDownloadUrl: string;
+}
+
+interface Release {
+  id: number;
+  tagName: string;
+  name: string;
+  body: string | null;
+  author: string;
+  createdAt: string;
+  publishedAt: string | null;
+  htmlUrl: string;
+  zipUrl: string | null;
+  tarUrl: string | null;
+  assets: ReleaseAsset[];
+  isPrerelease: boolean;
+}
 
 interface RepositoryDetailPageProps {
   params: Promise<{
@@ -32,6 +57,13 @@ function RepositoryDetailContent({ id }: { id: number }) {
 
   const { data: repository, isLoading, error } = trpc.getRepository.useQuery(
     { id },
+    {
+      retry: false,
+    }
+  );
+
+  const { data: releases, isLoading: isLoadingReleases } = trpc.getReleases.useQuery(
+    { repoId: id, limit: 5 },
     {
       retry: false,
     }
@@ -172,12 +204,112 @@ function RepositoryDetailContent({ id }: { id: number }) {
           <EmbeddingProgress repoId={id} />
         </motion.div>
 
+        {/* Releases */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
+            <CardHeader>
+              <CardTitle>发布版本</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingReleases ? (
+                <div className="text-center text-muted-foreground py-4">加载中...</div>
+              ) : releases && releases.length > 0 ? (
+                <div className="space-y-4">
+                  {releases.map((release) => (
+                    <div key={release.id} className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <a
+                              href={release.htmlUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 font-semibold transition-colors"
+                            >
+                              {release.tagName}
+                            </a>
+                            {release.isPrerelease && (
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                                Pre-release
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-medium text-slate-700">{release.name}</h4>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {release.publishedAt && formatDistanceToNow(new Date(release.publishedAt), {
+                            addSuffix: true,
+                            locale: zhCN,
+                          })}
+                        </div>
+                      </div>
+
+                      {release.body && (
+                        <div className="text-sm text-slate-600 mb-3 line-clamp-3">
+                          {release.body.substring(0, 200)}
+                          {release.body.length > 200 && "..."}
+                        </div>
+                      )}
+
+                      {/* 下载链接 */}
+                      <div className="flex flex-wrap gap-2">
+                        {release.zipUrl && (
+                          <a
+                            href={release.zipUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
+                          >
+                            <span>📦</span> ZIP 源码
+                          </a>
+                        )}
+                        {release.tarUrl && (
+                          <a
+                            href={release.tarUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
+                          >
+                            <span>📦</span> TAR 源码
+                          </a>
+                        )}
+                        {release.assets.map((asset) => (
+                          <a
+                            key={asset.name}
+                            href={asset.browserDownloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
+                            title={`下载次数: ${asset.downloadCount}`}
+                          >
+                            <span>⬇️</span> {asset.name}
+                            <span className="text-xs text-slate-500">({asset.downloadCount})</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-muted-foreground py-8">
+                  <div className="text-4xl mb-2">📦</div>
+                  <p>该仓库暂无发布版本</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
         {/* README 预览 */}
         {repository.readme && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
           >
             <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
               <CardHeader className="border-b border-slate-200/60">

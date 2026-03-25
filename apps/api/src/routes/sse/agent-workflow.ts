@@ -13,12 +13,11 @@ import { createAgent, StreamCallbacks } from "@devscope/ai";
 import { createDb, saveReport } from "@devscope/db";
 import type {
   AgentWorkflowEvent,
-  AgentWorkflowRequest,
   CompetitiveAnalysisReport,
 } from "@devscope/shared";
 import { workflowExecutions } from "@devscope/db";
 import { eq } from "drizzle-orm";
-import { COMPETITIVE_ANALYSIS_SYSTEM_PROMPT } from "@devscope/ai/prompts";
+import { COMPETITIVE_ANALYSIS_SYSTEM_PROMPT } from "@devscope/ai";
 
 // ============================================================================
 // 类型定义
@@ -226,7 +225,7 @@ async function generateStructuredReport(
     dataSources,
     toolOutputs: toolCalls.map((call) => ({
       tool: call.tool,
-      input: call.input,
+      input: call.input as Record<string, unknown>,
       output: call.output,
       timestamp: now,
     })),

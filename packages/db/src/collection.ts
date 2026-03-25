@@ -13,12 +13,14 @@ import {
   repositories,
   repoChunks,
   hackernewsItems,
+  releases,
   type Repository,
   type NewRepository,
   type RepoChunk,
   type NewRepoChunk,
   type HackernewsItem,
   type NewHackernewsItem,
+  type Release,
 } from "./schema";
 
 // ============================================================================
@@ -210,6 +212,87 @@ export async function deleteHackernewsItemsByRepoId(
   repoId: number
 ): Promise<void> {
   await db.delete(hackernewsItems).where(eq(hackernewsItems.repoId, repoId));
+}
+
+// ============================================================================
+// Release 操作
+// ============================================================================
+
+/**
+ * 插入 Releases
+ */
+export async function insertReleases(
+  db: Db,
+  repoId: number,
+  releaseData: Array<{
+    id: number | string;
+    tagName: string;
+    name: string;
+    body: string | null;
+    author: string;
+    createdAt: Date;
+    publishedAt: Date | null;
+    url: string;
+    htmlUrl: string;
+    zipUrl: string | null;
+    tarUrl: string | null;
+    assets: Array<{
+      name: string;
+      size: number;
+      downloadCount: number;
+      url: string;
+      browserDownloadUrl: string;
+    }>;
+    isPrerelease: boolean;
+  }>
+): Promise<Release[]> {
+  if (releaseData.length === 0) return [];
+
+  const values = releaseData.map(r => ({
+    id: typeof r.id === 'string' ? parseInt(r.id.slice(0, 8), 16) || Math.abs(r.id.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)) : r.id,
+    tagName: r.tagName,
+    name: r.name,
+    body: r.body,
+    author: r.author,
+    createdAt: r.createdAt,
+    publishedAt: r.publishedAt,
+    url: r.url,
+    htmlUrl: r.htmlUrl,
+    zipUrl: r.zipUrl,
+    tarUrl: r.tarUrl,
+    assets: r.assets,
+    isPrerelease: r.isPrerelease,
+    repoId,
+    fetchedAt: new Date(),
+  }));
+
+  return db.insert(releases).values(values).returning();
+}
+
+/**
+ * 获取仓库的 Release 列表
+ */
+export async function getReleasesByRepoId(
+  db: Db,
+  repoId: number,
+  limit: number = 10
+): Promise<Release[]> {
+  return db
+    .select()
+    .from(releases)
+    .where(eq(releases.repoId, repoId))
+    .orderBy(desc(releases.createdAt))
+    .limit(limit);
+}
+
+/**
+ * 删除仓库的所有 Release
+ */
+export async function deleteReleasesByRepoId(
+  db: Db,
+  repoId: number
+): Promise<void> {
+  await db.delete(releases).where(eq(releases.repoId, repoId));
 }
 
 // ============================================================================

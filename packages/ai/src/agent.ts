@@ -24,7 +24,7 @@ export interface AgentTool<TInput = unknown, TOutput = unknown> {
   /** 工具描述 */
   description: string;
   /** 输入 Schema (Zod) */
-  inputSchema: z.ZodType<TInput>;
+  inputSchema: z.ZodTypeAny;
   /** 执行函数 */
   handler: (input: TInput) => Promise<TOutput>;
 }
@@ -141,7 +141,7 @@ class GitHubClient {
       throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   async getRepository(owner: string, repo: string) {
@@ -278,7 +278,7 @@ function createRepoAnalyzeHandler(ai: { structuredComplete: (prompt: string, opt
 /**
  * report-generate 工具处理器
  */
-function handleReportGenerate(input: z.infer<typeof ReportGenerateToolInputSchema>) {
+async function handleReportGenerate(input: z.infer<typeof ReportGenerateToolInputSchema>) {
   const analyses = input.analyses || [];
 
   if (analyses.length === 0) {
@@ -457,12 +457,12 @@ export class DevScopeAgent {
       name: "repo_analyze",
       description: "使用 AI 分析 GitHub 仓库的健康度。返回健康度评分、活跃度、风险因素、投资建议等结构化分析结果。",
       inputSchema: RepoAnalyzeToolInputSchema,
-      handler: async (input) => {
+      handler: async (input: unknown) => {
         // 动态创建 handler
-        const { createAI } = await import("./index.js");
+        const { createAI } = await import("./index");
         const ai = createAI();
         const handler = createRepoAnalyzeHandler(ai);
-        return handler(input);
+        return handler(input as z.infer<typeof RepoAnalyzeToolInputSchema>);
       },
     });
 
@@ -701,8 +701,9 @@ export class DevScopeAgent {
         callbacks.onText?.(text);
       });
 
-      stream.on("contentBlockStart", (event) => {
-        if (event.content_block.type === "tool_use") {
+      // @ts-ignore - contentBlockStart event not in MessageStreamEvents type
+      stream.on("contentBlockStart", (event: any) => {
+        if (event.content_block?.type === "tool_use") {
           currentToolUse = {
             id: event.content_block.id,
             name: event.content_block.name,

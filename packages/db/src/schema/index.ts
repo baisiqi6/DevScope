@@ -427,3 +427,60 @@ export type UserWatchedRepository = typeof userWatchedRepositories.$inferSelect;
  * 新用户关注仓库类型
  */
 export type NewUserWatchedRepository = typeof userWatchedRepositories.$inferInsert;
+
+/**
+ * GitHub Releases 表
+ * @description 存储 GitHub 仓库的 Release 版本信息
+ */
+export const releases = pgTable("releases", {
+  /** Release ID（GitHub） */
+  id: integer("id").primaryKey(),
+  /** 关联的仓库 ID */
+  repoId: serial("repo_id").references(() => repositories.id),
+  /** Tag 名称 (如 v1.0.0) */
+  tagName: text("tag_name").notNull(),
+  /** Release 名称 */
+  name: text("name").notNull(),
+  /** Release 描述 */
+  body: text("body"),
+  /** 作者 */
+  author: text("author").notNull(),
+  /** 创建时间 */
+  createdAt: timestamp("created_at").notNull(),
+  /** 发布时间 */
+  publishedAt: timestamp("published_at"),
+  /** API URL */
+  url: text("url").notNull(),
+  /** HTML URL */
+  htmlUrl: text("html_url").notNull(),
+  /** ZIP 下载 URL */
+  zipUrl: text("zip_url"),
+  /** TAR 下载 URL */
+  tarUrl: text("tar_url"),
+  /** 附件列表 (JSON) */
+  assets: jsonb("assets").$type<Array<{
+    name: string;
+    size: number;
+    downloadCount: number;
+    url: string;
+    browserDownloadUrl: string;
+  }>>().notNull(),
+  /** 是否为预发布版本 */
+  isPrerelease: boolean("is_prerelease").default(false).notNull(),
+  /** 本地采集时间 */
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (table) => ({
+  repoIdIdx: index("releases_repo_id_idx").on(table.repoId),
+  tagNameIdx: index("releases_tag_name_idx").on(table.tagName),
+  createdAtIdx: index("releases_created_at_idx").on(table.createdAt),
+}));
+
+/**
+ * Release 数据类型
+ */
+export type Release = typeof releases.$inferSelect;
+
+/**
+ * 新 Release 类型
+ */
+export type NewRelease = typeof releases.$inferInsert;

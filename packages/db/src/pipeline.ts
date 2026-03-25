@@ -7,7 +7,7 @@
  * @module pipeline
  */
 
-import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, repositories } from "./index";
+import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, deleteReleasesByRepoId, insertReleases, repositories } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
 import type { Db } from "./index";
@@ -126,8 +126,8 @@ export interface PipelineInput {
 export class DataCollectionPipeline {
   private db: Db;
   private github: GitHubCollector;
-  private chunker: InstanceType<typeof TextChunker>;
-  private embedder: InstanceType<typeof BGEEmbeddingProvider>;
+  private chunker: import("@devscope/ai").TextChunker;
+  private embedder: import("@devscope/ai").BGEEmbeddingProvider;
   private config: Required<PipelineConfig>;
 
   constructor(db: Db, config: PipelineConfig = {}) {
@@ -544,6 +544,42 @@ export class DataCollectionPipeline {
         }
       } else {
         console.log("[Pipeline] Step 5 skipped: includeHackernews is false");
+      }
+
+      // 7. 采集 Releases 数据
+      console.log("[Pipeline] Step 6: Fetching Releases data...");
+      try {
+        const githubReleases = await this.github.getReleases(owner, repo, 10);
+        console.log("[Pipeline] Releases fetched:", githubReleases.length);
+
+        if (githubReleases.length > 0) {
+          // 先删除该仓库的旧 releases（避免重复数据）
+          console.log("[Pipeline] Deleting old releases for repository:", savedRepo.id);
+          await deleteReleasesByRepoId(this.db, savedRepo.id);
+          console.log("[Pipeline] Old releases deleted, inserting new releases...");
+
+          const dbReleases = githubReleases.map((release) => ({
+            id: release.id,
+            tagName: release.tagName,
+            name: release.name,
+            body: release.body,
+            author: release.author,
+            createdAt: release.createdAt,
+            publishedAt: release.publishedAt,
+            url: release.url,
+            htmlUrl: release.htmlUrl,
+            zipUrl: release.zipUrl,
+            tarUrl: release.tarUrl,
+            assets: release.assets,
+            isPrerelease: release.isPrerelease,
+          }));
+
+          await insertReleases(this.db, savedRepo.id, dbReleases);
+          console.log("[Pipeline] Releases stored:", dbReleases.length);
+        }
+      } catch (err) {
+        console.warn("[Pipeline] Failed to fetch releases:", err);
+        // Releases 不是关键数据，继续执行
       }
 
       status = "completed";

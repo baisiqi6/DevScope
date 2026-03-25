@@ -40,6 +40,31 @@ export interface GitHubRepoInfo {
 }
 
 /**
+ * Release 数据
+ */
+export interface GitHubRelease {
+  id: number | string;
+  tagName: string;
+  name: string;
+  body: string | null;
+  author: string;
+  createdAt: Date;
+  publishedAt: Date | null;
+  url: string;
+  htmlUrl: string;
+  zipUrl: string;
+  tarUrl: string;
+  assets: Array<{
+    name: string;
+    size: number;
+    downloadCount: number;
+    url: string;
+    browserDownloadUrl: string;
+  }>;
+  isPrerelease: boolean;
+}
+
+/**
  * Issue 数据
  */
 export interface GitHubIssue {
@@ -536,12 +561,36 @@ export class GitHubCollector {
   }> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
+    // 获取指定时间范围内的提交
     const { data: commits } = await this.octokit.rest.repos.listCommits({
       owner,
       repo,
       since: since.toISOString(),
       per_page: 100,
     });
+
+    // 额外获取最近一次提交（不受 since 限制）
+    let lastCommitDate: Date;
+    try {
+      const { data: allCommits } = await this.octokit.rest.repos.listCommits({
+        owner,
+        repo,
+        per_page: 1, // 只获取最新的一个提交
+      });
+
+      if (allCommits.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        lastCommitDate = new Date(allCommits[0].commit.author?.date || allCommits[0].commit.committer?.date || 0);
+      } else {
+        lastCommitDate = new Date(0);
+      }
+    } catch {
+      // 如果获取失败，回退到使用 commits 数组中的第一个
+      lastCommitDate = commits.length > 0
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          new Date(commits[0].commit.author?.date || 0)
+        : new Date(0);
+    }
 
     const now = Date.now();
     const last7Days = commits.filter(
@@ -557,10 +606,7 @@ export class GitHubCollector {
       last7Days,
       last30Days,
       last90Days: commits.length,
-      lastCommitDate: commits.length > 0
-        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          new Date(commits[0].commit.author?.date || 0)
-        : new Date(0),
+      lastCommitDate,
     };
   }
 
@@ -612,6 +658,119 @@ export class GitHubCollector {
     }
 
     return results;
+  }
+
+  /**
+   * 获取仓库 Releases
+   * @description 获取仓库最近的 Releases，如果没有正式 releases 则返回 tags
+   */
+  async getReleases(
+    owner: string,
+    repo: string,
+    limit: number = 5
+  ): Promise<GitHubRelease[]> {
+    try {
+      // 先尝试获取正式的 releases
+      const { data: releases } = await this.octokit.rest.repos.listReleases({
+        owner,
+        repo,
+        per_page: limit,
+      });
+
+      if (releases.length > 0) {
+        return releases.map((release: any) => ({
+          id: release.id,
+          tagName: release.tag_name,
+          name: release.name || release.tag_name,
+          body: release.body,
+          author: release.author?.login || "unknown",
+          createdAt: new Date(release.created_at),
+          publishedAt: release.published_at ? new Date(release.published_at) : null,
+          url: release.url,
+          htmlUrl: release.html_url,
+          zipUrl: release.zipball_url,
+          tarUrl: release.tarball_url,
+          assets: (release.assets || []).map((asset: any) => ({
+            name: asset.name,
+            size: asset.size,
+            downloadCount: asset.download_count,
+            url: asset.url,
+            browserDownloadUrl: asset.browser_download_url,
+          })),
+          isPrerelease: release.prerelease || false,
+        }));
+      }
+
+      // 如果没有 releases，尝试获取 tags
+      console.log(`[getReleases] No releases found for ${owner}/${repo}, falling back to tags...`);
+      const { data: tags } = await this.octokit.rest.repos.listTags({
+        owner,
+        repo,
+        per_page: limit,
+      });
+
+      // 为每个 tag 生成唯一的数字 ID（基于 commit sha 的哈希）
+      const generateTagId = (sha: string): number => {
+        let hash = 0;
+        for (let i = 0; i < sha.length; i++) {
+          const char = sha.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash);
+      };
+
+      // 获取每个 tag 的详细信息
+      const tagReleases: GitHubRelease[] = [];
+      for (const tag of tags.slice(0, limit)) {
+        try {
+          // 尝试获取 tag 的 commit 信息
+          const { data: commit } = await this.octokit.rest.git.getCommit({
+            owner,
+            repo,
+            commit_sha: tag.commit.sha,
+          });
+
+          tagReleases.push({
+            id: generateTagId(tag.commit.sha),
+            tagName: tag.name,
+            name: tag.name,
+            body: commit.message || null,
+            author: commit.author?.name || "unknown",
+            createdAt: new Date(commit.committer?.date || Date.now()),
+            publishedAt: new Date(commit.committer?.date || Date.now()),
+            url: tag.commit.url,
+            htmlUrl: `https://github.com/${owner}/${repo}/releases/tag/${tag.name}`,
+            zipUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.zip`,
+            tarUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.tar.gz`,
+            assets: [], // Tags 没有 assets
+            isPrerelease: false,
+          });
+        } catch (err) {
+          // 如果获取 commit 失败，使用基本信息
+          tagReleases.push({
+            id: generateTagId(tag.commit.sha),
+            tagName: tag.name,
+            name: tag.name,
+            body: null,
+            author: "unknown",
+            createdAt: new Date(),
+            publishedAt: null,
+            url: tag.commit.url,
+            htmlUrl: `https://github.com/${owner}/${repo}/releases/tag/${tag.name}`,
+            zipUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.zip`,
+            tarUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.tar.gz`,
+            assets: [],
+            isPrerelease: false,
+          });
+        }
+      }
+
+      return tagReleases;
+    } catch (error) {
+      console.error(`[getReleases] Failed to fetch releases for ${owner}/${repo}:`, error);
+      return [];
+    }
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   repoChunks,
   createOSSInsightClient,
   createGitHubCollector,
+  getReleasesByRepoId,
 } from "@devscope/db";
 import { eq } from "drizzle-orm";
 import {
@@ -274,6 +275,55 @@ export const appRouter = router({
     }),
 
   /**
+   * 获取仓库 Releases
+   * @description 根据 ID 获取仓库的 Release 版本列表
+   */
+  getReleases: publicProcedure
+    .input(z.object({
+      repoId: z.number(),
+      limit: z.number().min(1).max(50).default(10),
+    }))
+    .output(z.array(z.object({
+      id: z.number(),
+      tagName: z.string(),
+      name: z.string(),
+      body: z.string().nullable(),
+      author: z.string(),
+      createdAt: z.string(),
+      publishedAt: z.string().nullable(),
+      htmlUrl: z.string(),
+      zipUrl: z.string().nullable(),
+      tarUrl: z.string().nullable(),
+      assets: z.array(z.object({
+        name: z.string(),
+        size: z.number(),
+        downloadCount: z.number(),
+        url: z.string(),
+        browserDownloadUrl: z.string(),
+      })),
+      isPrerelease: z.boolean(),
+    })))
+    .query(async ({ input }) => {
+      const db = createDb();
+      const releases = await getReleasesByRepoId(db, input.repoId, input.limit);
+
+      return releases.map((r) => ({
+        id: r.id,
+        tagName: r.tagName,
+        name: r.name,
+        body: r.body,
+        author: r.author,
+        createdAt: r.createdAt.toISOString(),
+        publishedAt: r.publishedAt?.toISOString() || null,
+        htmlUrl: r.htmlUrl,
+        zipUrl: r.zipUrl,
+        tarUrl: r.tarUrl,
+        assets: r.assets,
+        isPrerelease: r.isPrerelease,
+      }));
+    }),
+
+  /**
    * 采集仓库数据
    * @description 触发数据采集流程，拉取 GitHub 数据并存储到数据库
    */
@@ -364,6 +414,117 @@ export const appRouter = router({
         startedAt: repo.embeddingStartedAt?.toISOString() || null,
         completedAt: repo.embeddingCompletedAt?.toISOString() || null,
         error: repo.embeddingError || null,
+      };
+    }),
+
+  /**
+   * 同步仓库向量化状态
+   * @description 检查 repo_chunks 表中的 embedding 数据，更新 repositories 表的状态
+   */
+  syncEmbeddingStatus: publicProcedure
+    .input(z.object({
+      repoId: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = createDb();
+
+      // 如果指定了 repoId，只同步该仓库
+      const whereClause = input.repoId
+        ? eq(repositories.id, input.repoId)
+        : undefined;
+
+      const repoList = await db
+        .select({
+          id: repositories.id,
+          fullName: repositories.fullName,
+          embeddingStatus: repositories.embeddingStatus,
+        })
+        .from(repositories)
+        .where(whereClause);
+
+      const results = [];
+
+      for (const repo of repoList) {
+        // 统计该仓库的 chunks
+        const chunksResult = await db
+          .select({
+            totalCount: { count: repoChunks.id },
+            withEmbeddingCount: { count: repoChunks.id },
+          })
+          .from(repoChunks)
+          .where(eq(repoChunks.repoId, repo.id));
+
+        // 重新查询获取正确的统计
+        const allChunks = await db
+          .select({ embedding: repoChunks.embedding })
+          .from(repoChunks)
+          .where(eq(repoChunks.repoId, repo.id));
+
+        const totalChunks = allChunks.length;
+        const withEmbedding = allChunks.filter((c) => c.embedding !== null && c.embedding !== undefined).length;
+
+        if (totalChunks === 0) {
+          results.push({
+            repoId: repo.id,
+            fullName: repo.fullName,
+            status: 'no_chunks',
+            message: '没有 chunks 数据',
+          });
+          continue;
+        }
+
+        const progress = Math.floor((withEmbedding / totalChunks) * 100);
+
+        // 更新状态
+        if (withEmbedding === totalChunks && repo.embeddingStatus !== 'completed') {
+          await db
+            .update(repositories)
+            .set({
+              embeddingStatus: 'completed',
+              embeddingProgress: 100,
+              embeddingTotalChunks: totalChunks,
+              embeddingCompletedChunks: totalChunks,
+              embeddingCompletedAt: new Date(),
+              embeddingError: null,
+            })
+            .where(eq(repositories.id, repo.id));
+
+          results.push({
+            repoId: repo.id,
+            fullName: repo.fullName,
+            status: 'updated_to_completed',
+            message: `更新为完成 (${withEmbedding}/${totalChunks})`,
+          });
+        } else if (withEmbedding > 0 && repo.embeddingStatus === 'pending') {
+          await db
+            .update(repositories)
+            .set({
+              embeddingStatus: 'processing',
+              embeddingProgress: progress,
+              embeddingTotalChunks: totalChunks,
+              embeddingCompletedChunks: withEmbedding,
+            })
+            .where(eq(repositories.id, repo.id));
+
+          results.push({
+            repoId: repo.id,
+            fullName: repo.fullName,
+            status: 'updated_to_processing',
+            message: `更新为进行中 ${progress}% (${withEmbedding}/${totalChunks})`,
+          });
+        } else {
+          results.push({
+            repoId: repo.id,
+            fullName: repo.fullName,
+            status: 'no_change',
+            message: `${repo.embeddingStatus} (${withEmbedding}/${totalChunks})`,
+          });
+        }
+      }
+
+      return {
+        total: repoList.length,
+        results,
       };
     }),
 

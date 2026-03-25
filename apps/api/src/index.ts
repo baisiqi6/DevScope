@@ -142,15 +142,49 @@ function createTRPCHandle() {
         console.log("[tRPC] 🔍 DEBUG - Parsed input:", JSON.stringify(input, null, 2));
       }
 
-      // 调用路由
-      const result = await (caller as any)[path](input);
+      // 调用路由（支持批量请求）
+      let result: any;
+
+      // 检测批量请求格式: "getRepository,getReleases"
+      if (path.includes(',')) {
+        console.log("[tRPC] ✅ Detected batch request, path:", path);
+        const paths = path.split(',');
+        const batchInputs = Array.isArray(input) ? input : [input];
+
+        // 处理批量请求
+        const batchResults = await Promise.allSettled(
+          paths.map((p, i) => (caller as any)[p](batchInputs[i] || batchInputs[0]))
+        );
+
+        // 格式化批量响应
+        result = batchResults.map((settled, index) => {
+          if (settled.status === 'fulfilled') {
+            return { result: { data: settled.value } };
+          } else {
+            console.error(`[tRPC] Batch item ${index} failed:`, settled.reason);
+            return {
+              error: {
+                message: settled.reason?.message || 'Batch item failed',
+                code: -32603,
+                data: paths[index],
+              }
+            };
+          }
+        });
+      } else {
+        // 单个请求
+        result = await (caller as any)[path](input);
+      }
 
       // 返回结果（支持批量请求响应格式）
-      reply.send({
-        result: {
-          data: result,
-        },
-      });
+      reply.send(path.includes(',')
+        ? result  // 批量请求：直接返回数组
+        : {       // 单个请求：包装在 result.data 中
+            result: {
+              data: result,
+            },
+          }
+      );
     } catch (error: any) {
       console.error("[tRPC] Error caught in createTRPCHandle:");
       console.error("[tRPC] Error type:", typeof error);

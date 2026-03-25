@@ -3,7 +3,7 @@
  * @description 显示仓库向量化的实时进度
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -20,6 +20,10 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
     status: 'pending' | 'processing' | 'completed' | 'failed';
     error: string | null;
   } | null>(null);
+
+  // 使用 ref 存储 onComplete，避免依赖变化导致循环
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   const { data: statusData } = trpc.getEmbeddingStatus.useQuery(
     { repoId: repoId! },
@@ -48,12 +52,12 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
         error: statusData.error,
       });
 
-      // 如果完成，触发回调
-      if (statusData.status === 'completed' && onComplete) {
-        onComplete();
+      // 如果完成，触发回调（使用 ref 避免依赖问题）
+      if (statusData.status === 'completed' && onCompleteRef.current) {
+        onCompleteRef.current();
       }
     }
-  }, [statusData, onComplete]);
+  }, [statusData]); // 移除 onComplete 依赖
 
   if (!repoId || !status) {
     return null;
@@ -61,6 +65,11 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
 
   // 如果已完成且进度 100%，不显示（让调用者显示完成消息）
   if (status.status === 'completed' && status.progress === 100) {
+    return null;
+  }
+
+  // 如果是 pending 状态且进度为 0%，不显示（未开始的状态）
+  if (status.status === 'pending' && status.progress === 0) {
     return null;
   }
 
