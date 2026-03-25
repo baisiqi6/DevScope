@@ -7,19 +7,25 @@
 
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { RepositoryCard } from "@/components/repository-card";
 import { CollectForm } from "@/components/collect-form";
 import { FollowingList } from "@/components/following-list";
+import { Navigation } from "@/components/navigation";
+import { ViewModeToggle, useViewMode } from "@/components/view-toggle";
+import { SortControl, useSortPreferences, sortRepositories } from "@/components/sort-control";
 import { Button } from "@/components/ui/button";
 import { AnimatedBackground, FadeInItem } from "@/components/animated-background";
 import { motion } from "framer-motion";
+import { useMemo } from "react";
 
 export default function HomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"collect" | "following">("collect");
+  const [viewMode, setViewMode] = useViewMode("card");
+  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences("stars", "desc");
 
   // 获取仓库列表
   const { data: repositories, isLoading, error, refetch } = trpc.getRepositories.useQuery(
@@ -29,6 +35,12 @@ export default function HomePage() {
       refetchOnWindowFocus: false,
     }
   );
+
+  // 应用排序
+  const sortedRepositories = useMemo(() => {
+    if (!repositories) return repositories;
+    return sortRepositories(repositories, sortBy, order);
+  }, [repositories, sortBy, order]);
 
   const handleViewDetails = (id: number) => {
     router.push(`/repository/${id}`);
@@ -61,22 +73,7 @@ export default function HomePage() {
           >
             DevScope
           </motion.h1>
-          <nav className="flex gap-4">
-            <Button
-              variant="ghost"
-              onClick={() => router.push("/")}
-              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-            >
-              仓库列表
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => router.push("/search")}
-              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-            >
-              语义搜索
-            </Button>
-          </nav>
+          <Navigation />
         </div>
       </header>
 
@@ -116,6 +113,15 @@ export default function HomePage() {
               <h2 className="text-xl font-semibold">
                 已采集仓库 {repositories && `(${repositories.length})`}
               </h2>
+              <div className="flex items-center gap-3">
+                <SortControl
+                  value={sortBy}
+                  order={order}
+                  onSortChange={setSortBy}
+                  onOrderToggle={toggleOrder}
+                />
+                <ViewModeToggle value={viewMode} onChange={setViewMode} />
+              </div>
             </div>
 
             {isLoading && (
@@ -130,20 +136,21 @@ export default function HomePage() {
               </div>
             )}
 
-            {repositories && repositories.length === 0 && (
+            {sortedRepositories && sortedRepositories.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <p className="mb-4">还没有采集任何仓库数据</p>
                 <p className="text-sm">在左侧输入仓库地址开始采集</p>
               </div>
             )}
 
-            {repositories && repositories.length > 0 && (
-              <div className="grid gap-4">
-                {repositories.map((repo, index) => (
+            {sortedRepositories && sortedRepositories.length > 0 && (
+              <div className={viewMode === "card" ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "grid gap-3"}>
+                {sortedRepositories.map((repo, index) => (
                   <FadeInItem key={repo.id} index={index}>
                     <RepositoryCard
                       repository={repo}
                       onViewDetails={handleViewDetails}
+                      viewMode={viewMode}
                     />
                   </FadeInItem>
                 ))}

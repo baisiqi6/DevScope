@@ -18,8 +18,11 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AgentThinkingView } from "@/components/agent-thinking-view";
 import { ReportView } from "@/components/report-view";
+import { Navigation } from "@/components/navigation";
+import { AnimatedBackground } from "@/components/animated-background";
 import { useAgentWorkflow } from "@/hooks/use-agent-workflow";
 import { AlertCircle, Play, RotateCcw } from "lucide-react";
+import { motion } from "framer-motion";
 
 // ============================================================================
 // 页面组件
@@ -88,7 +91,26 @@ export default function CompetitiveAnalysisPage() {
   const isFailed = status === "failed";
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-6xl">
+    <main className="min-h-screen">
+      {/* 动画背景 */}
+      <AnimatedBackground />
+
+      {/* Header */}
+      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <motion.h1
+            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            DevScope
+          </motion.h1>
+          <Navigation />
+        </div>
+      </header>
+
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
       {/* 页面标题 */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">竞争格局分析</h1>
@@ -284,6 +306,7 @@ export default function CompetitiveAnalysisPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </main>
   );
 }

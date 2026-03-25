@@ -13,12 +13,10 @@ import { SearchBar } from "@/components/search-bar";
 import { SearchResults } from "@/components/search-results";
 import { AnswerCard } from "@/components/answer-card";
 import { AnimatedBackground } from "@/components/animated-background";
+import { Navigation } from "@/components/navigation";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 
 export default function SearchPage() {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("vercel/next.js");
 
@@ -49,15 +47,9 @@ export default function SearchPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            语义搜索
+            DevScope
           </motion.h1>
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/")}
-            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-          >
-            返回首页
-          </Button>
+          <Navigation />
         </div>
       </header>
 
