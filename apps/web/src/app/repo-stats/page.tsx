@@ -79,6 +79,7 @@ interface RepositoryStats {
 
 function StatsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const repo = searchParams.get("repo");
   const [stats, setStats] = useState<RepositoryStats | null>(null);
   const [loading, setLoading] = useState(true);

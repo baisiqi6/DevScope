@@ -37,6 +37,7 @@ import {
   type CollectionResult,
 } from "@devscope/shared";
 import { workflowRouter } from "./router/workflow";
+import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
 
 // ============================================================================
 // 初始化 AI 服务
@@ -67,6 +68,11 @@ function getAI() {
 export const appRouter = router({
   // 工作流相关路由
   workflow: workflowRouter,
+
+  // 仓库分组相关路由
+  groups: groupsRouter,
+  groupMembers: groupMembersRouter,
+  groupsQuery: groupsQueryRouter,
 
   /**
    * 获取趋势仓库列表

@@ -12,7 +12,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle2, Wrench, FileText, Brain, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, Wrench, FileText, Brain, AlertCircle, Terminal } from "lucide-react";
 import type { AgentWorkflowEvent } from "@devscope/shared";
 import type { WorkflowStatus } from "@/hooks/use-agent-workflow";
 
@@ -29,6 +29,8 @@ interface AgentThinkingViewProps {
   thinkingText: string;
   /** 输出文本累积 */
   outputText: string;
+  /** 终端输出累积 */
+  terminalOutput: string;
   /** 当前状态 */
   status: WorkflowStatus;
 }
@@ -42,6 +44,7 @@ export function AgentThinkingView({
   currentTool,
   thinkingText,
   outputText,
+  terminalOutput,
   status,
 }: AgentThinkingViewProps) {
   return (
@@ -107,6 +110,21 @@ export function AgentThinkingView({
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                 {outputText}
               </p>
+            </ScrollArea>
+          </div>
+        )}
+
+        {/* 终端输出 */}
+        {terminalOutput && (
+          <div className="p-4 bg-gray-900 dark:bg-black rounded-lg border border-gray-700">
+            <div className="flex items-center gap-2 mb-2">
+              <Terminal className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium text-green-400">终端输出</span>
+            </div>
+            <ScrollArea className="max-h-[300px]">
+              <pre className="text-xs text-green-300 font-mono whitespace-pre-wrap break-all">
+                {terminalOutput}
+              </pre>
             </ScrollArea>
           </div>
         )}
@@ -193,6 +211,8 @@ function getEventIcon(event: AgentWorkflowEvent) {
       return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />;
     case "text":
       return <FileText className="h-4 w-4 text-gray-500 flex-shrink-0 mt-0.5" />;
+    case "terminal":
+      return <Terminal className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />;
     case "report":
       return <FileText className="h-4 w-4 text-indigo-500 flex-shrink-0 mt-0.5" />;
     case "complete":
@@ -221,6 +241,9 @@ function getEventContent(event: AgentWorkflowEvent): string {
     case "text":
       const output = event.data.text;
       return output.length > 80 ? output.substring(0, 80) + "..." : output;
+    case "terminal":
+      const msg = event.data.message;
+      return msg.length > 80 ? msg.substring(0, 80) + "..." : msg;
     case "report":
       return `报告已生成: ${event.data.summary.substring(0, 50)}...`;
     case "complete":

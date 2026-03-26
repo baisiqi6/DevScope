@@ -20,8 +20,9 @@ import { AgentThinkingView } from "@/components/agent-thinking-view";
 import { ReportView } from "@/components/report-view";
 import { Navigation } from "@/components/navigation";
 import { AnimatedBackground } from "@/components/animated-background";
+import { ExecutionTimer } from "@/components/execution-timer";
 import { useAgentWorkflow } from "@/hooks/use-agent-workflow";
-import { AlertCircle, Play, RotateCcw } from "lucide-react";
+import { AlertCircle, Play, RotateCcw, TrendingUp, GitCompare } from "lucide-react";
 import { motion } from "framer-motion";
 
 // ============================================================================
@@ -31,9 +32,33 @@ import { motion } from "framer-motion";
 export default function CompetitiveAnalysisPage() {
   const [repos, setRepos] = useState<string>("");
   const [context, setContext] = useState<string>("");
-  const [analysisType, setAnalysisType] = useState<"competitive_landscape" | "health_report" | "single_repo">(
+  const [analysisType, setAnalysisType] = useState<"competitive_landscape" | "single_repo">(
     "competitive_landscape"
   );
+
+  // 根据分析类型获取标题和描述
+  const getAnalysisTypeConfig = () => {
+    switch (analysisType) {
+      case "competitive_landscape":
+        return {
+          title: "竞争格局分析",
+          description: "输入多个 GitHub 仓库，AI Agent 将自主完成数据采集、健康度分析和竞争格局对比，生成可追溯的分析报告。",
+          placeholder: "vercel/next.js\nfacebook/react\nvuejs/vue\nsveltejs/svelte",
+          icon: <TrendingUp className="h-6 w-6 text-blue-600" />,
+          color: "blue",
+        };
+      case "single_repo":
+        return {
+          title: "单仓库分析",
+          description: "输入单个 GitHub 仓库，AI Agent 将快速生成概览报告，包含关键指标、风险因素和投资建议。",
+          placeholder: "RubyMetric/chsrc",
+          icon: <GitCompare className="h-6 w-6 text-purple-600" />,
+          color: "purple",
+        };
+    }
+  };
+
+  const config = getAnalysisTypeConfig();
 
   const {
     status,
@@ -44,6 +69,7 @@ export default function CompetitiveAnalysisPage() {
     report,
     error,
     executionId,
+    startTime,
     startWorkflow,
     cancelWorkflow,
     reset,
@@ -112,49 +138,128 @@ export default function CompetitiveAnalysisPage() {
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
       {/* 页面标题 */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">竞争格局分析</h1>
+      <motion.div
+        key={analysisType}
+        className="mb-8"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          {config.icon}
+          <h1 className="text-3xl font-bold">{config.title}</h1>
+        </div>
         <p className="text-gray-500 dark:text-gray-400">
-          输入多个 GitHub 仓库，AI Agent 将自主完成数据采集、健康度分析和竞争格局对比，
-          生成可追溯的分析报告。
+          {config.description}
         </p>
-      </div>
+      </motion.div>
 
       {/* 输入区域 */}
       {!isCompleted && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>分析配置</CardTitle>
-            <CardDescription>配置要分析的仓库和分析类型</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
+          <Card className="mb-6 border-2 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl flex items-center gap-2">
+                    <Play className="h-6 w-6 text-blue-600" />
+                    开始分析
+                  </CardTitle>
+                  <CardDescription className="mt-2 text-base">
+                    选择分析类型，输入仓库地址，AI Agent 将自动完成分析
+                  </CardDescription>
+                </div>
+                <div className={`hidden md:flex h-12 w-12 items-center justify-center rounded-full ${
+                  analysisType === "competitive_landscape" ? "bg-blue-100" : "bg-purple-100"
+                }`}>
+                  {analysisType === "competitive_landscape" ? <TrendingUp className="h-6 w-6 text-blue-600" /> :
+                   <GitCompare className="h-6 w-6 text-purple-600" />}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
             {/* 分析类型选择 */}
             <div>
-              <Label className="text-base font-medium mb-3 block">分析类型</Label>
+              <Label className="text-base font-medium mb-3 block">选择分析类型</Label>
               <RadioGroup
                 value={analysisType}
                 onValueChange={(value) => setAnalysisType(value as any)}
                 disabled={isRunning}
-                className="grid grid-cols-3 gap-4"
+                className="grid grid-cols-1 md:grid-cols-2 gap-3"
               >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="competitive_landscape" id="competitive" />
-                  <Label htmlFor="competitive" className="cursor-pointer">
-                    竞争格局分析
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="health_report" id="health" />
-                  <Label htmlFor="health" className="cursor-pointer">
-                    健康度报告
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="single_repo" id="single" />
-                  <Label htmlFor="single" className="cursor-pointer">
-                    单仓库分析
-                  </Label>
-                </div>
+                {/* 竞争格局分析 */}
+                <motion.div
+                  whileHover={{ scale: isRunning ? 1 : 1.02 }}
+                  whileTap={isRunning ? {} : { scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="h-full"
+                >
+                  <div
+                    className={`
+                      relative flex flex-col h-full min-h-[120px] p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+                      ${analysisType === "competitive_landscape"
+                        ? "border-blue-500 bg-blue-50 shadow-md"
+                        : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50"
+                      }
+                      ${isRunning ? "opacity-50 cursor-not-allowed" : ""}
+                    `}
+                    onClick={() => !isRunning && setAnalysisType("competitive_landscape")}
+                  >
+                    <div className="flex items-start space-x-3 flex-1">
+                      <RadioGroupItem value="competitive_landscape" id="competitive" className="mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <TrendingUp className={`h-5 w-5 ${analysisType === "competitive_landscape" ? "text-blue-600" : "text-gray-500"}`} />
+                          <Label htmlFor="competitive" className="cursor-pointer font-semibold">
+                            竞争格局分析
+                          </Label>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          对比多个仓库，分析市场定位、技术栈差异和竞争关系
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* 单仓库分析 */}
+                <motion.div
+                  whileHover={{ scale: isRunning ? 1 : 1.02 }}
+                  whileTap={isRunning ? {} : { scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="h-full"
+                >
+                  <div
+                    className={`
+                      relative flex flex-col h-full min-h-[120px] p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+                      ${analysisType === "single_repo"
+                        ? "border-purple-500 bg-purple-50 shadow-md"
+                        : "border-gray-200 hover:border-purple-300 hover:bg-purple-50/50"
+                      }
+                      ${isRunning ? "opacity-50 cursor-not-allowed" : ""}
+                    `}
+                    onClick={() => !isRunning && setAnalysisType("single_repo")}
+                  >
+                    <div className="flex items-start space-x-3 flex-1">
+                      <RadioGroupItem value="single_repo" id="single" className="mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <GitCompare className={`h-5 w-5 ${analysisType === "single_repo" ? "text-purple-600" : "text-gray-500"}`} />
+                          <Label htmlFor="single" className="cursor-pointer font-semibold">
+                            单仓库分析
+                          </Label>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          快速获取单个仓库的概览、关键指标和投资建议
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
               </RadioGroup>
             </div>
 
@@ -170,7 +275,7 @@ export default function CompetitiveAnalysisPage() {
                 id="repos"
                 value={repos}
                 onChange={(e) => setRepos(e.target.value)}
-                placeholder={`vercel/next.js\nfacebook/react\nvuejs/vue\nsveltejs/svelte`}
+                placeholder={config.placeholder}
                 rows={6}
                 disabled={isRunning}
                 className="font-mono"
@@ -193,7 +298,7 @@ export default function CompetitiveAnalysisPage() {
             </div>
 
             {/* 操作按钮 */}
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
               <Button onClick={handleStart} disabled={isRunning} size="lg">
                 {isRunning ? (
                   <>
@@ -207,6 +312,11 @@ export default function CompetitiveAnalysisPage() {
                   </>
                 )}
               </Button>
+
+              {/* 执行计时器 */}
+              {isRunning && (
+                <ExecutionTimer isRunning={isRunning} startTime={startTime || undefined} />
+              )}
 
               {isRunning && (
                 <Button variant="outline" onClick={cancelWorkflow} size="lg">
@@ -223,6 +333,7 @@ export default function CompetitiveAnalysisPage() {
             </div>
           </CardContent>
         </Card>
+        </motion.div>
       )}
 
       {/* 错误显示 */}

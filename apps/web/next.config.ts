@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
         source: "/api/trpc/:path*",
         destination: "http://localhost:3100/trpc/:path*",
       },
+      {
+        source: "/api/agent/:path*",
+        destination: "http://localhost:3100/api/agent/:path*",
+      },
     ];
   },
 };

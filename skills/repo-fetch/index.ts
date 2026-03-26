@@ -19,6 +19,7 @@
  */
 
 import { z } from "zod";
+import { GitHubClient, RepositoryInfo, Issue, Commit } from "@devscope/shared";
 
 // ============================================================================
 // 输入验证
@@ -51,53 +52,6 @@ export const RepoFetchInputSchema = z.object({
  */
 export const RepoFetchBatchInputSchema = z.array(RepoFetchInputSchema);
 
-// ============================================================================
-// 类型定义
-// ============================================================================
-
-/**
- * GitHub 仓库基础信息
- */
-export interface RepositoryInfo {
-  fullName: string;
-  name: string;
-  owner: string;
-  description: string | null;
-  url: string;
-  stars: number;
-  forks: number;
-  openIssues: number;
-  language: string | null;
-  license: string | null;
-  createdAt: string;
-  updatedAt: string;
-  pushedAt: string;
-}
-
-/**
- * Issue 数据
- */
-export interface Issue {
-  number: number;
-  title: string;
-  state: string;
-  author: string;
-  createdAt: string;
-  updatedAt: string;
-  comments: number;
-  labels: string[];
-}
-
-/**
- * Commit 数据
- */
-export interface Commit {
-  sha: string;
-  message: string;
-  author: string;
-  date: string;
-}
-
 /**
  * 完整仓库数据
  */
@@ -106,102 +60,6 @@ export interface RepoData {
   issues?: Issue[];
   commits?: Commit[];
   fetchedAt: string;
-}
-
-// ============================================================================
-// GitHub API 客户端
-// ============================================================================
-
-/**
- * GitHub API 客户端
- */
-class GitHubClient {
-  private token: string | undefined;
-  private baseUrl = "https://api.github.com";
-
-  constructor(token?: string) {
-    this.token = token || process.env.GITHUB_TOKEN;
-  }
-
-  /**
-   * 发送 API 请求
-   */
-  private async fetch<T>(endpoint: string): Promise<T> {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github.v3+json",
-    };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-
-    const response = await fetch(`${this.baseUrl}${endpoint}`, { headers });
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * 获取仓库信息
-   */
-  async getRepository(owner: string, repo: string): Promise<RepositoryInfo> {
-    const data = await this.fetch<any>(`/repos/${owner}/${repo}`);
-
-    return {
-      fullName: data.full_name,
-      name: data.name,
-      owner: data.owner.login,
-      description: data.description,
-      url: data.html_url,
-      stars: data.stargazers_count,
-      forks: data.forks_count,
-      openIssues: data.open_issues_count,
-      language: data.language,
-      license: data.license?.spdx_id || null,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      pushedAt: data.pushed_at,
-    };
-  }
-
-  /**
-   * 获取 Issues
-   */
-  async getIssues(owner: string, repo: string, limit: number): Promise<Issue[]> {
-    const data = await this.fetch<any[]>(
-      `/repos/${owner}/${repo}/issues?state=open&per_page=${limit}`
-    );
-
-    return data.map((issue) => ({
-      number: issue.number,
-      title: issue.title,
-      state: issue.state,
-      author: issue.user.login,
-      createdAt: issue.created_at,
-      updatedAt: issue.updated_at,
-      comments: issue.comments,
-      labels: issue.labels.map((l: any) => l.name),
-    }));
-  }
-
-  /**
-   * 获取 Commits
-   */
-  async getCommits(owner: string, repo: string, limit: number): Promise<Commit[]> {
-    const data = await this.fetch<any[]>(
-      `/repos/${owner}/${repo}/commits?per_page=${limit}`
-    );
-
-    return data.map((commit) => ({
-      sha: commit.sha,
-      message: commit.commit.message,
-      author: commit.commit.author.name,
-      date: commit.commit.author.date,
-    }));
-  }
 }
 
 // ============================================================================

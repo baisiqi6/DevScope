@@ -253,8 +253,8 @@ export const riskFactorSchema = z.object({
   category: z.string(),
   /** 风险描述 */
   description: z.string(),
-  /** 严重程度（1-10） */
-  severity: z.number().min(1).max(10),
+  /** 严重程度（0-100，0 表示无风险） */
+  severity: z.number().min(0).max(100),
 });
 
 /** 风险因素类型 */
@@ -269,8 +269,8 @@ export const opportunitySchema = z.object({
   category: z.string(),
   /** 机会描述 */
   description: z.string(),
-  /** 潜在影响（1-10） */
-  potential: z.number().min(1).max(10),
+  /** 潜在影响（0-100，0 表示无机会） */
+  potential: z.number().min(0).max(100),
 });
 
 /** 机会因素类型 */
@@ -915,6 +915,20 @@ export const completeEventDataSchema = z.object({
 });
 
 /**
+ * SSE 终端输出事件数据
+ */
+export const terminalEventDataSchema = z.object({
+  /** 输出级别 */
+  level: z.enum(["log", "info", "warn", "error", "debug"]),
+  /** 输出内容 */
+  message: z.string(),
+  /** 时间戳 */
+  timestamp: z.string(),
+  /** 源标签（可选，用于标识输出来源） */
+  source: z.string().optional(),
+});
+
+/**
  * SSE 事件 Schema (联合类型)
  */
 export const agentWorkflowEventSchema = z.discriminatedUnion("type", [
@@ -941,6 +955,10 @@ export const agentWorkflowEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("complete"),
     data: completeEventDataSchema,
+  }),
+  z.object({
+    type: z.literal("terminal"),
+    data: terminalEventDataSchema,
   }),
 ]);
 
@@ -1084,8 +1102,8 @@ export const riskItemSchema = z.object({
   category: riskCategorySchema,
   /** 描述 */
   description: z.string(),
-  /** 严重程度 (1-10) */
-  severity: z.number().min(1).max(10),
+  /** 严重程度 (1-100) */
+  severity: z.number().min(1).max(100),
   /** 缓解措施 */
   mitigation: z.string().optional(),
 });
@@ -1156,6 +1174,10 @@ export const competitiveAnalysisReportSchema = z.object({
   /** 分析类型 */
   analysisType: analysisTypeEnumSchema,
 
+  // AI 详细分析 (Agent 生成的完整文本报告)
+  /** AI 详细分析内容 */
+  aiAnalysis: z.string().optional(),
+
   // 执行摘要
   /** 执行摘要 */
   executiveSummary: executiveSummarySchema,
@@ -1195,3 +1217,170 @@ export type RiskMatrix = z.infer<typeof riskMatrixSchema>;
 
 /** 投资建议详情类型 */
 export type InvestmentRecommendationsDetail = z.infer<typeof investmentRecommendationsDetailSchema>;
+
+// ============================================================================
+// 仓库分组类型 (Repository Groups)
+// ============================================================================
+
+/**
+ * 仓库分组 Schema
+ */
+export const repositoryGroupSchema = z.object({
+  /** 分组 ID */
+  id: z.number(),
+  /** 用户 ID */
+  userId: z.number(),
+  /** 分组名称 */
+  name: z.string().min(1).max(50),
+  /** 分组颜色 */
+  color: z.string().default("blue"),
+  /** 分组图标 */
+  icon: z.string().default("folder"),
+  /** 分组描述 */
+  description: z.string().optional(),
+  /** 显示顺序 */
+  orderIndex: z.number(),
+  /** 创建时间 */
+  createdAt: z.string(),
+  /** 更新时间 */
+  updatedAt: z.string(),
+  /** 分组内的仓库数量（扩展字段，查询时计算） */
+  repoCount: z.number().optional(),
+});
+
+/** 仓库分组类型 */
+export type RepositoryGroup = z.infer<typeof repositoryGroupSchema>;
+
+/**
+ * 分组成员 Schema
+ */
+export const groupMemberSchema = z.object({
+  /** 成员记录 ID */
+  id: z.number(),
+  /** 分组 ID */
+  groupId: z.number(),
+  /** 仓库 ID */
+  repoId: z.number(),
+  /** 在分组内的顺序 */
+  orderIndex: z.number(),
+  /** 添加时间 */
+  createdAt: z.string(),
+});
+
+/** 分组成员类型 */
+export type GroupMember = z.infer<typeof groupMemberSchema>;
+
+/**
+ * 分组颜色枚举
+ */
+export const groupColorEnum = z.enum(["blue", "green", "purple", "orange", "red", "pink"]);
+
+/** 分组颜色类型 */
+export type GroupColor = z.infer<typeof groupColorEnum>;
+
+/**
+ * 创建分组请求 Schema
+ */
+export const createGroupSchema = z.object({
+  /** 分组名称 */
+  name: z.string().min(1).max(50),
+  /** 分组颜色 */
+  color: groupColorEnum.optional(),
+  /** 分组图标 */
+  icon: z.string().optional(),
+  /** 分组描述 */
+  description: z.string().optional(),
+});
+
+/** 创建分组请求类型 */
+export type CreateGroupInput = z.infer<typeof createGroupSchema>;
+
+/**
+ * 更新分组请求 Schema
+ */
+export const updateGroupSchema = z.object({
+  /** 分组 ID */
+  groupId: z.number(),
+  /** 分组名称 */
+  name: z.string().min(1).max(50).optional(),
+  /** 分组颜色 */
+  color: groupColorEnum.optional(),
+  /** 分组图标 */
+  icon: z.string().optional(),
+  /** 分组描述 */
+  description: z.string().optional(),
+});
+
+/** 更新分组请求类型 */
+export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
+
+/**
+ * 添加仓库到分组请求 Schema
+ */
+export const addGroupMemberSchema = z.object({
+  /** 分组 ID */
+  groupId: z.number(),
+  /** 仓库 ID */
+  repoId: z.number(),
+});
+
+/** 添加仓库到分组请求类型 */
+export type AddGroupMemberInput = z.infer<typeof addGroupMemberSchema>;
+
+/**
+ * 批量添加仓库到分组请求 Schema
+ */
+export const batchAddGroupMembersSchema = z.object({
+  /** 分组 ID */
+  groupId: z.number(),
+  /** 仓库 ID 列表 */
+  repoIds: z.array(z.number()),
+});
+
+/** 批量添加仓库到分组请求类型 */
+export type BatchAddGroupMembersInput = z.infer<typeof batchAddGroupMembersSchema>;
+
+/**
+ * 移动仓库到另一个分组请求 Schema
+ */
+export const moveGroupMemberSchema = z.object({
+  /** 仓库 ID */
+  repoId: z.number(),
+  /** 源分组 ID */
+  fromGroupId: z.number(),
+  /** 目标分组 ID */
+  toGroupId: z.number(),
+});
+
+/** 移动仓库到另一个分组请求类型 */
+export type MoveGroupMemberInput = z.infer<typeof moveGroupMemberSchema>;
+
+/**
+ * 分组内仓库排序请求 Schema
+ */
+export const reorderGroupMembersSchema = z.object({
+  /** 分组 ID */
+  groupId: z.number(),
+  /** 仓库 ID 列表（按新顺序排列） */
+  repoIds: z.array(z.number()),
+});
+
+/** 分组内仓库排序请求类型 */
+export type ReorderGroupMembersInput = z.infer<typeof reorderGroupMembersSchema>;
+
+/**
+ * 分组排序请求 Schema
+ */
+export const reorderGroupsSchema = z.object({
+  /** 分组 ID 列表（按新顺序排列） */
+  groupIds: z.array(z.number()),
+});
+
+/** 分组排序请求类型 */
+export type ReorderGroupsInput = z.infer<typeof reorderGroupsSchema>;
+
+// ============================================================================
+// GitHub Client (GitHub API 客户端)
+// ============================================================================
+
+export * from "./github-client";

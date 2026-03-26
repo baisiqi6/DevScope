@@ -16,16 +16,24 @@ import { FollowingList } from "@/components/following-list";
 import { Navigation } from "@/components/navigation";
 import { ViewModeToggle, useViewMode } from "@/components/view-toggle";
 import { SortControl, useSortPreferences, sortRepositories } from "@/components/sort-control";
+import { GroupTabs } from "@/components/group-tabs";
+import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { Button } from "@/components/ui/button";
 import { AnimatedBackground, FadeInItem } from "@/components/animated-background";
 import { motion } from "framer-motion";
 import { useMemo } from "react";
+import type { RepositoryGroup } from "@devscope/shared";
 
 export default function HomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"collect" | "following">("collect");
   const [viewMode, setViewMode] = useViewMode("card");
   const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences("stars", "desc");
+
+  // 分组相关状态
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [isUngroupedSelected, setIsUngroupedSelected] = useState(false);
+  const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
 
   // 获取仓库列表
   const { data: repositories, isLoading, error, refetch } = trpc.getRepositories.useQuery(
@@ -36,11 +44,55 @@ export default function HomePage() {
     }
   );
 
-  // 应用排序
+  // 获取分组列表
+  const { data: groups = [], refetch: refetchGroups } = trpc.groups.getAll.useQuery(
+    undefined,
+    {
+      enabled: true,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  // 获取未分组仓库
+  const { data: ungroupedRepos = [], refetch: refetchUngrouped } = trpc.groupsQuery.getUngroupedRepos.useQuery(
+    undefined,
+    {
+      enabled: isUngroupedSelected,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  // 创建分组 mutation
+  const createGroupMutation = trpc.groups.create.useMutation({
+    onSuccess: () => {
+      refetchGroups();
+      setShowCreateGroupDialog(false);
+    },
+  });
+
+  // 应用排序和分组过滤
   const sortedRepositories = useMemo(() => {
-    if (!repositories) return repositories;
-    return sortRepositories(repositories, sortBy, order);
-  }, [repositories, sortBy, order]);
+    let repos = repositories || [];
+
+    // 根据选中的分组过滤
+    if (selectedGroupId !== null) {
+      // 显示选定分组的仓库
+      const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+      if (selectedGroup) {
+        // 这里需要调用 API 获取分组内的仓库
+        // 暂时返回所有仓库，后续需要添加 API 调用
+        repos = repos; // TODO: 实现分组内仓库过滤
+      }
+    } else if (isUngroupedSelected) {
+      // 显示未分组的仓库
+      const ungroupedIds = new Set(ungroupedRepos.map((r) => r.id));
+      repos = repos.filter((r) => ungroupedIds.has(r.id));
+    }
+    // selectedGroupId === null 表示显示全部仓库
+
+    // 应用排序
+    return sortRepositories(repos, sortBy, order);
+  }, [repositories, ungroupedRepos, groups, selectedGroupId, isUngroupedSelected, sortBy, order]);
 
   const handleViewDetails = (id: number) => {
     router.push(`/repository/${id}`);
@@ -55,6 +107,26 @@ export default function HomePage() {
     setActiveTab("collect");
     // CollectForm 组件会在下次渲染时收到这个 repo
     (window as any).__pendingCollectRepo = fullName;
+  };
+
+  // 分组相关处理函数
+  const handleSelectAll = () => {
+    setSelectedGroupId(null);
+    setIsUngroupedSelected(false);
+  };
+
+  const handleSelectUngrouped = () => {
+    setSelectedGroupId(null);
+    setIsUngroupedSelected(true);
+  };
+
+  const handleSelectGroup = (group: RepositoryGroup) => {
+    setSelectedGroupId(group.id);
+    setIsUngroupedSelected(false);
+  };
+
+  const handleCreateGroup = (input: { name: string; color?: string; icon?: string; description?: string }) => {
+    createGroupMutation.mutate(input);
   };
 
   return (
@@ -109,9 +181,27 @@ export default function HomePage() {
 
           {/* 右侧：仓库列表 */}
           <div className="lg:col-span-2">
+            {/* 分组标签栏 */}
+            <GroupTabs
+              groups={groups}
+              selectedGroupId={selectedGroupId}
+              isUngroupedSelected={isUngroupedSelected}
+              totalRepoCount={repositories?.length ?? 0}
+              ungroupedRepoCount={ungroupedRepos.length}
+              onSelectAll={handleSelectAll}
+              onSelectUngrouped={handleSelectUngrouped}
+              onSelectGroup={handleSelectGroup}
+              onCreateGroup={() => setShowCreateGroupDialog(true)}
+            />
+
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold">
-                已采集仓库 {repositories && `(${repositories.length})`}
+                {selectedGroupId !== null
+                  ? groups.find((g) => g.id === selectedGroupId)?.name
+                  : isUngroupedSelected
+                  ? "未分组仓库"
+                  : "全部仓库"
+                } {repositories && `(${repositories.length})`}
               </h2>
               <div className="flex items-center gap-3">
                 <SortControl
@@ -159,6 +249,13 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* 创建分组对话框 */}
+      <CreateGroupDialog
+        open={showCreateGroupDialog}
+        onOpenChange={setShowCreateGroupDialog}
+        onCreate={handleCreateGroup}
+      />
     </main>
   );
 }

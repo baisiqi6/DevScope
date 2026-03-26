@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { Suspense, use } from "react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
     }
   );
 
-  if (isLoading) {
+  if (isLoading || isLoadingReleases) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center text-muted-foreground">加载中...</div>
@@ -329,19 +329,9 @@ function RepositoryDetailContent({ id }: { id: number }) {
 }
 
 export default function RepositoryDetailPage({ params }: RepositoryDetailPageProps) {
-  const [id, setId] = useState<number | null>(null);
-
-  useEffect(() => {
-    params.then((p) => setId(parseInt(p.id, 10)));
-  }, [params]);
-
-  if (id === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-muted-foreground">加载中...</div>
-      </div>
-    );
-  }
+  // 使用 React 的 use hook 同步解析 params Promise
+  const resolvedParams = use(params);
+  const id = parseInt(resolvedParams.id, 10);
 
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center text-muted-foreground">加载中...</div></div>}>

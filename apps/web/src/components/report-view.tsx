@@ -31,13 +31,20 @@ import {
   CheckCircle2,
   AlertTriangle,
   TrendingUp,
-  TrendingDown,
-  Minus,
   Download,
-  ExternalLink,
   Loader2,
+  FileText,
+  Activity,
+  GitCompare,
+  Star,
+  GitFork,
+  Users,
+  MessageSquare,
+  Code,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import type { CompetitiveAnalysisReport } from "@devscope/shared";
 
 // ============================================================================
@@ -60,10 +67,196 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * 生成 Markdown 格式的报告
+   */
+  const generateMarkdown = (): string => {
+    if (!report) return "";
+
+    // 如果有 AI 详细分析，优先使用
+    if (report.aiAnalysis) {
+      let md = report.aiAnalysis;
+      // 添加报告元数据头部
+      const header = `---\n**报告 ID**: ${report.reportId}\n**生成时间**: ${new Date(report.generatedAt).toLocaleString("zh-CN")}\n**分析类型**: ${report.analysisType}\n---\n\n`;
+      return header + md;
+    }
+
+    // 否则使用结构化数据生成报告
+    let md = `# 竞争格局分析报告\n\n`;
+    md += `**报告 ID**: ${report.reportId}\n`;
+    md += `**生成时间**: ${new Date(report.generatedAt).toLocaleString("zh-CN")}\n`;
+    md += `**分析类型**: ${report.analysisType}\n\n`;
+
+    md += `---\n\n`;
+
+    // 执行摘要
+    md += `## 执行摘要\n\n`;
+    md += `${report.executiveSummary.overview}\n\n`;
+    md += `### 关键发现\n\n`;
+    report.executiveSummary.keyFindings.forEach(finding => {
+      md += `- ${finding}\n`;
+    });
+    md += `\n`;
+    md += `**投资建议**: ${report.executiveSummary.recommendation}\n`;
+    md += `**置信度**: ${report.executiveSummary.confidenceLevel}\n\n`;
+
+    // 详细分析 - 市场定位
+    md += `## 市场定位分析\n\n`;
+    const marketPos = report.detailedAnalysis.marketPosition;
+    md += `### 市场领导者\n\n`;
+    if (marketPos.leaders && marketPos.leaders.length > 0) {
+      marketPos.leaders.forEach(leader => {
+        md += `- **${leader}**\n`;
+      });
+    }
+    md += `\n`;
+    md += `### 挑战者\n\n`;
+    if (marketPos.challengers && marketPos.challengers.length > 0) {
+      marketPos.challengers.forEach(challenger => {
+        md += `- **${challenger}**\n`;
+      });
+    }
+    md += `\n`;
+    md += `### 细分市场\n\n`;
+    if (marketPos.niche && marketPos.niche.length > 0) {
+      marketPos.niche.forEach(item => {
+        md += `- **${item}**\n`;
+      });
+    } else {
+      md += `无\n`;
+    }
+    md += `\n`;
+    md += `### 新兴项目\n\n`;
+    if (marketPos.emerging && marketPos.emerging.length > 0) {
+      marketPos.emerging.forEach(item => {
+        md += `- **${item}**\n`;
+      });
+    } else {
+      md += `无\n`;
+    }
+    md += `\n`;
+
+    // 详细分析 - 技术对比
+    md += `## 技术对比\n\n`;
+    report.detailedAnalysis.technologyComparison.forEach(tech => {
+      md += `### ${tech.repo}\n`;
+      md += `- **语言**: ${tech.language || "N/A"}\n`;
+      md += `- **许可证**: ${tech.license || "N/A"}\n`;
+      md += `- **Stars**: ${tech.stars}\n`;
+      md += `- **Forks**: ${tech.forks}\n`;
+      md += `- **活跃度**: ${tech.activityLevel}\n\n`;
+    });
+
+    // 详细分析 - 社区指标
+    md += `## 社区指标\n\n`;
+    report.detailedAnalysis.communityMetrics.forEach(metric => {
+      md += `### ${metric.repo}\n`;
+      md += `- **贡献者数量**: ${metric.contributorCount}\n`;
+      md += `- **Issue 解决率**: ${metric.issueResolutionRate}%\n`;
+      md += `- **提交频率**: ${metric.commitFrequency}\n\n`;
+    });
+
+    // 风险矩阵
+    md += `## 风险矩阵\n\n`;
+    md += `**整体风险等级**: ${report.riskMatrix.overallRisk}\n\n`;
+    if (report.riskMatrix.risks.length > 0) {
+      md += `| 仓库 | 类别 | 描述 | 严重程度 | 缓解措施 |\n`;
+      md += `|------|------|------|----------|----------|\n`;
+      report.riskMatrix.risks.forEach(risk => {
+        md += `| ${risk.repo} | ${risk.category} | ${risk.description} | ${risk.severity}/100 | ${risk.mitigation || "N/A"} |\n`;
+      });
+      md += `\n`;
+    }
+
+    // 投资建议
+    md += `## 投资建议\n\n`;
+    md += `### 首选项目\n\n`;
+    md += report.investmentRecommendations.topPick || "无明确推荐\n";
+    md += `\n`;
+    md += `### 关注列表\n\n`;
+    if (report.investmentRecommendations.watchList.length > 0) {
+      report.investmentRecommendations.watchList.forEach(repo => {
+        md += `- ${repo}\n`;
+      });
+    } else {
+      md += `无\n`;
+    }
+    md += `\n`;
+    md += `### 规避列表\n\n`;
+    if (report.investmentRecommendations.avoidList.length > 0) {
+      report.investmentRecommendations.avoidList.forEach(repo => {
+        md += `- ${repo}\n`;
+      });
+    } else {
+      md += `无\n`;
+    }
+    md += `\n`;
+    md += `### 投资理由\n\n${report.investmentRecommendations.rationale}\n\n`;
+
+    // 数据来源
+    md += `## 数据来源\n\n`;
+    report.dataSources.forEach(source => {
+      md += `- **[${source.type}]**: ${source.repo || ""} - ${source.details || ""}\n`;
+    });
+    md += `\n`;
+
+    md += `---\n\n`;
+    md += `*本报告由 DevScope AI 分析生成，数据来源于 GitHub API 和 AI 分析，仅供参考。*\n`;
+
+    return md;
+  };
+
+  /**
+   * 下载报告
+   */
+  const handleDownload = () => {
+    if (!report) return;
+
+    const markdown = generateMarkdown();
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `analysis-report-${reportId.substring(0, 8)}-${new Date().toISOString().split("T")[0]}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
-    // 这里应该从 API 加载报告
-    // 暂时使用模拟数据
-    setLoading(false);
+    // 从 API 加载报告
+    const loadReport = async () => {
+      if (!executionId) {
+        setError("缺少执行 ID");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // 使用 Next.js API Route 代理
+        const response = await fetch(`/api/reports/${executionId}`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError("报告不存在");
+          } else {
+            setError(`加载失败: ${response.statusText}`);
+          }
+          return;
+        }
+
+        const data = await response.json();
+        setReport(data);
+      } catch (err) {
+        console.error("[ReportView] Failed to load report:", err);
+        setError(err instanceof Error ? err.message : "加载报告失败");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReport();
   }, [reportId, executionId]);
 
   if (loading) {
@@ -98,20 +291,67 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
     );
   }
 
+  // 根据分析类型获取配置
+  const getAnalysisConfig = () => {
+    switch (report.analysisType) {
+      case "competitive_landscape":
+        return {
+          title: "竞争格局分析报告",
+          icon: <TrendingUp className="h-6 w-6" />,
+          color: "blue",
+          gradient: "from-blue-500 to-indigo-600",
+        };
+      case "health_report":
+        return {
+          title: "健康度报告",
+          icon: <Activity className="h-6 w-6" />,
+          color: "green",
+          gradient: "from-green-500 to-emerald-600",
+        };
+      case "single_repo":
+        return {
+          title: "单仓库分析报告",
+          icon: <GitCompare className="h-6 w-6" />,
+          color: "purple",
+          gradient: "from-purple-500 to-violet-600",
+        };
+      default:
+        return {
+          title: "分析报告",
+          icon: <FileText className="h-6 w-6" />,
+          color: "slate",
+          gradient: "from-slate-500 to-gray-600",
+        };
+    }
+  };
+
+  const config = getAnalysisConfig();
+
   return (
     <div className="space-y-6">
       {/* 报告头部 */}
-      <Card>
-        <CardHeader>
+      <Card className="border-2 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>竞争格局分析报告</CardTitle>
-              <CardDescription>
-                生成时间: {new Date(report.generatedAt).toLocaleString("zh-CN")}
-              </CardDescription>
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl bg-gradient-to-br ${config.gradient} text-white shadow-md`}>
+                {config.icon}
+              </div>
+              <div>
+                <CardTitle className="text-2xl">{config.title}</CardTitle>
+                <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                  <span className="flex items-center gap-1">
+                    生成时间: {new Date(report.generatedAt).toLocaleString("zh-CN")}
+                  </span>
+                  <span>•</span>
+                  <span className="font-mono text-xs">
+                    ID: {report.reportId.substring(0, 8)}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleDownload}>
                 <Download className="h-4 w-4 mr-1" />
                 下载
               </Button>
@@ -196,64 +436,191 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
         {/* 技术对比 */}
         <TabsContent value="tech">
-          <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>项目</TableHead>
-                    <TableHead>语言</TableHead>
-                    <TableHead className="text-right">Stars</TableHead>
-                    <TableHead className="text-right">Forks</TableHead>
-                    <TableHead>活跃度</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.detailedAnalysis.technologyComparison.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{item.repo}</TableCell>
-                      <TableCell>{item.language || "N/A"}</TableCell>
-                      <TableCell className="text-right">{formatNumber(item.stars)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(item.forks)}</TableCell>
-                      <TableCell>
-                        <ActivityBadge level={item.activityLevel} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">技术栈对比</h3>
+              <span className="text-sm text-gray-500">共 {report.detailedAnalysis.technologyComparison.length} 个项目</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {report.detailedAnalysis.technologyComparison.map((item, index) => {
+                // 计算相对最大值的百分比
+                const maxStars = Math.max(...report.detailedAnalysis.technologyComparison.map(t => t.stars));
+                const maxForks = Math.max(...report.detailedAnalysis.technologyComparison.map(t => t.forks));
+                const starsPercent = (item.stars / maxStars) * 100;
+                const forksPercent = (item.forks / maxForks) * 100;
+
+                // 活跃度颜色
+                const activityColors = {
+                  high: "bg-green-500",
+                  medium: "bg-blue-500",
+                  low: "bg-yellow-500",
+                  dead: "bg-gray-400",
+                };
+                const activityColor = activityColors[item.activityLevel as keyof typeof activityColors] || "bg-gray-400";
+
+                return (
+                  <Card key={index} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      {/* 项目名称 */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Code className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium text-sm truncate flex-1">{item.repo}</span>
+                      </div>
+
+                      {/* 语言标签 */}
+                      <div className="mb-3">
+                        {item.language ? (
+                          <Badge variant="outline" className="text-xs">
+                            {item.language}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-gray-400">
+                            N/A
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Stars 进度条 */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Star className="h-3 w-3" />
+                            <span>Stars</span>
+                          </div>
+                          <span className="font-medium">{formatNumber(item.stars)}</span>
+                        </div>
+                        <Progress value={starsPercent} className="h-1.5" />
+                      </div>
+
+                      {/* Forks 进度条 */}
+                      <div className="space-y-1 mt-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <GitFork className="h-3 w-3" />
+                            <span>Forks</span>
+                          </div>
+                          <span className="font-medium">{formatNumber(item.forks)}</span>
+                        </div>
+                        <Progress value={forksPercent} className="h-1.5" />
+                      </div>
+
+                      {/* 活跃度 */}
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                          <Zap className="h-3 w-3" />
+                          <span>活跃度</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`h-2 w-2 rounded-full ${activityColor}`} />
+                          <ActivityBadge level={item.activityLevel} />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
         </TabsContent>
 
         {/* 社区指标 */}
         <TabsContent value="community">
-          <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>项目</TableHead>
-                    <TableHead className="text-right">贡献者</TableHead>
-                    <TableHead className="text-right">Issue 解决率</TableHead>
-                    <TableHead>提交频率</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.detailedAnalysis.communityMetrics.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{item.repo}</TableCell>
-                      <TableCell className="text-right">{item.contributorCount}</TableCell>
-                      <TableCell className="text-right">{item.issueResolutionRate}%</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getCommitFrequencyLabel(item.commitFrequency)}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">社区健康度对比</h3>
+              <span className="text-sm text-gray-500">共 {report.detailedAnalysis.communityMetrics.length} 个项目</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {report.detailedAnalysis.communityMetrics.map((item, index) => {
+                // 计算相对最大值的百分比
+                const maxContributors = Math.max(...report.detailedAnalysis.communityMetrics.map(m => m.contributorCount));
+                const contributorsPercent = (item.contributorCount / maxContributors) * 100;
+
+                // Issue 解决率颜色
+                const getResolutionColor = (rate: number) => {
+                  if (rate >= 80) return "text-green-600";
+                  if (rate >= 60) return "text-blue-600";
+                  if (rate >= 40) return "text-yellow-600";
+                  return "text-red-600";
+                };
+
+                return (
+                  <Card key={index} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      {/* 项目名称 */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Users className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium text-sm truncate flex-1">{item.repo}</span>
+                      </div>
+
+                      {/* 贡献者多样性 */}
+                      <div className="space-y-1 mb-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Users className="h-3 w-3" />
+                            <span>贡献者多样性</span>
+                          </div>
+                          <span className="font-medium">{item.contributorCount.toFixed(1)}</span>
+                        </div>
+                        <Progress value={contributorsPercent} className="h-1.5" />
+                      </div>
+
+                      {/* Issue 解决率 */}
+                      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1 text-xs text-gray-600">
+                            <MessageSquare className="h-3 w-3" />
+                            <span>Issue 解决率</span>
+                          </div>
+                          <span className={`text-sm font-bold ${getResolutionColor(item.issueResolutionRate)}`}>
+                            {item.issueResolutionRate}%
+                          </span>
+                        </div>
+                        <Progress value={item.issueResolutionRate} className="h-1.5" />
+                      </div>
+
+                      {/* 提交频率 */}
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                          <Activity className="h-3 w-3" />
+                          <span>提交频率</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {getCommitFrequencyLabel(item.commitFrequency)}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {/* 社区指标汇总 */}
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                  社区健康度排名
+                </h4>
+                <div className="space-y-2">
+                  {report.detailedAnalysis.communityMetrics
+                    .sort((a, b) => b.issueResolutionRate - a.issueResolutionRate)
+                    .slice(0, 3)
+                    .map((item, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold ${index === 0 ? "text-yellow-600" : index === 1 ? "text-gray-500" : "text-orange-600"}`}>
+                            #{index + 1}
+                          </span>
+                          <span className="text-gray-700">{item.repo}</span>
+                        </div>
+                        <span className="font-medium">{item.issueResolutionRate}%</span>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* 风险矩阵 */}
@@ -283,12 +650,14 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                         <TableCell>
                           <Badge variant="outline">{getRiskCategoryLabel(risk.category)}</Badge>
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">{risk.description}</TableCell>
+                        <TableCell className="max-w-md">
+                          <div className="whitespace-pre-wrap break-words">{risk.description}</div>
+                        </TableCell>
                         <TableCell className="text-center">
                           <SeverityBadge severity={risk.severity} />
                         </TableCell>
-                        <TableCell className="max-w-[150px] truncate">
-                          {risk.mitigation || "N/A"}
+                        <TableCell className="max-w-md">
+                          <div className="whitespace-pre-wrap break-words">{risk.mitigation || "N/A"}</div>
                         </TableCell>
                       </TableRow>
                     ))}

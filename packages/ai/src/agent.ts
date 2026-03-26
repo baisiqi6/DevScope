@@ -9,7 +9,9 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { z } from "zod";
+import { GitHubClient, repositoryAnalysisSchema } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
@@ -30,12 +32,21 @@ export interface AgentTool<TInput = unknown, TOutput = unknown> {
 }
 
 /**
+ * Agent 提供者类型
+ */
+type AgentProviderType = "anthropic" | "openai-compatible";
+
+/**
  * Agent 配置
  */
 export interface DevScopeAgentConfig {
-  /** Anthropic API Key (默认从环境变量读取) */
+  /** AI 提供者类型 (默认自动检测) */
+  provider?: AgentProviderType;
+  /** API Key (默认从环境变量读取) */
   apiKey?: string;
-  /** 使用的模型 (默认: claude-sonnet-4-6) */
+  /** API Base URL (用于 openai-compatible 模式) */
+  baseURL?: string;
+  /** 使用的模型 (默认: claude-sonnet-4-6 或 deepseek-chat) */
   model?: string;
   /** 最大 token 数 */
   maxTokens?: number;
@@ -112,87 +123,6 @@ export const ReportGenerateToolInputSchema = z.object({
 });
 
 // ============================================================================
-// GitHub Client (复用自 skills/repo-fetch)
-// ============================================================================
-
-/**
- * GitHub API 客户端
- */
-class GitHubClient {
-  private token: string | undefined;
-  private baseUrl = "https://api.github.com";
-
-  constructor(token?: string) {
-    this.token = token || process.env.GITHUB_TOKEN;
-  }
-
-  private async fetch<T>(endpoint: string): Promise<T> {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github.v3+json",
-    };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-
-    const response = await fetch(`${this.baseUrl}${endpoint}`, { headers });
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json() as Promise<T>;
-  }
-
-  async getRepository(owner: string, repo: string) {
-    const data = await this.fetch<any>(`/repos/${owner}/${repo}`);
-    return {
-      fullName: data.full_name,
-      name: data.name,
-      owner: data.owner.login,
-      description: data.description,
-      url: data.html_url,
-      stars: data.stargazers_count,
-      forks: data.forks_count,
-      openIssues: data.open_issues_count,
-      language: data.language,
-      license: data.license?.spdx_id || null,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      pushedAt: data.pushed_at,
-    };
-  }
-
-  async getIssues(owner: string, repo: string, limit: number) {
-    const data = await this.fetch<any[]>(
-      `/repos/${owner}/${repo}/issues?state=open&per_page=${limit}`
-    );
-    return data.map((issue) => ({
-      number: issue.number,
-      title: issue.title,
-      state: issue.state,
-      author: issue.user.login,
-      createdAt: issue.created_at,
-      updatedAt: issue.updated_at,
-      comments: issue.comments,
-      labels: issue.labels.map((l: any) => l.name),
-    }));
-  }
-
-  async getCommits(owner: string, repo: string, limit: number) {
-    const data = await this.fetch<any[]>(
-      `/repos/${owner}/${repo}/commits?per_page=${limit}`
-    );
-    return data.map((commit) => ({
-      sha: commit.sha,
-      message: commit.commit.message,
-      author: commit.commit.author.name,
-      date: commit.commit.author.date,
-    }));
-  }
-}
-
-// ============================================================================
 // Tool Handlers
 // ============================================================================
 
@@ -223,9 +153,58 @@ async function handleRepoFetch(input: z.infer<typeof RepoFetchToolInputSchema>) 
  */
 function createRepoAnalyzeHandler(ai: { structuredComplete: (prompt: string, options: any) => Promise<any> }) {
   return async (input: z.infer<typeof RepoAnalyzeToolInputSchema>) => {
-    const [owner, repo] = input.repo.split("/");
+    const [owner, repoName] = input.repo.split("/");
+    const currentDate = new Date().toISOString().split('T')[0]; // 当前日期 YYYY-MM-DD
 
-    let prompt = `请分析 GitHub 仓库 ${owner}/${repo} 的健康度。`;
+    // 内部自动调用 GitHub API 获取数据
+    const { GitHubClient } = await import("@devscope/shared");
+    const client = new GitHubClient();
+
+    let prompt = `请分析 GitHub 仓库 ${owner}/${repoName} 的健康度。`;
+    prompt += `\n\n**当前日期**: ${currentDate}（请在分析时参考此日期判断项目活跃度）`;
+
+    try {
+      // 获取仓库数据
+      const [repository, issues, commits] = await Promise.all([
+        client.getRepository(owner, repoName),
+        client.getIssues(owner, repoName, 10),
+        client.getCommits(owner, repoName, 10),
+      ]);
+
+      // 将真实数据添加到 prompt
+      prompt += `\n\n## 仓库真实数据（来自 GitHub API）\n`;
+      prompt += `### 基本信息\n`;
+      prompt += `- 仓库名: ${repository.fullName}\n`;
+      prompt += `- 描述: ${repository.description || "无"}\n`;
+      prompt += `- Stars: ${repository.stars}\n`;
+      prompt += `- Forks: ${repository.forks}\n`;
+      prompt += `- Open Issues: ${repository.openIssues}\n`;
+      prompt += `- 主要语言: ${repository.language || "未知"}\n`;
+      prompt += `- 创建时间: ${repository.createdAt}\n`;
+      prompt += `- 最后更新: ${repository.updatedAt}\n`;
+      prompt += `- 最后推送: ${repository.pushedAt}\n`;
+
+      if (issues && issues.length > 0) {
+        prompt += `\n### 最近 Issues (${issues.length} 条)\n`;
+        issues.slice(0, 5).forEach((issue, i: number) => {
+          prompt += `${i + 1}. ${issue.title} (${issue.state}, ${issue.comments} 评论)\n`;
+        });
+      }
+
+      if (commits && commits.length > 0) {
+        prompt += `\n### 最近提交 (${commits.length} 条)\n`;
+        commits.slice(0, 5).forEach((commit: any, i: number) => {
+          const msg = commit.message.length > 50 ? commit.message.substring(0, 50) + "..." : commit.message;
+          prompt += `${i + 1}. ${msg} (${commit.date})\n`;
+        });
+      }
+
+      prompt += `\n请基于以上真实数据进行分析。`;
+    } catch (error) {
+      // 获取数据失败，给出警告
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      prompt += `\n\n⚠️ 警告：无法获取该仓库的真实数据（${errorMsg}）。分析结果可能不准确。`;
+    }
 
     if (input.context) {
       prompt += `\n\n额外上下文：${input.context}`;
@@ -238,33 +217,21 @@ function createRepoAnalyzeHandler(ai: { structuredComplete: (prompt: string, opt
 4. 风险因素
 5. 机会因素
 6. 投资建议 (invest/watch/avoid)
-7. 总结`;
+7. 总结
+
+**重要**：所有分析内容必须使用中文输出，包括风险因素描述、机会因素描述和总结。`;
 
     const result = await ai.structuredComplete(prompt, {
-      schema: z.object({
-        healthScore: z.number().min(0).max(100),
-        activityLevel: z.enum(["high", "medium", "low", "dead"]),
-        keyMetrics: z.object({
-          starsGrowthRate: z.number(),
-          issueResolutionRate: z.number().min(0).max(100),
-          contributorDiversityScore: z.number().min(0).max(100),
-        }),
-        riskFactors: z.array(z.object({
-          category: z.string(),
-          description: z.string(),
-          severity: z.number().min(1).max(10),
-        })),
-        opportunities: z.array(z.object({
-          category: z.string(),
-          description: z.string(),
-          potential: z.number().min(1).max(10),
-        })),
-        recommendation: z.enum(["invest", "watch", "avoid"]),
-        summary: z.string(),
-      }),
+      schema: repositoryAnalysisSchema,
       toolName: "repository_analysis",
       toolDescription: "生成 GitHub 仓库健康度分析报告",
-      system: "你是一个专业的开源项目分析师。请根据公开信息分析仓库的健康度，并返回结构化的分析结果。",
+      system: `你是一个专业的开源项目分析师。请基于提供的真实 GitHub 数据分析仓库的健康度，确保分析结果准确反映仓库当前状态。
+
+**重要提示**：
+1. 当前日期是 ${currentDate}。在判断项目活跃度时，请参考此日期来评估最后更新时间、最近提交等时间戳的合理性。不要将2025年或2026年的日期误判为"未来时间"或"数据异常"。
+2. **所有分析内容必须使用中文输出**，包括风险因素描述（description）、机会因素描述（description）和总结（summary）。
+3. 风险类别（category）可以使用英文标签，如 "Issue Management"、"Community Engagement" 等。
+4. 但描述性文本必须是中文。`,
       temperature: 0.3,
     });
 
@@ -406,7 +373,9 @@ async function handleReportGenerate(input: z.infer<typeof ReportGenerateToolInpu
  * ```
  */
 export class DevScopeAgent {
-  private client: Anthropic;
+  private providerType: AgentProviderType;
+  private anthropicClient: Anthropic | null;
+  private openaiClient: OpenAI | null;
   private model: string;
   private maxTokens: number;
   private systemPrompt: string;
@@ -414,10 +383,30 @@ export class DevScopeAgent {
   private tools: Map<string, AgentTool> = new Map();
 
   constructor(config: DevScopeAgentConfig = {}) {
-    this.client = new Anthropic({
-      apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
-    });
-    this.model = config.model || "claude-sonnet-4-6";
+    // 检测或使用指定的 provider 类型
+    this.providerType = config.provider || this.detectProviderFromEnv();
+
+    // 根据 provider 类型初始化客户端
+    if (this.providerType === "anthropic") {
+      this.anthropicClient = new Anthropic({
+        apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
+      });
+      this.openaiClient = null;
+      this.model = config.model || "claude-sonnet-4-6";
+    } else {
+      // OpenAI 兼容模式（DeepSeek、通义千问等）
+      const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
+      const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+
+      if (!apiKey) {
+        throw new Error("API Key is required for openai-compatible provider. Set DEEPSEEK_API_KEY or OPENAI_COMPATIBLE_API_KEY environment variable.");
+      }
+
+      this.openaiClient = new OpenAI({ apiKey, baseURL });
+      this.anthropicClient = null;
+      this.model = config.model || "deepseek-chat";
+    }
+
     this.maxTokens = config.maxTokens || 4096;
     this.systemPrompt = config.systemPrompt || `你是一个专业的开源项目分析师助手。
 
@@ -435,8 +424,20 @@ export class DevScopeAgent {
 你可以自主决定使用哪些工具，以及调用的顺序。`;
     this.enabledTools = config.enabledTools;
 
+    console.log(`[DevScopeAgent] Initialized with provider: ${this.providerType}, model: ${this.model}`);
+
     // 注册内置工具
     this.registerBuiltInTools();
+  }
+
+  /**
+   * 从环境变量自动检测 provider 类型
+   */
+  private detectProviderFromEnv(): AgentProviderType {
+    if (process.env.DEEPSEEK_API_KEY || process.env.OPENAI_COMPATIBLE_API_KEY) {
+      return "openai-compatible";
+    }
+    return "anthropic";
   }
 
   /**
@@ -455,7 +456,7 @@ export class DevScopeAgent {
     // 这里先注册一个占位符，实际 handler 在运行时动态创建
     this.registerTool({
       name: "repo_analyze",
-      description: "使用 AI 分析 GitHub 仓库的健康度。返回健康度评分、活跃度、风险因素、投资建议等结构化分析结果。",
+      description: "使用 AI 分析 GitHub 仓库的健康度。返回健康度评分、活跃度、风险因素、投资建议等结构化分析结果。工具会自动获取 GitHub 数据进行分析。",
       inputSchema: RepoAnalyzeToolInputSchema,
       handler: async (input: unknown) => {
         // 动态创建 handler
@@ -483,19 +484,32 @@ export class DevScopeAgent {
   }
 
   /**
-   * 获取所有工具定义 (Anthropic 格式)
+   * 获取所有工具定义
    */
   private getToolDefinitions() {
-    const tools: Anthropic.Tool[] = [];
     const enabledTools = this.enabledTools || Array.from(this.tools.keys());
+    const tools: any[] = [];
 
     for (const [name, tool] of this.tools) {
       if (enabledTools.includes(name)) {
-        tools.push({
-          name: tool.name,
-          description: tool.description,
-          input_schema: this.zodToJsonSchema(tool.inputSchema),
-        });
+        if (this.providerType === "anthropic") {
+          // Anthropic 格式
+          tools.push({
+            name: tool.name,
+            description: tool.description,
+            input_schema: this.zodToJsonSchema(tool.inputSchema),
+          });
+        } else {
+          // OpenAI 兼容格式 (DeepSeek)
+          tools.push({
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: this.zodToJsonSchema(tool.inputSchema),
+            },
+          });
+        }
       }
     }
 
@@ -590,7 +604,18 @@ export class DevScopeAgent {
   /**
    * 运行 Agent (非流式)
    */
-  async run(prompt: string): Promise<AgentResult> {
+  async run(prompt: string): Promise<AgentResult<string>> {
+    if (this.providerType === "anthropic") {
+      return this.runAnthropic(prompt);
+    } else {
+      return this.runOpenAICompatible(prompt);
+    }
+  }
+
+  /**
+   * 使用 Anthropic SDK 运行 Agent
+   */
+  private async runAnthropic(prompt: string): Promise<AgentResult<string>> {
     const toolCalls: AgentResult["toolCalls"] = [];
     const messages: Anthropic.MessageParam[] = [
       { role: "user", content: prompt },
@@ -601,7 +626,7 @@ export class DevScopeAgent {
 
     // Agent 循环
     while (true) {
-      const response = await this.client.messages.create({
+      const response = await this.anthropicClient!.messages.create({
         model: this.model,
         max_tokens: this.maxTokens,
         system: this.systemPrompt,
@@ -673,9 +698,129 @@ export class DevScopeAgent {
   }
 
   /**
+   * 使用 OpenAI 兼容 API 运行 Agent (DeepSeek)
+   */
+  private async runOpenAICompatible(prompt: string): Promise<AgentResult<string>> {
+    const toolCallsList: AgentResult["toolCalls"] = [];
+    const messages: Array<{ role: string; content: string; tool_calls?: any[] }> = [
+      { role: "user", content: prompt },
+    ];
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    console.log(`[DevScopeAgent.runOpenAICompatible] Starting agent loop`);
+
+    // Agent 循环
+    while (true) {
+      // 添加 system 消息
+      const messagesWithSystem = [
+        { role: "system", content: this.systemPrompt },
+        ...messages,
+      ];
+
+      console.log(`[DevScopeAgent.runOpenAICompatible] Sending request to DeepSeek API...`);
+      console.log(`[DevScopeAgent.runOpenAICompatible] Messages count: ${messagesWithSystem.length}`);
+      console.log(`[DevScopeAgent.runOpenAICompatible] Tools count: ${this.getToolDefinitions().length}`);
+
+      const response = await this.openaiClient!.chat.completions.create({
+        model: this.model,
+        max_tokens: this.maxTokens,
+        messages: messagesWithSystem as any,
+        tools: this.getToolDefinitions() as any,
+      });
+
+      console.log(`[DevScopeAgent.runOpenAICompatible] Received response from DeepSeek API`);
+      console.log(`[DevScopeAgent.runOpenAICompatible] Usage:`, response.usage);
+
+      totalInputTokens += response.usage?.prompt_tokens || 0;
+      totalOutputTokens += response.usage?.completion_tokens || 0;
+
+      const choice = response.choices[0];
+      if (!choice) {
+        throw new Error("No response from OpenAI-compatible API");
+      }
+
+      console.log(`[DevScopeAgent.runOpenAICompatible] Choice message:`, choice.message);
+
+      // 检查是否需要工具调用
+      const responseToolCalls = choice.message.tool_calls;
+
+      if (!responseToolCalls || responseToolCalls.length === 0) {
+        // 没有工具调用，返回最终结果
+        const finalText = choice.message.content || "";
+        console.log(`[DevScopeAgent.runOpenAICompatible] No tool calls, returning final text`);
+
+        return {
+          output: finalText,
+          toolCalls: toolCallsList,
+          usage: {
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+          },
+        };
+      }
+
+      console.log(`[DevScopeAgent.runOpenAICompatible] Tool calls detected: ${responseToolCalls.length}`);
+
+      // 执行工具调用
+      const toolMessages: any[] = [];
+
+      for (const toolCall of responseToolCalls) {
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+
+        console.log(`[DevScopeAgent.runOpenAICompatible] Executing tool: ${functionName}`);
+
+        try {
+          const result = await this.executeTool(functionName, functionArgs);
+          console.log(`[DevScopeAgent.runOpenAICompatible] Tool ${functionName} succeeded`);
+          toolCallsList.push({
+            tool: functionName,
+            input: functionArgs,
+            output: result,
+          });
+          toolMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result),
+          });
+        } catch (error) {
+          console.error(`[DevScopeAgent.runOpenAICompatible] Tool ${functionName} failed:`, error);
+          toolMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          });
+        }
+      }
+
+      // 添加助手消息和工具结果到对话历史
+      messages.push({
+        role: "assistant",
+        content: choice.message.content || "",
+        tool_calls: responseToolCalls,
+      });
+      messages.push(...toolMessages);
+    }
+  }
+
+  /**
    * 运行 Agent (流式)
    */
-  async stream(prompt: string, callbacks: StreamCallbacks = {}): Promise<AgentResult> {
+  async stream(prompt: string, callbacks: StreamCallbacks = {}): Promise<AgentResult<string>> {
+    if (this.providerType === "anthropic") {
+      return this.streamAnthropic(prompt, callbacks);
+    } else {
+      // OpenAI 兼容模式使用非流式实现（简化版）
+      return this.streamOpenAICompatible(prompt, callbacks);
+    }
+  }
+
+  /**
+   * 使用 Anthropic SDK 流式运行 Agent
+   */
+  private async streamAnthropic(prompt: string, callbacks: StreamCallbacks): Promise<AgentResult<string>> {
     const toolCalls: AgentResult["toolCalls"] = [];
     const messages: Anthropic.MessageParam[] = [
       { role: "user", content: prompt },
@@ -685,7 +830,7 @@ export class DevScopeAgent {
     let totalOutputTokens = 0;
 
     while (true) {
-      const stream = this.client.messages.stream({
+      const stream = this.anthropicClient!.messages.stream({
         model: this.model,
         max_tokens: this.maxTokens,
         system: this.systemPrompt,
@@ -780,6 +925,35 @@ export class DevScopeAgent {
         role: "user",
         content: toolResults,
       });
+    }
+  }
+
+  /**
+   * 使用 OpenAI 兼容 API 流式运行 Agent (简化版，使用非流式 + 回调)
+   */
+  private async streamOpenAICompatible(prompt: string, callbacks: StreamCallbacks): Promise<AgentResult<string>> {
+    console.log(`[DevScopeAgent.streamOpenAICompatible] Starting stream execution`);
+    try {
+      // 简化版：使用非流式实现，但仍然触发回调
+      const result = await this.runOpenAICompatible(prompt);
+
+      console.log(`[DevScopeAgent.streamOpenAICompatible] Execution completed, triggering callbacks`);
+
+      // 触发文本回调
+      if (result.output) {
+        callbacks.onText?.(result.output);
+      }
+
+      // 触发工具回调
+      for (const toolCall of result.toolCalls) {
+        callbacks.onToolUse?.(toolCall.tool, toolCall.input);
+        callbacks.onToolResult?.(toolCall.tool, toolCall.output);
+      }
+
+      return result;
+    } catch (error) {
+      console.error(`[DevScopeAgent.streamOpenAICompatible] Error during execution:`, error);
+      throw error;
     }
   }
 }

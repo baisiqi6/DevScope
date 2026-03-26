@@ -45,3 +45,9 @@ drizzle/
 # Database
 *.db
 *.db-journal
+
+# Local generated artifacts
+/$null
+/report.md
+/temp-analyze.json
+/apps/api/reports/

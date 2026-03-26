@@ -9,16 +9,18 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, Search, TrendingUp } from "lucide-react";
+import { LayoutGrid, Search, TrendingUp, Activity, FolderOpen } from "lucide-react";
 
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
 
   const navItems = [
+    { path: "/groups", label: "分组管理", icon: FolderOpen },
     { path: "/", label: "仓库列表", icon: LayoutGrid },
     { path: "/search", label: "语义搜索", icon: Search },
     { path: "/analysis/competitive", label: "竞争分析", icon: TrendingUp },
+    { path: "/analysis/health", label: "健康度报告", icon: Activity },
   ];
 
   return (

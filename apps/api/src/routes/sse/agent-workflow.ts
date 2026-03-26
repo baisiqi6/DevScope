@@ -17,7 +17,11 @@ import type {
 } from "@devscope/shared";
 import { workflowExecutions } from "@devscope/db";
 import { eq } from "drizzle-orm";
-import { COMPETITIVE_ANALYSIS_SYSTEM_PROMPT } from "@devscope/ai";
+import {
+  COMPETITIVE_ANALYSIS_SYSTEM_PROMPT,
+  HEALTH_REPORT_SYSTEM_PROMPT,
+  SINGLE_REPO_ANALYSIS_SYSTEM_PROMPT,
+} from "@devscope/ai";
 
 // ============================================================================
 // 类型定义
@@ -56,6 +60,59 @@ function getAnalysisTypeLabel(type: string): string {
   return labels[type] || type;
 }
 
+/**
+ * 创建终端输出拦截器
+ * 拦截 console.log 等输出并通过 SSE 发送
+ */
+function createTerminalInterceptor(reply: FastifyReply) {
+  const levels = ["log", "info", "warn", "error", "debug"] as const;
+  const originals: Record<string, (...args: any[]) => void> = {};
+
+  // 保存原始方法
+  for (const level of levels) {
+    originals[level] = console[level].bind(console);
+  }
+
+  // 返回清理函数
+  const cleanup = () => {
+    for (const level of levels) {
+      console[level] = originals[level];
+    }
+  };
+
+  // 重写 console 方法
+  for (const level of levels) {
+    console[level] = ((...args: any[]) => {
+      // 调用原始方法（保持终端输出）
+      originals[level](...args);
+
+      // 通过 SSE 发送
+      const message = args
+        .map((arg) => {
+          if (typeof arg === "string") return arg;
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch {
+            return String(arg);
+          }
+        })
+        .join(" ");
+
+      sendEvent(reply, {
+        type: "terminal",
+        data: {
+          level,
+          message,
+          timestamp: new Date().toISOString(),
+          source: "agent",
+        },
+      });
+    }) as any;
+  }
+
+  return cleanup;
+}
+
 // ============================================================================
 // 报告生成
 // ============================================================================
@@ -67,7 +124,8 @@ async function generateStructuredReport(
   executionId: string,
   toolCalls: Array<{ tool: string; input: unknown; output: unknown }>,
   repos: string[],
-  analysisType: string
+  analysisType: string,
+  aiOutput?: string  // 新增：Agent 的最终文本输出
 ): Promise<CompetitiveAnalysisReport> {
   const reportId = uuidv4();
   const now = new Date().toISOString();
@@ -186,6 +244,9 @@ async function generateStructuredReport(
     generatedAt: now,
     analysisType: analysisType as any,
 
+    // AI 详细分析
+    aiAnalysis: aiOutput,
+
     executiveSummary: {
       overview: `本报告分析了 ${repos.length} 个开源项目，平均健康度评分为 ${avgHealthScore.toFixed(1)} 分。` +
         `其中 ${investRepos.length} 个项目建议投资，${watchRepos.length} 个项目建议观望，${avoidRepos.length} 个项目建议规避。`,
@@ -252,12 +313,33 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
     reply.raw.setHeader("Connection", "keep-alive");
     reply.raw.setHeader("X-Accel-Buffering", "no"); // 禁用 nginx 缓冲
 
+    // CORS 头（允许前端直接访问）
+    reply.raw.setHeader("Access-Control-Allow-Origin", "*");
+    reply.raw.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    reply.raw.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
     // 初始化数据库记录
     const db = createDb();
     try {
+      // 尝试获取或创建默认用户
+      const { users } = await import("@devscope/db");
+      const existingUsers = await db.select().from(users).limit(1);
+      let userId = input.userId;
+
+      if (!userId && existingUsers.length === 0) {
+        // 创建默认用户
+        const [newUser] = await db.insert(users).values({
+          username: "default",
+          email: "default@devscope.local",
+        }).returning();
+        userId = newUser.id;
+      } else if (!userId && existingUsers.length > 0) {
+        userId = existingUsers[0].id;
+      }
+
       await db.insert(workflowExecutions).values({
         executionId,
-        userId: input.userId || 1,
+        userId: userId!,
         workflowId: "agent_competitive_analysis",
         workflowType: input.analysisType,
         status: "running",
@@ -269,14 +351,31 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
     }
 
     try {
-      // 创建 Agent
-      const agent = createAgent({
-        systemPrompt: COMPETITIVE_ANALYSIS_SYSTEM_PROMPT,
-      });
+      // 根据分析类型选择对应的系统提示词
+      const getSystemPrompt = (analysisType: string): string => {
+        switch (analysisType) {
+          case "health_report":
+            return HEALTH_REPORT_SYSTEM_PROMPT;
+          case "single_repo":
+            return SINGLE_REPO_ANALYSIS_SYSTEM_PROMPT;
+          case "competitive_landscape":
+          default:
+            return COMPETITIVE_ANALYSIS_SYSTEM_PROMPT;
+        }
+      };
 
-      // 构建分析提示词
-      const repoList = input.repos.map((r) => `- ${r}`).join("\n");
-      const prompt = `请对以下 GitHub 仓库进行${getAnalysisTypeLabel(input.analysisType)}：
+      // 创建终端输出拦截器
+      const cleanupTerminal = createTerminalInterceptor(reply);
+
+      try {
+        // 创建 Agent
+        const agent = createAgent({
+          systemPrompt: getSystemPrompt(input.analysisType),
+        });
+
+        // 构建分析提示词
+        const repoList = input.repos.map((r) => `- ${r}`).join("\n");
+        const prompt = `请对以下 GitHub 仓库进行${getAnalysisTypeLabel(input.analysisType)}：
 
 ${repoList}
 
@@ -293,105 +392,114 @@ ${input.context ? `\n额外上下文：\n${input.context}\n` : ""}
    - 发展趋势对比
 4. **报告生成**：使用 report_generate 工具生成最终报告
 
-请确保每个分析结论都有数据支撑，并在报告中标注数据来源。`;
+**重要提示**：
+- 所有分析内容必须使用中文输出
+- 确保每个分析结论都有数据支撑，并在报告中标注数据来源`;
 
-      // 流式回调
-      const callbacks: StreamCallbacks = {
-        onText: (text) => {
-          sendEvent(reply, {
-            type: "text",
-            data: { text, timestamp: new Date().toISOString() },
-          });
-        },
-        onToolUse: (name, toolInput) => {
-          sendEvent(reply, {
-            type: "tool_use",
-            data: { name, input: toolInput as Record<string, unknown>, timestamp: new Date().toISOString() },
-          });
-        },
-        onToolResult: (name, result) => {
-          sendEvent(reply, {
-            type: "tool_result",
-            data: { name, result, timestamp: new Date().toISOString() },
-          });
-        },
-      };
+        // 流式回调
+        const callbacks: StreamCallbacks = {
+          onText: (text) => {
+            sendEvent(reply, {
+              type: "text",
+              data: { text, timestamp: new Date().toISOString() },
+            });
+          },
+          onToolUse: (name, toolInput) => {
+            sendEvent(reply, {
+              type: "tool_use",
+              data: { name, input: toolInput as Record<string, unknown>, timestamp: new Date().toISOString() },
+            });
+          },
+          onToolResult: (name, result) => {
+            sendEvent(reply, {
+              type: "tool_result",
+              data: { name, result, timestamp: new Date().toISOString() },
+            });
+          },
+        };
 
-      // 运行 Agent
-      const result = await agent.stream(prompt, callbacks);
+        // 运行 Agent
+        const result = await agent.stream(prompt, callbacks);
 
-      // 生成结构化报告
-      const report = await generateStructuredReport(
-        executionId,
-        result.toolCalls,
-        input.repos,
-        input.analysisType
-      );
+        // 生成结构化报告
+        const report = await generateStructuredReport(
+          executionId,
+          result.toolCalls,
+          input.repos,
+          input.analysisType,
+          result.output  // 传入 AI 的详细文本分析
+        );
 
-      // 保存报告
-      const { reportId, path: reportPath } = await saveReport(executionId, report);
+        // 保存报告
+        const { reportId, path: reportPath } = await saveReport(executionId, report);
 
-      // 发送报告事件
-      sendEvent(reply, {
-        type: "report",
-        data: {
-          reportId,
-          reportPath,
-          summary: report.executiveSummary.overview,
-          timestamp: new Date().toISOString(),
-        },
-      });
+        // 发送报告事件
+        sendEvent(reply, {
+          type: "report",
+          data: {
+            reportId,
+            reportPath,
+            summary: report.executiveSummary.overview,
+            timestamp: new Date().toISOString(),
+          },
+        });
 
-      // 更新执行状态
-      try {
-        await db
-          .update(workflowExecutions)
-          .set({
+        // 更新执行状态
+        try {
+          await db
+            .update(workflowExecutions)
+            .set({
+              status: "completed",
+              completedAt: new Date(),
+              result: report as any,
+            })
+            .where(eq(workflowExecutions.executionId, executionId));
+        } catch (e) {
+          console.error("[SSE] Failed to update execution record:", e);
+        }
+
+        // 发送完成事件
+        sendEvent(reply, {
+          type: "complete",
+          data: {
+            executionId,
             status: "completed",
-            completedAt: new Date(),
-            result: report as any,
-          })
-          .where(eq(workflowExecutions.executionId, executionId));
-      } catch (e) {
-        console.error("[SSE] Failed to update execution record:", e);
-      }
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // 发送完成事件
-      sendEvent(reply, {
-        type: "complete",
-        data: {
-          executionId,
-          status: "completed",
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("[SSE] Agent workflow error:", error);
 
-      console.error("[SSE] Agent workflow error:", error);
-
-      sendEvent(reply, {
-        type: "complete",
-        data: {
-          executionId,
-          status: "failed",
-          error: errorMessage,
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-      // 更新执行状态
-      try {
-        await db
-          .update(workflowExecutions)
-          .set({
+        sendEvent(reply, {
+          type: "complete",
+          data: {
+            executionId,
             status: "failed",
             error: errorMessage,
-          })
-          .where(eq(workflowExecutions.executionId, executionId));
-      } catch (e) {
-        console.error("[SSE] Failed to update execution record:", e);
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        // 更新执行状态
+        try {
+          await db
+            .update(workflowExecutions)
+            .set({
+              status: "failed",
+              error: errorMessage,
+            })
+            .where(eq(workflowExecutions.executionId, executionId));
+        } catch (e) {
+          console.error("[SSE] Failed to update execution record:", e);
+        }
+      } finally {
+        // 清理终端拦截器
+        cleanupTerminal();
       }
+    } catch (outerError) {
+      console.error("[SSE] Outer error:", outerError);
     }
 
     reply.raw.end();

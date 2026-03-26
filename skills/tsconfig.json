@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "moduleResolution": "node",
+    "paths": {
+      "@devscope/ai": ["../packages/ai/src"],
+      "@devscope/db": ["../packages/db/src"],
+      "@devscope/shared": ["../packages/shared/src"]
+    }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

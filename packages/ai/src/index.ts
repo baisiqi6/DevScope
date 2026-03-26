@@ -134,6 +134,14 @@ export class AIProvider {
       const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
       const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 
+      // 调试日志
+      console.log(`[AIProvider] openai-compatible mode:`);
+      console.log(`[AIProvider]   - config.apiKey: ${config.apiKey ? 'Yes' : 'No'}`);
+      console.log(`[AIProvider]   - process.env.OPENAI_COMPATIBLE_API_KEY: ${process.env.OPENAI_COMPATIBLE_API_KEY ? 'Yes' : 'No'}`);
+      console.log(`[AIProvider]   - process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'Yes' : 'No'}`);
+      console.log(`[AIProvider]   - final apiKey: ${apiKey ? 'Yes (' + apiKey.substring(0, 10) + '...)' : 'No'}`);
+      console.log(`[AIProvider]   - baseURL: ${baseURL}`);
+
       if (!apiKey) {
         throw new Error("API Key is required for openai-compatible provider. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
       }
@@ -146,10 +154,8 @@ export class AIProvider {
       this.defaultModel = model || config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
     }
 
-    // 打印初始化信息（开发模式）
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
-    }
+    // 打印初始化信息
+    console.log(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
   }
 
   /**

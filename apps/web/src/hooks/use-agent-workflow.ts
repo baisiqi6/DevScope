@@ -8,10 +8,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import type {
-  AgentWorkflowEvent,
-  CompetitiveAnalysisReport,
-} from "@devscope/shared";
+import type { AgentWorkflowEvent } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
@@ -45,12 +42,16 @@ export interface WorkflowState {
   thinkingText: string;
   /** 输出文本累积 */
   outputText: string;
+  /** 终端输出累积 */
+  terminalOutput: string;
   /** 生成的报告 */
   report: ReportResult | null;
   /** 错误信息 */
   error: string | null;
   /** 执行 ID */
   executionId: string | null;
+  /** 开始时间戳 */
+  startTime: number | null;
 }
 
 /**
@@ -114,9 +115,11 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
     currentTool: null,
     thinkingText: "",
     outputText: "",
+    terminalOutput: "",
     report: null,
     error: null,
     executionId: null,
+    startTime: null,
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -133,15 +136,19 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
         currentTool: null,
         thinkingText: "",
         outputText: "",
+        terminalOutput: "",
         report: null,
         error: null,
         executionId: null,
+        startTime: Date.now(),
       });
 
       // 创建 AbortController
       abortControllerRef.current = new AbortController();
 
       try {
+        // 使用 Next.js API Route 代理（方案 A）
+        // 优点：无 CORS 问题，更安全，部署简单
         const response = await fetch("/api/agent/workflow/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -197,6 +204,11 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
                       break;
                     case "text":
                       updates.outputText = prev.outputText + eventData.data.text;
+                      break;
+                    case "terminal":
+                      const timestamp = new Date(eventData.data.timestamp).toLocaleTimeString();
+                      const level = eventData.data.level.toUpperCase();
+                      updates.terminalOutput = prev.terminalOutput + `[${timestamp}] [${level}] ${eventData.data.message}\n`;
                       break;
                     case "report":
                       updates.report = eventData.data;
@@ -270,9 +282,11 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
       currentTool: null,
       thinkingText: "",
       outputText: "",
+      terminalOutput: "",
       report: null,
       error: null,
       executionId: null,
+      startTime: null,
     });
   }, []);
 
@@ -319,6 +333,6 @@ export function getEventDisplayText(event: AgentWorkflowEvent): string {
  */
 export function getEventIconType(
   event: AgentWorkflowEvent
-): "thinking" | "tool" | "result" | "text" | "report" | "complete" {
+): "thinking" | "tool_use" | "tool_result" | "text" | "report" | "complete" | "terminal" {
   return event.type;
 }

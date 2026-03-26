@@ -3,23 +3,28 @@
  * @description 仓库卡片组件
  *
  * 展示单个 GitHub 仓库的信息卡片，支持卡片和列表两种视图模式。
+ * 支持显示分组标签。
  */
 
 "use client";
 
 import type { Repository } from "@devscope/shared";
+import type { RepositoryGroup } from "@devscope/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { motion } from "framer-motion";
 import type { ViewMode } from "./view-toggle";
+import { getGroupColor } from "@/lib/group-config";
 
 interface RepositoryCardProps {
   repository: Repository;
   onViewDetails: (id: number) => void;
   viewMode?: ViewMode;
+  /** 仓库所属的分组列表（可选） */
+  groups?: RepositoryGroup[];
 }
 
-export function RepositoryCard({ repository, onViewDetails, viewMode = "card" }: RepositoryCardProps) {
+export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [] }: RepositoryCardProps) {
   // 卡片模式 - 紧凑的方片布局
   if (viewMode === "card") {
     return (
@@ -42,11 +47,29 @@ export function RepositoryCard({ repository, onViewDetails, viewMode = "card" }:
                 >
                   {repository.owner}/{repository.name}
                 </a>
-                {repository.language && (
-                  <span className="inline-block mt-2 text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
-                    {repository.language}
-                  </span>
-                )}
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {repository.language && (
+                    <span className="inline-block text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
+                      {repository.language}
+                    </span>
+                  )}
+                  {/* 分组标签 */}
+                  {groups.length > 0 && (
+                    <>
+                      {groups.map((group) => {
+                        const colorConfig = getGroupColor(group.color);
+                        return (
+                          <span
+                            key={group.id}
+                            className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${colorConfig.bg} ${colorConfig.text}`}
+                          >
+                            {group.name}
+                          </span>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
               </div>
               <Button
                 size="sm"
@@ -125,6 +148,22 @@ export function RepositoryCard({ repository, onViewDetails, viewMode = "card" }:
                   <span className="shrink-0 text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
                     {repository.language}
                   </span>
+                )}
+                {/* 分组标签 */}
+                {groups.length > 0 && (
+                  <>
+                    {groups.map((group) => {
+                      const colorConfig = getGroupColor(group.color);
+                      return (
+                        <span
+                          key={group.id}
+                          className={`shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${colorConfig.bg} ${colorConfig.text}`}
+                        >
+                          {group.name}
+                        </span>
+                      );
+                    })}
+                  </>
                 )}
               </div>
 

@@ -484,3 +484,82 @@ export type Release = typeof releases.$inferSelect;
  * 新 Release 类型
  */
 export type NewRelease = typeof releases.$inferInsert;
+
+// ============================================================================
+// 仓库分组相关表定义
+// ============================================================================
+
+/**
+ * 仓库分组表
+ * @description 存储用户创建的仓库分组
+ */
+export const repositoryGroups = pgTable("repository_groups", {
+  /** 分组唯一标识 */
+  id: serial("id").primaryKey(),
+  /** 所属用户 ID */
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  /** 分组名称 */
+  name: text("name").notNull(),
+  /** 分组颜色 (blue, green, purple, orange, red, pink) */
+  color: text("color").default("blue").notNull(),
+  /** 分组图标 (lucide-react icon name) */
+  icon: text("icon").default("folder").notNull(),
+  /** 分组描述 */
+  description: text("description"),
+  /** 显示顺序 */
+  orderIndex: integer("order_index").default(0).notNull(),
+  /** 创建时间 */
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** 最后更新时间 */
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("repository_groups_user_id_idx").on(table.userId),
+  orderIdx: index("repository_groups_order_idx").on(table.userId, table.orderIndex),
+}));
+
+/**
+ * 分组成员表
+ * @description 存储分组与仓库的多对多关系
+ */
+export const groupMembers = pgTable("group_members", {
+  /** 成员记录唯一标识 */
+  id: serial("id").primaryKey(),
+  /** 分组 ID */
+  groupId: integer("group_id")
+    .references(() => repositoryGroups.id, { onDelete: "cascade" })
+    .notNull(),
+  /** 仓库 ID */
+  repoId: integer("repo_id")
+    .references(() => repositories.id, { onDelete: "cascade" })
+    .notNull(),
+  /** 在分组内的顺序 */
+  orderIndex: integer("order_index").default(0).notNull(),
+  /** 添加时间 */
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  groupIdIdx: index("group_members_group_id_idx").on(table.groupId),
+  repoIdIdx: index("group_members_repo_id_idx").on(table.repoId),
+  groupOrderIdx: index("group_members_group_order_idx").on(table.groupId, table.orderIndex),
+}));
+
+/**
+ * 仓库分组数据类型
+ */
+export type RepositoryGroup = typeof repositoryGroups.$inferSelect;
+
+/**
+ * 新仓库分组类型
+ */
+export type NewRepositoryGroup = typeof repositoryGroups.$inferInsert;
+
+/**
+ * 分组成员数据类型
+ */
+export type GroupMember = typeof groupMembers.$inferSelect;
+
+/**
+ * 新分组成员类型
+ */
+export type NewGroupMember = typeof groupMembers.$inferInsert;
