@@ -38,26 +38,19 @@ export async function upsertRepository(
   db: Db,
   data: Omit<NewRepository, "id" | "createdAt" | "updatedAt">
 ): Promise<Repository> {
-  const existing = await db
-    .select()
-    .from(repositories)
-    .where(eq(repositories.fullName, data.fullName))
-    .limit(1);
-
-  if (existing.length > 0) {
-    const [updated] = await db
-      .update(repositories)
-      .set({
+  const [repository] = await db
+    .insert(repositories)
+    .values(data)
+    .onConflictDoUpdate({
+      target: repositories.fullName,
+      set: {
         ...data,
         updatedAt: new Date(),
-      })
-      .where(eq(repositories.id, existing[0].id))
-      .returning();
-    return updated;
-  }
+      },
+    })
+    .returning();
 
-  const [created] = await db.insert(repositories).values(data).returning();
-  return created;
+  return repository;
 }
 
 /**

@@ -203,16 +203,72 @@ export function generateReport(
 function generateDetailedReport(input: z.infer<typeof ReportInputSchema>): Report {
   const summary = generateSummaryReport(input.analyses);
 
+  // 为每个仓库生成详细分析
+  const detailedSections: ReportSection[] = [];
+
+  for (const analysis of input.analyses) {
+    const repoName = analysis.repository?.fullName || analysis.repo || "Unknown";
+    const repoSections: ReportSection[] = [];
+
+    // 关键指标
+    if (analysis.keyMetrics) {
+      const metricsContent = Object.entries(analysis.keyMetrics)
+        .map(([key, value]) => `- **${key}**: ${value}`)
+        .join("\n");
+      repoSections.push({
+        title: `${repoName} - 关键指标`,
+        content: metricsContent,
+        level: 2,
+      });
+    }
+
+    // 风险因素
+    if (analysis.riskFactors && analysis.riskFactors.length > 0) {
+      const risksContent = analysis.riskFactors
+        .map((risk: any) => `- **${risk.category}** (严重度: ${risk.severity}): ${risk.description}`)
+        .join("\n");
+      repoSections.push({
+        title: `${repoName} - 风险因素`,
+        content: risksContent,
+        level: 2,
+      });
+    }
+
+    // 机会因素
+    if (analysis.opportunities && analysis.opportunities.length > 0) {
+      const opportunitiesContent = analysis.opportunities
+        .map((opp: any) => `- **${opp.category}** (潜力: ${opp.potential}): ${opp.description}`)
+        .join("\n");
+      repoSections.push({
+        title: `${repoName} - 机会因素`,
+        content: opportunitiesContent,
+        level: 2,
+      });
+    }
+
+    // 总结
+    if (analysis.summary) {
+      repoSections.push({
+        title: `${repoName} - 总结`,
+        content: analysis.summary,
+        level: 2,
+      });
+    }
+
+    detailedSections.push(...repoSections);
+  }
+
   return {
     ...summary,
     type: "detailed",
     sections: [
       ...summary.sections,
-      {
-        title: "详细分析",
-        content: input.content || "无额外内容",
+      ...detailedSections,
+      ...(input.content ? [{
+        title: "额外内容",
+        content: input.content,
         level: 1,
-      },
+      }] : []),
     ],
   };
 }

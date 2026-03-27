@@ -134,13 +134,13 @@ export class AIProvider {
       const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
       const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 
-      // 调试日志
-      console.log(`[AIProvider] openai-compatible mode:`);
-      console.log(`[AIProvider]   - config.apiKey: ${config.apiKey ? 'Yes' : 'No'}`);
-      console.log(`[AIProvider]   - process.env.OPENAI_COMPATIBLE_API_KEY: ${process.env.OPENAI_COMPATIBLE_API_KEY ? 'Yes' : 'No'}`);
-      console.log(`[AIProvider]   - process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'Yes' : 'No'}`);
-      console.log(`[AIProvider]   - final apiKey: ${apiKey ? 'Yes (' + apiKey.substring(0, 10) + '...)' : 'No'}`);
-      console.log(`[AIProvider]   - baseURL: ${baseURL}`);
+      // 调试日志（使用 stderr 避免污染 stdout）
+      console.error(`[AIProvider] openai-compatible mode:`);
+      console.error(`[AIProvider]   - config.apiKey: ${config.apiKey ? 'Yes' : 'No'}`);
+      console.error(`[AIProvider]   - process.env.OPENAI_COMPATIBLE_API_KEY: ${process.env.OPENAI_COMPATIBLE_API_KEY ? 'Yes' : 'No'}`);
+      console.error(`[AIProvider]   - process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'Yes' : 'No'}`);
+      console.error(`[AIProvider]   - final apiKey: ${apiKey ? 'Yes (' + apiKey.substring(0, 10) + '...)' : 'No'}`);
+      console.error(`[AIProvider]   - baseURL: ${baseURL}`);
 
       if (!apiKey) {
         throw new Error("API Key is required for openai-compatible provider. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
@@ -154,8 +154,8 @@ export class AIProvider {
       this.defaultModel = model || config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
     }
 
-    // 打印初始化信息
-    console.log(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
+    // 打印初始化信息（使用 stderr 避免污染 stdout）
+    console.error(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
   }
 
   /**
@@ -748,6 +748,20 @@ export class BGEEmbeddingProvider {
     });
   }
 
+  private getBatchSize(): number {
+    const configured = Number.parseInt(process.env.EMBEDDING_BATCH_SIZE || "", 10);
+    return Number.isFinite(configured) && configured > 0 ? configured : 10;
+  }
+
+  private getBatchDelayMs(): number {
+    const configured = Number.parseInt(process.env.EMBEDDING_BATCH_DELAY_MS || "", 10);
+    if (Number.isFinite(configured) && configured >= 0) {
+      return configured;
+    }
+
+    return this.client.baseURL.includes("siliconflow.cn") ? 0 : 3000;
+  }
+
   /**
    * 生成文本向量嵌入
    *
@@ -809,7 +823,7 @@ export class BGEEmbeddingProvider {
   async embedBatch(texts: string[]): Promise<number[][]> {
     // 硅基流动等云服务有请求体大小限制，需要分批处理
     // 设置每批最多 10 个文本（保守值，避免 413 Payload Too Large 错误）
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = this.getBatchSize();
 
     if (texts.length <= BATCH_SIZE) {
       // 文本数量少，直接处理
@@ -830,7 +844,7 @@ export class BGEEmbeddingProvider {
     let errorCount = 0;
 
     // 添加延迟以避免 API 速率限制
-    const RATE_LIMIT_DELAY = 3000; // 每批之间延迟 3 秒
+    const RATE_LIMIT_DELAY = this.getBatchDelayMs();
 
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
@@ -838,7 +852,7 @@ export class BGEEmbeddingProvider {
       const batch = texts.slice(i, i + BATCH_SIZE);
 
       // 添加延迟（跳过第一批）
-      if (batchIndex > 1) {
+      if (RATE_LIMIT_DELAY > 0 && batchIndex > 1) {
         console.log(`[BGEEmbeddingProvider] Waiting ${RATE_LIMIT_DELAY}ms to avoid rate limiting...`);
         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
       }

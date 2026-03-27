@@ -76,7 +76,9 @@ export const groupsRouter = router({
       const groupsWithCount = await Promise.all(
         groups.map(async (group) => {
           const [result] = await db
-            .select({ count: count() })
+            .select({
+              count: sql<number>`count(distinct ${groupMembers.repoId})`,
+            })
             .from(groupMembers)
             .where(eq(groupMembers.groupId, group.id));
 
@@ -146,7 +148,7 @@ export const groupsRouter = router({
       return {
         ...group,
         members: membersWithRepos,
-        repoCount: members.length,
+        repoCount: new Set(members.map((member) => member.repoId)).size,
       };
     }),
 

@@ -15,13 +15,14 @@ import {
   semanticSearchRepoChunks,
   getRepositoryByFullName,
   createPipeline,
+  parseRepoFullName,
   repositories,
   repoChunks,
   createOSSInsightClient,
   createGitHubCollector,
   getReleasesByRepoId,
 } from "@devscope/db";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   repositoryAnalysisRequestSchema,
   repositoryAnalysisSchema,
@@ -38,6 +39,13 @@ import {
 } from "@devscope/shared";
 import { workflowRouter } from "./router/workflow";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
+
+const activeRepositoryCollections = new Set<string>();
+
+function normalizeRepoKey(fullName: string): string {
+  const { owner, repo } = parseRepoFullName(fullName.trim());
+  return `${owner}/${repo}`.toLowerCase();
+}
 
 // ============================================================================
 // 初始化 AI 服务
@@ -181,22 +189,27 @@ export const appRouter = router({
    */
   getRepositories: publicProcedure
     .input(z.object({
-      limit: z.number().min(1).max(100).default(20),
+      limit: z.number().min(1).max(1000).optional(),
       offset: z.number().min(0).default(0),
     }).optional())
     .query(async ({ input }) => {
       console.log("[getRepositories] Starting...");
       const db = createDb();
-      const limit = input?.limit ?? 20;
       const offset = input?.offset ?? 0;
 
       try {
-        const repos = await db
-          .select()
-          .from(repositories)
-          .orderBy(repositories.stars)
-          .limit(limit)
-          .offset(offset);
+        const repos =
+          input?.limit !== undefined
+            ? await db
+                .select()
+                .from(repositories)
+                .orderBy(desc(repositories.stars))
+                .limit(input.limit)
+                .offset(offset)
+            : await db
+                .select()
+                .from(repositories)
+                .orderBy(desc(repositories.stars));
 
         console.log("[getRepositories] Found repos:", repos.length);
         return repos.map((repo) => ({
@@ -339,8 +352,16 @@ export const appRouter = router({
       skipEmbeddings: z.boolean().optional(), // 是否跳过向量化（快速采集模式）
     }))
     .mutation(async ({ input }) => {
+      const repoKey = normalizeRepoKey(input.repo);
+      if (activeRepositoryCollections.has(repoKey)) {
+        throw new Error("该仓库正在采集或向量化中，请稍后再试");
+      }
+
+      activeRepositoryCollections.add(repoKey);
+
       const db = createDb();
       const pipeline = createPipeline(db);
+      let backgroundTaskOwnsLock = false;
 
       console.log("[collectRepository] Starting collection for:", input.repo, "skipEmbeddings:", input.skipEmbeddings);
 
@@ -362,10 +383,21 @@ export const appRouter = router({
             .from(repoChunks)
             .where(eq(repoChunks.repoId, result.repository.id));
 
-          if (chunks.length > 0) {
+          const [repoRecord] = await db
+            .select({
+              updatedAt: repositories.updatedAt,
+            })
+            .from(repositories)
+            .where(eq(repositories.id, result.repository.id))
+            .limit(1);
+
+          if (chunks.length > 0 && repoRecord) {
             // 启动后台向量化（不等待完成）
-            pipeline.runEmbeddingsInBackground(result.repository.id, chunks as any).catch((err) => {
+            backgroundTaskOwnsLock = true;
+            pipeline.runEmbeddingsInBackground(result.repository.id, chunks as any, undefined, repoRecord.updatedAt).catch((err) => {
               console.error("[collectRepository] Background embedding failed:", err);
+            }).finally(() => {
+              activeRepositoryCollections.delete(repoKey);
             });
 
             result.embeddingInBackground = true;
@@ -376,6 +408,10 @@ export const appRouter = router({
       } catch (err) {
         console.error("[collectRepository] Error:", err);
         throw err;
+      } finally {
+        if (!backgroundTaskOwnsLock) {
+          activeRepositoryCollections.delete(repoKey);
+        }
       }
     }),
 

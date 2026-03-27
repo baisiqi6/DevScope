@@ -217,6 +217,59 @@ export class DataCollectionPipeline {
     console.log(`[Pipeline] Updated embedding status: ${status}, progress: ${progress.current}/${progress.total}`);
   }
 
+  private async isRepositoryVersionCurrent(
+    repoId: number,
+    expectedUpdatedAt?: Date
+  ): Promise<boolean> {
+    if (!expectedUpdatedAt) {
+      return true;
+    }
+
+    const repoList = await this.db
+      .select({
+        updatedAt: repositories.updatedAt,
+      })
+      .from(repositories)
+      .where(eq(repositories.id, repoId))
+      .limit(1);
+
+    if (repoList.length === 0) {
+      return false;
+    }
+
+    return repoList[0].updatedAt.getTime() === expectedUpdatedAt.getTime();
+  }
+
+  private async ensureCurrentEmbeddingRun(
+    repoId: number,
+    expectedUpdatedAt: Date | undefined,
+    phase: string
+  ): Promise<boolean> {
+    const isCurrent = await this.isRepositoryVersionCurrent(repoId, expectedUpdatedAt);
+
+    if (!isCurrent) {
+      console.warn(
+        `[Pipeline] Background embedding aborted for repository ${repoId}: newer repository data detected during ${phase}.`
+      );
+    }
+
+    return isCurrent;
+  }
+
+  private getEmbeddingBatchSize(): number {
+    const configured = Number.parseInt(process.env.EMBEDDING_BATCH_SIZE || "", 10);
+    return Number.isFinite(configured) && configured > 0 ? configured : 10;
+  }
+
+  private getEmbeddingBatchDelayMs(): number {
+    const configured = Number.parseInt(process.env.EMBEDDING_BATCH_DELAY_MS || "", 10);
+    if (Number.isFinite(configured) && configured >= 0) {
+      return configured;
+    }
+
+    return this.config.bgeApiUrl.includes("siliconflow.cn") ? 0 : 3000;
+  }
+
   /**
    * 执行快速采集（不包含向量化）
    */
@@ -236,24 +289,34 @@ export class DataCollectionPipeline {
   async runEmbeddingsInBackground(
     repoId: number,
     chunks: TextChunk[],
-    onProgress?: EmbeddingProgressCallback
+    onProgress?: EmbeddingProgressCallback,
+    expectedUpdatedAt?: Date
   ): Promise<void> {
     const totalChunks = chunks.length;
     console.log(`[Pipeline] Starting background embedding for ${totalChunks} chunks...`);
 
     try {
+      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "startup"))) {
+        return;
+      }
+
       await this.updateEmbeddingStatus(repoId, 'processing', { current: 0, total: totalChunks });
 
       const texts = chunks.map((c: TextChunk) => c.content);
 
       // 自定义 embedBatch，支持进度回调
-      const BATCH_SIZE = 10;
+      const BATCH_SIZE = this.getEmbeddingBatchSize();
+      const batchDelayMs = this.getEmbeddingBatchDelayMs();
       const results: (number[] | null)[] = new Array(texts.length).fill(null);
       let successCount = 0;
 
       for (let i = 0; i < texts.length; i += BATCH_SIZE) {
         const batchIndex = Math.floor(i / BATCH_SIZE);
         const batch = texts.slice(i, i + BATCH_SIZE);
+
+        if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, `batch ${batchIndex} start`))) {
+          return;
+        }
 
         let retryCount = 0;
         const maxRetries = 3;
@@ -298,6 +361,10 @@ export class DataCollectionPipeline {
           status: 'processing' as const,
         };
 
+        if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, `batch ${batchIndex} progress update`))) {
+          return;
+        }
+
         await this.updateEmbeddingStatus(repoId, 'processing', { current: completed, total: totalChunks });
 
         if (onProgress) {
@@ -305,12 +372,16 @@ export class DataCollectionPipeline {
         }
 
         // 添加延迟避免 API 限流
-        if (i + BATCH_SIZE < texts.length) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
+        if (batchDelayMs > 0 && i + BATCH_SIZE < texts.length) {
+          await new Promise(resolve => setTimeout(resolve, batchDelayMs));
         }
       }
 
       // 删除旧的 chunks 并插入新的带 embedding 的 chunks
+      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "final write"))) {
+        return;
+      }
+
       console.log(`[Pipeline] Deleting old chunks for repository: ${repoId}`);
       await deleteRepoChunksByRepoId(this.db, repoId);
 
@@ -334,6 +405,10 @@ export class DataCollectionPipeline {
       const failedCount = totalChunks - successCount;
       if (failedCount > 0) {
         console.warn(`[Pipeline] Completed with ${failedCount} failed embeddings`);
+      }
+
+      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "completion"))) {
+        return;
       }
 
       await this.updateEmbeddingStatus(repoId, 'completed', { current: totalChunks, total: totalChunks });

@@ -146,9 +146,11 @@ export function UngroupedSidebar({
       {/* 收起状态的标签按钮 */}
       <div
         className={`
-          h-full w-[60px] flex flex-col items-center justify-center gap-3
+          self-center w-[60px] flex flex-col items-center justify-center gap-3 py-4
           border-l border-t border-b border-amber-400
           bg-gradient-to-b from-amber-500 to-orange-500 shadow-lg cursor-pointer
+          rounded-l-2xl
+          relative
         `}
       >
         {/* 图标 */}

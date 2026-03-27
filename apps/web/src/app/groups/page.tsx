@@ -7,14 +7,16 @@
 
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { type DragEvent, useMemo, useRef, useState } from "react";
+import { skipToken } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Navigation } from "@/components/navigation";
 import { AnimatedBackground } from "@/components/animated-background";
 import { GroupTabs } from "@/components/group-tabs";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
-import { UngroupedSidebar } from "@/components/ungrouped-sidebar";
+import { UngroupedSidebar } from "@/components/ungrouped-sidebar-v2";
+import { RepositoryCard } from "@/components/repository-card";
+import { SortControl, sortRepositories, useSortPreferences } from "@/components/sort-control";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,18 +30,58 @@ import {
   Search,
   X
 } from "lucide-react";
-import type { RepositoryGroup } from "@devscope/shared";
+import type { Repository, RepositoryGroup } from "@devscope/shared";
 import { getGroupIcon, getGroupColor } from "@/lib/group-config";
 
-export default function GroupsManagementPage() {
-  const router = useRouter();
+function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
+  return Array.from(new Map(repos.map((repo) => [repo.id, repo])).values());
+}
 
+function normalizeRepository(repo: {
+  id: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  description?: string | null;
+  url: string;
+  stars?: number | null;
+  forks?: number | null;
+  openIssues?: number | null;
+  language?: string | null;
+  license?: string | null;
+  lastFetchedAt?: string | Date | null;
+}): Repository {
+  return {
+    id: repo.id,
+    fullName: repo.fullName,
+    name: repo.name,
+    owner: repo.owner,
+    description: repo.description ?? undefined,
+    url: repo.url,
+    stars: repo.stars ?? 0,
+    forks: repo.forks ?? 0,
+    openIssues: repo.openIssues ?? 0,
+    language: repo.language ?? undefined,
+    license: repo.license ?? undefined,
+    lastFetchedAt:
+      typeof repo.lastFetchedAt === "string"
+        ? repo.lastFetchedAt
+        : repo.lastFetchedAt?.toISOString(),
+  };
+}
+
+export default function GroupsManagementPage() {
   // 分组相关状态
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [draggingRepo, setDraggingRepo] = useState<Repository | null>(null);
+  const [isDropZoneActive, setIsDropZoneActive] = useState(false);
+  const [isDropZoneSuccess, setIsDropZoneSuccess] = useState(false);
+  const dropEnterCounterRef = useRef(0);
+  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences("stars", "desc");
 
   // 获取分组列表
   const { data: groups = [], refetch: refetchGroups } = trpc.groups.getAll.useQuery(
@@ -51,7 +93,7 @@ export default function GroupsManagementPage() {
   );
 
   // 获取未分组仓库
-  const { data: ungroupedRepos = [], refetch: refetchUngrouped } = trpc.groupsQuery.getUngroupedRepos.useQuery(
+  const { data: ungroupedRepos = [], refetch: refetchUngroupedRepos } = trpc.groupsQuery.getUngroupedRepos.useQuery(
     undefined,
     {
       enabled: true,
@@ -64,6 +106,16 @@ export default function GroupsManagementPage() {
     undefined,
     {
       enabled: true,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  const selectedGroupQueryInput =
+    selectedGroupId !== null ? { groupId: selectedGroupId } : skipToken;
+
+  const { data: selectedGroup, refetch: refetchSelectedGroup } = trpc.groups.getWithMembers.useQuery(
+    selectedGroupQueryInput,
+    {
       refetchOnWindowFocus: false,
     }
   );
@@ -93,6 +145,133 @@ export default function GroupsManagementPage() {
     : allRepositories;
 
   // 处理函数
+  const addGroupMemberMutation = trpc.groupMembers.add.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        refetchGroups(),
+        refetchUngroupedRepos(),
+        selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+      ]);
+    },
+  });
+
+  void displayRepos;
+
+  const uniqueAllRepositories = useMemo<Repository[]>(
+    () => dedupeRepositories(allRepositories.map(normalizeRepository)),
+    [allRepositories]
+  );
+
+  const uniqueUngroupedRepos = useMemo<Repository[]>(
+    () => dedupeRepositories(ungroupedRepos.map(normalizeRepository)),
+    [ungroupedRepos]
+  );
+
+  const selectedGroupRepositories = useMemo<Repository[]>(() => {
+    if (!selectedGroup) {
+      return [];
+    }
+
+    return dedupeRepositories(
+      selectedGroup.members
+        .map((member: { repository: Parameters<typeof normalizeRepository>[0] | null }) => member.repository)
+        .filter(
+          (
+            repo: Parameters<typeof normalizeRepository>[0] | null
+          ): repo is Parameters<typeof normalizeRepository>[0] => Boolean(repo)
+        )
+        .map(normalizeRepository)
+    );
+  }, [selectedGroup]);
+
+  const resolvedDisplayRepos: Repository[] =
+    selectedGroupId !== null ? selectedGroupRepositories : uniqueAllRepositories;
+  const sortedDisplayRepos = useMemo(
+    () => sortRepositories(resolvedDisplayRepos, sortBy, order),
+    [resolvedDisplayRepos, sortBy, order]
+  );
+  const totalRepoCount = uniqueAllRepositories.length;
+  const ungroupedRepoCount = uniqueUngroupedRepos.length;
+  const groupedRepoCount = Math.max(0, totalRepoCount - ungroupedRepoCount);
+
+  const resetDropZone = () => {
+    dropEnterCounterRef.current = 0;
+    setIsDropZoneActive(false);
+  };
+
+  const handleRepoDragStart = (repo: Repository) => {
+    setDraggingRepo(repo);
+    setIsSidebarOpen(true);
+    setIsDropZoneSuccess(false);
+  };
+
+  const handleRepoDragEnd = () => {
+    setDraggingRepo(null);
+    resetDropZone();
+  };
+
+  const handleDropZoneDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!draggingRepo || selectedGroupId === null) {
+      return;
+    }
+
+    event.preventDefault();
+    dropEnterCounterRef.current += 1;
+    setIsDropZoneActive(true);
+  };
+
+  const handleDropZoneDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!draggingRepo || selectedGroupId === null) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+
+    if (!isDropZoneActive) {
+      setIsDropZoneActive(true);
+    }
+  };
+
+  const handleDropZoneDragLeave = () => {
+    if (!draggingRepo || selectedGroupId === null) {
+      return;
+    }
+
+    dropEnterCounterRef.current = Math.max(0, dropEnterCounterRef.current - 1);
+    if (dropEnterCounterRef.current === 0) {
+      setIsDropZoneActive(false);
+    }
+  };
+
+  const handleDropToSelectedGroup = async (
+    event: DragEvent<HTMLDivElement>
+  ) => {
+    event.preventDefault();
+
+    if (!draggingRepo || selectedGroupId === null || addGroupMemberMutation.isPending) {
+      resetDropZone();
+      return;
+    }
+
+    try {
+      await addGroupMemberMutation.mutateAsync({
+        groupId: selectedGroupId,
+        repoId: draggingRepo.id,
+      });
+
+      setIsDropZoneSuccess(true);
+      window.setTimeout(() => {
+        setIsDropZoneSuccess(false);
+      }, 800);
+    } catch (error) {
+      console.error("Failed to add repo to group:", error);
+    } finally {
+      setDraggingRepo(null);
+      resetDropZone();
+    }
+  };
+
   const handleSelectAll = () => {
     setSelectedGroupId(null);
   };
@@ -126,7 +305,7 @@ export default function GroupsManagementPage() {
 
   // 过滤分组
   const filteredGroups = searchQuery
-    ? groups.filter((g) =>
+    ? groups.filter((g: RepositoryGroup) =>
         g.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : groups;
@@ -222,7 +401,7 @@ export default function GroupsManagementPage() {
                 <div>
                   <p className="text-sm text-gray-600">已分组仓库</p>
                   <p className="text-2xl font-bold text-blue-700">
-                    {allRepositories.length - ungroupedRepos.length}
+                    {groupedRepoCount}
                   </p>
                 </div>
                 <FolderOpen className="h-8 w-8 text-blue-500" />
@@ -235,7 +414,7 @@ export default function GroupsManagementPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">未分组仓库</p>
-                  <p className="text-2xl font-bold text-amber-700">{ungroupedRepos.length}</p>
+                  <p className="text-2xl font-bold text-amber-700">{ungroupedRepoCount}</p>
                 </div>
                 <FolderOpen className="h-8 w-8 text-amber-500" />
               </div>
@@ -252,7 +431,7 @@ export default function GroupsManagementPage() {
           <GroupTabs
             groups={groups}
             selectedGroupId={selectedGroupId}
-            totalRepoCount={allRepositories.length}
+            totalRepoCount={totalRepoCount}
             onSelectAll={handleSelectAll}
             onSelectGroup={handleSelectGroup}
             onCreateGroup={() => setShowCreateGroupDialog(true)}
@@ -260,6 +439,78 @@ export default function GroupsManagementPage() {
         </motion.div>
 
         {/* 分组列表 */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            scale: isDropZoneActive ? 1.01 : 1,
+          }}
+          transition={{ duration: 0.3, delay: 0.25 }}
+          onDragEnter={handleDropZoneDragEnter}
+          onDragOver={handleDropZoneDragOver}
+          onDragLeave={handleDropZoneDragLeave}
+          onDrop={handleDropToSelectedGroup}
+          className={`mb-8 mt-6 rounded-3xl border p-4 transition-all duration-300 ${
+            selectedGroupId !== null && isDropZoneActive
+              ? "border-amber-400 bg-amber-50/80 shadow-[0_18px_48px_rgba(251,146,60,0.18)]"
+              : selectedGroupId !== null && isDropZoneSuccess
+                ? "border-emerald-400 bg-emerald-50/80 shadow-[0_18px_48px_rgba(16,185,129,0.16)]"
+                : draggingRepo && selectedGroupId !== null
+                  ? "border-amber-200 bg-white/90 shadow-[0_12px_36px_rgba(251,146,60,0.08)]"
+                  : "border-transparent"
+          }`}
+        >
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                {selectedGroupId !== null ? selectedGroup?.name ?? "分组仓库" : "全部仓库"}
+              </h2>
+              <p className="text-sm text-slate-500">
+                当前显示 {sortedDisplayRepos.length} 个唯一仓库
+              </p>
+              {selectedGroupId !== null && draggingRepo && (
+                <p className={`mt-2 text-sm transition-colors ${
+                  isDropZoneActive ? "text-amber-700" : "text-slate-500"
+                }`}>
+                  {isDropZoneActive
+                    ? `释放后把 ${draggingRepo.owner}/${draggingRepo.name} 加入当前分组`
+                    : `把 ${draggingRepo.owner}/${draggingRepo.name} 拖进这个区域即可加入当前分组`}
+                </p>
+              )}
+              {selectedGroupId === null && draggingRepo && (
+                <p className="mt-2 text-sm text-slate-500">
+                  先选择一个分组，再把右侧未分组仓库拖进来
+                </p>
+              )}
+            </div>
+            <SortControl
+              value={sortBy}
+              order={order}
+              onSortChange={setSortBy}
+              onOrderToggle={toggleOrder}
+            />
+          </div>
+
+          {sortedDisplayRepos.length === 0 ? (
+            <Card className="border-dashed border-slate-300 bg-white/70">
+              <CardContent className="py-10 text-center text-slate-500">
+                {selectedGroupId !== null ? "这个分组下还没有仓库" : "还没有可展示的仓库"}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {sortedDisplayRepos.map((repo) => (
+                <RepositoryCard
+                  key={repo.id}
+                  repository={repo}
+                  onViewDetails={handleViewDetails}
+                />
+              ))}
+            </div>
+          )}
+        </motion.div>
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -282,7 +533,7 @@ export default function GroupsManagementPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group, index) => {
+              {filteredGroups.map((group: RepositoryGroup) => {
                 const colorConfig = getGroupColor(group.color);
                 const iconConfig = getGroupIcon(group.icon);
                 const IconComponent = iconConfig.icon;
@@ -392,10 +643,13 @@ export default function GroupsManagementPage() {
 
       {/* 未分组仓库侧拉栏 */}
       <UngroupedSidebar
-        ungroupedRepos={ungroupedRepos}
+        ungroupedRepos={uniqueUngroupedRepos}
         onViewDetails={handleViewDetails}
         isOpen={isSidebarOpen}
         onOpenChange={setIsSidebarOpen}
+        draggingRepoId={draggingRepo?.id ?? null}
+        onRepoDragStart={handleRepoDragStart}
+        onRepoDragEnd={handleRepoDragEnd}
       />
       </motion.div>
     </main>

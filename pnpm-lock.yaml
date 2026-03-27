@@ -300,6 +300,63 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  skills/repo-analyze:
+    dependencies:
+      '@devscope/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@devscope/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.19.15
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(@vitest/ui@3.2.4)(jiti@1.21.7)(tsx@4.21.0)
+
+  skills/repo-fetch:
+    dependencies:
+      '@devscope/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.19.15
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(@vitest/ui@3.2.4)(jiti@1.21.7)(tsx@4.21.0)
+
+  skills/report-generate:
+    dependencies:
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.19.15
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(@vitest/ui@3.2.4)(jiti@1.21.7)(tsx@4.21.0)
+
 packages:
 
   '@alloc/quick-lru@5.2.0':

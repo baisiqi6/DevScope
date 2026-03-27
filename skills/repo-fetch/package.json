@@ -1,0 +1,20 @@
+{
+  "name": "@devscope/skill-repo-fetch",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "GitHub 仓库数据获取工具",
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "@devscope/shared": "workspace:*",
+    "dotenv": "^16.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "vitest": "^3.2.4"
+  }
+}
