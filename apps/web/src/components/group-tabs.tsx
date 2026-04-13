@@ -34,7 +34,7 @@ export function GroupTabs({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 pb-2">
         <GroupTab
-          name="鍏ㄩ儴浠撳簱"
+          name="全部仓库"
           count={totalRepoCount}
           isSelected={selectedGroupId === null && !isUngroupedSelected}
           color="gray"
@@ -44,7 +44,7 @@ export function GroupTabs({
 
         {onSelectUngrouped && (
           <GroupTab
-            name="\u672a\u5206\u7ec4"
+            name="未分组"
             count={ungroupedRepoCount}
             isSelected={isUngroupedSelected}
             color="amber"

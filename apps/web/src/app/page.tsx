@@ -176,7 +176,7 @@ export default function HomePage() {
         groups.find((group: RepositoryGroup) => group.id === selectedGroupId)?.name ??
         "\u5206\u7ec4\u4ed3\u5e93"
       : isUngroupedSelected
-        ? "\u672a\u5206\u7ec4\u4ed3\u5e93"
+        ? "未分组仓库"
         : "\u5168\u90e8\u4ed3\u5e93";
 
   const totalRepoCount = uniqueRepositories.length;
@@ -255,14 +255,14 @@ export default function HomePage() {
                 variant={activeTab === "collect" ? "default" : "outline"}
                 onClick={() => setActiveTab("collect")}
               >
-                閲囬泦浠撳簱
+                采集仓库
               </Button>
               <Button
                 size="sm"
                 variant={activeTab === "following" ? "default" : "outline"}
                 onClick={() => setActiveTab("following")}
               >
-                鎴戠殑鍏虫敞
+                我的关注
               </Button>
             </div>
 

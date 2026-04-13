@@ -18,16 +18,16 @@ WORKDIR /app
 # 复制 package 文件
 COPY package.json pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json ./apps/api/
-COPY packages/*/package.json ./packages/
+COPY packages ./packages/
 
 # 安装依赖
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # 复制源代码
 COPY . .
 
-# 构建应用
-RUN pnpm --filter @devscope/api build
+# 构建应用及其工作区依赖
+RUN pnpm -r --filter @devscope/api... build
 
 # ============================================================================
 # 运行阶段
@@ -42,6 +42,12 @@ RUN adduser --system --uid 1001 devscope
 
 # 复制构建产物
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/packages/db/dist ./packages/db/dist
+COPY --from=builder /app/packages/ai/dist ./packages/ai/dist
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/db/package.json ./packages/db/
+COPY --from=builder /app/packages/ai/package.json ./packages/ai/
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
 
 # 设置环境变量

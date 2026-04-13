@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const apiTarget = process.env.API_REWRITE_TARGET || "http://localhost:3100";
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@devscope/shared", "@devscope/api"],
@@ -14,11 +16,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/trpc/:path*",
-        destination: "http://localhost:3100/trpc/:path*",
+        destination: `${apiTarget}/trpc/:path*`,
       },
       {
         source: "/api/agent/:path*",
-        destination: "http://localhost:3100/api/agent/:path*",
+        destination: `${apiTarget}/api/agent/:path*`,
       },
     ];
   },

@@ -19,10 +19,15 @@ import { registerWebhookRoute } from "./webhook/langtum";
 import { registerDocsRoute } from "./docs";
 import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
+import { startScheduler } from "./scheduler";
 
-// 从项目根目录加载 .env 文件
-// API 服务器运行时在 apps/api 目录，需要向上两级
-const envPath = path.resolve(process.cwd(), "../../.env");
+// 从多个可能的路径加载 .env 文件
+// 本地开发时在 apps/api 目录，需要向上两级；Docker 中 .env 在 cwd 下
+const envPaths = [
+  path.resolve(process.cwd(), ".env"),           // Docker / 项目根目录
+  path.resolve(process.cwd(), "../../.env"),      // 本地开发 (apps/api -> 根目录)
+];
+const envPath = envPaths.find((p) => fs.existsSync(p)) || envPaths[0];
 console.log(`[Env] Loading .env from: ${envPath}`);
 console.log(`[Env] File exists: ${fs.existsSync(envPath)}`);
 dotenv.config({ path: envPath });
@@ -284,6 +289,13 @@ const start = async () => {
     /** 监听所有网络接口 */
     await fastify.listen({ port, host: "0.0.0.0" });
     console.log(`🚀 API Server listening on port ${port}`);
+
+    // 启动定时调度器（通过环境变量控制）
+    if (process.env.ENABLE_SCHEDULER === "true") {
+      startScheduler();
+    } else {
+      console.log("[Scheduler] ⏭️ 调度器未启用 (设置 ENABLE_SCHEDULER=true 启用)");
+    }
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

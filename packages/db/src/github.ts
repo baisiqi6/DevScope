@@ -347,22 +347,12 @@ export class GitHubCollector {
     const perPage = 100;
 
     while (repos.length < limit) {
-      // 使用 Octokit 的 watch.list（获取用户订阅的仓库）或 users.listFollowingForUser
-      // 这里使用 users.listFollowingForUser 获取用户关注的仓库
-      const endpoint = username
-        ? this.octokit.rest.activity.listReposStarredByUser
-        : this.octokit.rest.activity.listReposStarredByAuthenticatedUser;
+      // 根据是否传入 username 选择不同的 API 端点
 
       // 只在指定 username 时才传递该参数（认证用户接口不需要 username）
-      const params: Record<string, number | string> = {
-        per_page: perPage,
-        page,
-      };
-      if (username) {
-        params.username = username;
-      }
-
-      const { data } = await endpoint(params);
+      const { data } = username
+        ? await this.octokit.rest.activity.listReposStarredByUser({ username, per_page: perPage, page })
+        : await this.octokit.rest.activity.listReposStarredByAuthenticatedUser({ per_page: perPage, page });
 
       if (data.length === 0) break;
 

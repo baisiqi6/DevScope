@@ -18,10 +18,10 @@ WORKDIR /app
 # 复制 package 文件
 COPY package.json pnpm-workspace.yaml turbo.json ./
 COPY apps/web/package.json ./apps/web/
-COPY packages/*/package.json ./packages/
+COPY packages ./packages/
 
 # 安装依赖
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # 复制源代码
 COPY . .
@@ -63,4 +63,4 @@ USER devscope
 EXPOSE 3000
 
 # 启动命令
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
