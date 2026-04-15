@@ -1,18 +1,33 @@
-# DevScope 生产环境 Docker Compose 覆盖配置
+# DevScope 生产环境 Docker Compose 配置
 # 用法: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# 注意: 生产环境使用 GHCR 镜像，需要先登录:
+#   echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
 
 version: '3.8'
 
 services:
   # PostgreSQL - 加固安全配置
   postgres:
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}
     ports:
       - "127.0.0.1:5432:5432"  # 只绑定本地，不对外暴露
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - devscope-network
 
-  # API 服务 - 启用调度器
+  # API 服务 - 使用 GHCR 镜像
   api:
+    image: ghcr.io/baisiqi6/devscope/api:latest
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/devscope
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -30,15 +45,27 @@ services:
       PORT: 3001
     ports:
       - "127.0.0.1:3001:3001"  # 只绑定本地，通过 Nginx 对外
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - devscope-network
 
-  # Web 服务 - 配置 API 转发地址
+  # Web 服务 - 使用 GHCR 镜像
   web:
+    image: ghcr.io/baisiqi6/devscope/web:latest
     environment:
       API_REWRITE_TARGET: http://api:3001
       NODE_ENV: production
       PORT: 3000
     ports:
       - "127.0.0.1:3000:3000"  # 只绑定本地，通过 Nginx 对外
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - devscope-network
 
   # Nginx 反向代理
   nginx:
@@ -55,3 +82,11 @@ services:
     restart: unless-stopped
     networks:
       - devscope-network
+
+networks:
+  devscope-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
