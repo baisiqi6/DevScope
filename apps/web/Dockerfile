@@ -20,8 +20,11 @@ COPY package.json pnpm-workspace.yaml turbo.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages ./packages/
 
+# 复制 lockfile 以确保依赖版本一致
+COPY pnpm-lock.yaml ./
+
 # 安装依赖
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # 复制源代码
 COPY . .

@@ -20,11 +20,11 @@ COPY package.json pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages ./packages/
 
-# 强制安装正确版本的 esbuild 二进制，解决 Alpine 下版本冲突
-RUN npm install -g esbuild@0.19.12
+# 复制 lockfile 以确保依赖版本一致
+COPY pnpm-lock.yaml ./
 
 # 安装依赖
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # 复制源代码
 COPY . .
