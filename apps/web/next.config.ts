@@ -4,6 +4,7 @@ const apiTarget = process.env.API_REWRITE_TARGET || "http://localhost:3100";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: "standalone",
   transpilePackages: ["@devscope/shared", "@devscope/api"],
   typescript: {
     ignoreBuildErrors: true,
