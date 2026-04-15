@@ -14,7 +14,7 @@
     "db:migrate": "pnpm --filter @devscope/db db:migrate",
     "db:push": "pnpm --filter @devscope/db db:push",
     "db:studio": "pnpm --filter @devscope/db studio",
-    "build:check": "echo '验证 API 镜像构建...' && docker build -f apps/api/Dockerfile . -t devscope/api:check --quiet && echo 'API 镜像构建成功' && echo '验证 Web 镜像构建...' && docker build -f apps/web/Dockerfile . -t devscope/web:check --quiet && echo 'Web 镜像构建成功' && echo '所有镜像构建验证通过'"
+    "build:check": "echo '验证 API 镜像构建...' && docker build -f apps/api/Dockerfile . -t devscope/api:check --quiet && echo 'API 镜像构建成功' && echo '验证 Web 镜像构建...' && docker build -f apps/web/Dockerfile . -t devscope/web:check --quiet && echo 'Web 镜像构建成功' && echo '所有镜像构建验证通过' && echo '清理验证镜像...' && docker rmi devscope/api:check devscope/web:check -f > /dev/null 2>&1 && docker builder prune -f > /dev/null 2>&1 && echo '清理完成'"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
