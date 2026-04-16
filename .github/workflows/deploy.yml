@@ -90,8 +90,8 @@ jobs:
             set -e
             cd /home/devscope/DevScope
 
-            # 拉取最新配置文件（nginx、docker-compose 等）
-            git pull origin main
+            # 拉取最新配置文件（失败不阻断部署，镜像已由 CI 构建好）
+            git pull origin main || echo "git pull failed, using current code"
 
             # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
