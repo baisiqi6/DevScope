@@ -46,6 +46,7 @@ export default function HealthReportPage() {
     cancelWorkflow,
     reset,
   } = useAgentWorkflow({
+    analysisType: "health_report",
     onComplete: (report) => {
       console.log("Health report completed:", report);
     },
@@ -265,6 +266,24 @@ export default function HealthReportPage() {
                     <p className="font-medium">分析失败</p>
                     <p className="text-sm text-red-500 mt-1">{error}</p>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* 恢复状态提示 */}
+        {isRunning && events.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/30">
+              <CardContent className="py-4">
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                  <span className="animate-spin">⏳</span>
+                  <p>正在恢复分析状态，服务器仍在处理中...</p>
                 </div>
               </CardContent>
             </Card>

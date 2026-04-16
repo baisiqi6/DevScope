@@ -74,6 +74,7 @@ export default function CompetitiveAnalysisPage() {
     cancelWorkflow,
     reset,
   } = useAgentWorkflow({
+    analysisType,
     onComplete: (report) => {
       console.log("Analysis completed:", report);
     },
@@ -343,6 +344,18 @@ export default function CompetitiveAnalysisPage() {
             <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
               <AlertCircle className="h-5 w-5" />
               <p>{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 恢复状态提示 */}
+      {isRunning && events.length === 0 && (
+        <Card className="mb-6 border-blue-200 bg-blue-50 dark:bg-blue-950/30">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+              <span className="animate-spin">⏳</span>
+              <p>正在恢复分析状态，服务器仍在处理中...</p>
             </div>
           </CardContent>
         </Card>

@@ -3,11 +3,12 @@
  * @description Agent 工作流 SSE 客户端 Hook
  *
  * 提供 React Hook 用于连接 SSE 端点，实时接收 Agent 思考过程。
+ * 支持通过 sessionStorage 持久化工作流状态，导航后可恢复。
  *
  * @module use-agent-workflow
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { AgentWorkflowEvent } from "@devscope/shared";
 
 // ============================================================================
@@ -58,6 +59,8 @@ export interface WorkflowState {
  * Hook 选项
  */
 export interface UseAgentWorkflowOptions {
+  /** 分析类型，用于 sessionStorage key 区分 */
+  analysisType: "competitive_landscape" | "health_report" | "single_repo";
   /** 完成回调 */
   onComplete?: (report: ReportResult) => void;
   /** 错误回调 */
@@ -76,6 +79,55 @@ export interface WorkflowInput {
   analysisType: "competitive_landscape" | "health_report" | "single_repo";
   /** 额外上下文 */
   context?: string;
+}
+
+/**
+ * sessionStorage 中持久化的状态
+ */
+interface PersistedWorkflowState {
+  executionId: string | null;
+  status: WorkflowStatus;
+  report: ReportResult | null;
+  error: string | null;
+  startTime: number | null;
+  workflowInput: WorkflowInput | null;
+}
+
+// ============================================================================
+// sessionStorage 辅助函数
+// ============================================================================
+
+const STORAGE_KEY_PREFIX = "devscope:workflow";
+
+function getStorageKey(analysisType: string): string {
+  return `${STORAGE_KEY_PREFIX}:${analysisType}`;
+}
+
+function saveToStorage(analysisType: string, state: PersistedWorkflowState): void {
+  try {
+    sessionStorage.setItem(getStorageKey(analysisType), JSON.stringify(state));
+  } catch (e) {
+    console.warn("[useAgentWorkflow] Failed to save to sessionStorage:", e);
+  }
+}
+
+function loadFromStorage(analysisType: string): PersistedWorkflowState | null {
+  try {
+    const raw = sessionStorage.getItem(getStorageKey(analysisType));
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedWorkflowState;
+  } catch (e) {
+    console.warn("[useAgentWorkflow] Failed to load from sessionStorage:", e);
+    return null;
+  }
+}
+
+function clearStorage(analysisType: string): void {
+  try {
+    sessionStorage.removeItem(getStorageKey(analysisType));
+  } catch (e) {
+    console.warn("[useAgentWorkflow] Failed to clear sessionStorage:", e);
+  }
 }
 
 // ============================================================================
@@ -98,6 +150,7 @@ export interface WorkflowInput {
  *   startWorkflow,
  *   cancelWorkflow,
  * } = useAgentWorkflow({
+ *   analysisType: "competitive_landscape",
  *   onComplete: (report) => console.log("完成:", report),
  * });
  *
@@ -108,27 +161,205 @@ export interface WorkflowInput {
  * });
  * ```
  */
-export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
-  const [state, setState] = useState<WorkflowState>({
-    status: "idle",
-    events: [],
-    currentTool: null,
-    thinkingText: "",
-    outputText: "",
-    terminalOutput: "",
-    report: null,
-    error: null,
-    executionId: null,
-    startTime: null,
-  });
+export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
+  const { analysisType } = options;
+
+  // 从 sessionStorage 恢复初始状态
+  const getInitialState = (): WorkflowState => {
+    const persisted = loadFromStorage(analysisType);
+    if (persisted && persisted.executionId) {
+      if (
+        persisted.status === "completed" ||
+        persisted.status === "failed" ||
+        persisted.status === "cancelled"
+      ) {
+        return {
+          status: persisted.status,
+          events: [],
+          currentTool: null,
+          thinkingText: "",
+          outputText: "",
+          terminalOutput: "",
+          report: persisted.report,
+          error: persisted.error,
+          executionId: persisted.executionId,
+          startTime: persisted.startTime,
+        };
+      }
+      if (persisted.status === "running") {
+        // 恢复轮询逻辑会在 useEffect 中处理
+        return {
+          status: "running",
+          events: [],
+          currentTool: null,
+          thinkingText: "",
+          outputText: "",
+          terminalOutput: "",
+          report: null,
+          error: null,
+          executionId: persisted.executionId,
+          startTime: persisted.startTime,
+        };
+      }
+    }
+    return {
+      status: "idle",
+      events: [],
+      currentTool: null,
+      thinkingText: "",
+      outputText: "",
+      terminalOutput: "",
+      report: null,
+      error: null,
+      executionId: null,
+      startTime: null,
+    };
+  };
+
+  const [state, setState] = useState<WorkflowState>(getInitialState);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentInputRef = useRef<WorkflowInput | null>(null);
+  const recoveryAttemptedRef = useRef(false);
+  const isStartWorkflowRef = useRef(false);
+
+  // 恢复轮询：当从 sessionStorage 恢复了 running 状态时，轮询后端确认实际状态
+  useEffect(() => {
+    if (recoveryAttemptedRef.current) return;
+    if (isStartWorkflowRef.current) return;
+    if (state.status !== "running" || !state.executionId) return;
+
+    recoveryAttemptedRef.current = true;
+
+    const POLL_INTERVAL = 3000; // 3 秒
+    const MAX_POLL_ATTEMPTS = 200; // ~10 分钟
+
+    let attempts = 0;
+    let cancelled = false;
+
+    async function checkStatus() {
+      if (cancelled) return;
+
+      try {
+        const response = await fetch(`/api/workflow/status/${state.executionId}`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            setState((prev) => ({
+              ...prev,
+              status: "failed",
+              error: "工作流执行记录未找到，可能服务已重启",
+            }));
+            clearStorage(analysisType);
+            return;
+          }
+          attempts++;
+          if (attempts < MAX_POLL_ATTEMPTS) {
+            setTimeout(checkStatus, POLL_INTERVAL);
+          } else {
+            setState((prev) => ({
+              ...prev,
+              status: "failed",
+              error: "多次尝试后无法连接服务器",
+            }));
+          }
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          // 后端已完成，加载报告
+          try {
+            const reportResponse = await fetch(`/api/reports/${state.executionId}`);
+            if (reportResponse.ok) {
+              const reportData = await reportResponse.json();
+              setState((prev) => ({
+                ...prev,
+                status: "completed",
+                report: {
+                  reportId: reportData.reportId || state.executionId!,
+                  reportPath: "",
+                  summary: reportData.executiveSummary?.overview || "分析完成",
+                },
+                executionId: data.executionId,
+              }));
+            } else {
+              setState((prev) => ({
+                ...prev,
+                status: "completed",
+                report: {
+                  reportId: state.executionId!,
+                  reportPath: "",
+                  summary: "分析完成",
+                },
+              }));
+            }
+          } catch {
+            setState((prev) => ({
+              ...prev,
+              status: "completed",
+              report: {
+                reportId: state.executionId!,
+                reportPath: "",
+                summary: "分析完成",
+              },
+            }));
+          }
+        } else if (data.status === "failed") {
+          setState((prev) => ({
+            ...prev,
+            status: "failed",
+            error: data.error || "工作流在服务器上执行失败",
+          }));
+        } else if (data.status === "running" || data.status === "pending") {
+          attempts++;
+          if (attempts < MAX_POLL_ATTEMPTS) {
+            setTimeout(checkStatus, POLL_INTERVAL);
+          }
+        } else {
+          // cancelled 等其他状态
+          setState((prev) => ({ ...prev, status: data.status }));
+        }
+      } catch (err) {
+        console.error("[useAgentWorkflow] Recovery poll error:", err);
+        attempts++;
+        if (attempts < MAX_POLL_ATTEMPTS) {
+          setTimeout(checkStatus, POLL_INTERVAL);
+        }
+      }
+    }
+
+    checkStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.status, state.executionId, analysisType]);
+
+  // 持久化状态到 sessionStorage
+  useEffect(() => {
+    if (state.status === "idle" && !state.executionId) return;
+
+    saveToStorage(analysisType, {
+      executionId: state.executionId,
+      status: state.status,
+      report: state.report,
+      error: state.error,
+      startTime: state.startTime,
+      workflowInput: currentInputRef.current,
+    });
+  }, [state.status, state.executionId, state.report, state.error, state.startTime, analysisType]);
 
   /**
    * 启动工作流
    */
   const startWorkflow = useCallback(
     async (input: WorkflowInput) => {
+      currentInputRef.current = input;
+      isStartWorkflowRef.current = true;
+      recoveryAttemptedRef.current = true; // 防止恢复轮询干扰新的工作流
+
       // 重置状态
       setState({
         status: "running",
@@ -256,6 +487,8 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         setState((prev) => ({ ...prev, status: "failed", error: errorMessage }));
         options.onError?.(errorMessage);
+      } finally {
+        isStartWorkflowRef.current = false;
       }
     },
     [options]
@@ -276,6 +509,10 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
    * 重置状态
    */
   const reset = useCallback(() => {
+    clearStorage(analysisType);
+    currentInputRef.current = null;
+    recoveryAttemptedRef.current = false;
+    isStartWorkflowRef.current = false;
     setState({
       status: "idle",
       events: [],
@@ -288,7 +525,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions = {}) {
       executionId: null,
       startTime: null,
     });
-  }, []);
+  }, [analysisType]);
 
   return {
     ...state,

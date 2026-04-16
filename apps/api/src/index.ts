@@ -19,6 +19,7 @@ import { registerWebhookRoute } from "./webhook/langtum";
 import { registerDocsRoute } from "./docs";
 import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
+import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 
 // 从多个可能的路径加载 .env 文件
@@ -260,6 +261,9 @@ const start = async () => {
 
     // 注册报告相关路由
     await registerReportsRoutes(fastify);
+
+    // 注册工作流状态查询路由
+    await registerWorkflowStatusRoute(fastify);
 
     // 检查环境变量配置
     const hasGitHubToken = !!process.env.GITHUB_TOKEN;
