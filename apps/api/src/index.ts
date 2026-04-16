@@ -90,14 +90,17 @@ function createTRPCHandle() {
         if (query.input) {
           try {
             const parsed = JSON.parse(query.input);
-            console.log("[tRPC] 🔍 DEBUG GET - Parsed input:", JSON.stringify(parsed, null, 2));
 
-            // 处理 httpBatchLink 格式: { "0": { id: 3 } }
+            // httpBatchLink 批量格式: {"0": {"json": {...}}, "1": {"json": {...}}}
             if (parsed["0"]) {
-              console.log("[tRPC] ✅ Detected GET httpBatchLink format");
-              input = parsed["0"];
+              const keys = Object.keys(parsed).sort();
+              if (keys.length > 1 && keys.every(k => parsed[k]?.json !== undefined)) {
+                input = keys.map(k => parsed[k].json);
+              } else {
+                input = parsed["0"].json ?? parsed["0"];
+              }
             } else {
-              input = parsed;
+              input = parsed.json ?? parsed;
             }
           } catch {
             input = query.input as any;
@@ -105,47 +108,41 @@ function createTRPCHandle() {
         }
       } else {
         // POST 请求：支持批量请求格式
-        // 🔍 调试日志：打印原始请求信息
-        console.log("[tRPC] 🔍 DEBUG - Path:", path);
-        console.log("[tRPC] 🔍 DEBUG - Method:", req.method);
-        console.log("[tRPC] 🔍 DEBUG - Content-Type:", req.headers["content-type"]);
-        console.log("[tRPC] 🔍 DEBUG - Query params:", JSON.stringify(req.query));
-
         const body = await req.body;
         const requestBody = body as any;
-        console.log("[tRPC] 🔍 DEBUG - Body type:", typeof body);
-        console.log("[tRPC] 🔍 DEBUG - Body keys:", body ? Object.keys(body) : "null/undefined");
-        console.log("[tRPC] 🔍 DEBUG - Body value:", JSON.stringify(requestBody, null, 2));
 
         if (requestBody) {
-          // httpBatchLink 批量请求格式: { "0": { "json": { ... } } }
+          // httpBatchLink 批量格式: {"0": {"json": {...}}, "1": {"json": {...}}}
           if (requestBody["0"]?.json) {
-            console.log("[tRPC] ✅ Detected httpBatchLink format with json wrapper");
-            input = requestBody["0"].json;
+            const keys = Object.keys(requestBody).sort();
+            if (keys.length > 1 && keys.every(k => requestBody[k]?.json !== undefined)) {
+              input = keys.map(k => requestBody[k].json);
+            } else {
+              input = requestBody["0"].json;
+            }
           }
-          // httpBatchLink 格式 (无 json 包装): { "0": { repo: "..." } }
+          // httpBatchLink 格式 (无 json 包装): {"0": {...}, "1": {...}}
           else if (requestBody["0"]) {
-            console.log("[tRPC] ✅ Detected httpBatchLink format (direct)");
-            input = requestBody["0"];
+            const keys = Object.keys(requestBody).sort();
+            if (keys.length > 1) {
+              input = keys.map(k => requestBody[k]);
+            } else {
+              input = requestBody["0"];
+            }
           }
           // 标准 tRPC 格式: { "json": { ... } }
           else if (requestBody.json !== undefined) {
-            console.log("[tRPC] ✅ Detected standard tRPC format");
             input = requestBody.json;
           }
           // 兼容旧格式: { "input": { ... } }
           else if (requestBody.input !== undefined) {
-            console.log("[tRPC] ✅ Detected legacy format");
             input = requestBody.input;
           }
           // 直接使用请求体
           else if (Object.keys(requestBody).length > 0) {
-            console.log("[tRPC] ✅ Using body as direct input");
             input = requestBody;
           }
         }
-
-        console.log("[tRPC] 🔍 DEBUG - Parsed input:", JSON.stringify(input, null, 2));
       }
 
       // 调用路由（支持批量请求）
@@ -159,7 +156,7 @@ function createTRPCHandle() {
 
         // 处理批量请求
         const batchResults = await Promise.allSettled(
-          paths.map((p, i) => (caller as any)[p](batchInputs[i] || batchInputs[0]))
+          paths.map((p, i) => (caller as any)[p](batchInputs[i]))
         );
 
         // 格式化批量响应
