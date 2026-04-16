@@ -4,12 +4,13 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_API: ${{ github.repository }}/api
-  IMAGE_NAME_WEB: ${{ github.repository }}/web
+  # GHCR 要求全小写，github.repository 保留大小写 DevScope 会导致推送失败
+  IMAGE_NAME_API: baisiqi6/devscope/api
+  IMAGE_NAME_WEB: baisiqi6/devscope/web
 
 jobs:
   build:
@@ -83,22 +84,41 @@ jobs:
           host: 47.120.41.136
           username: devscope
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          command_timeout: 5m
           script: |
+            set -e
             cd /home/devscope/DevScope
 
-            # 拉取最新代码
+            # 拉取最新配置文件（nginx、docker-compose 等）
             git pull origin main
 
-            # 登录 GHCR
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
 
-            # 拉取最新镜像
-            docker compose -f docker-compose.prod.yml pull
+            # 拉取最新镜像（只拉 API 和 Web，不动 postgres 和 nginx）
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web
 
-            # 启动服务
-            docker compose -f docker-compose.prod.yml up -d
+            # 重启服务（只重启变更的服务，避免数据库中断）
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api web
+
+            # 等待服务启动
+            sleep 10
+
+            # 健康检查
+            if ! curl -sf http://localhost:3001/trpc/health > /dev/null 2>&1; then
+              echo "API health check failed"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 api
+              exit 1
+            fi
+
+            if ! curl -sf http://localhost > /dev/null 2>&1; then
+              echo "Web health check failed"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web nginx
+              exit 1
+            fi
 
             # 清理旧镜像
             docker image prune -f
 
-            echo "Deployment completed!"
+            echo "Deployment completed successfully!"
