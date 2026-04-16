@@ -1,67 +1,40 @@
 # DevScope API Dockerfile
-# 构建: docker build -t devscope/api -f apps/api/Dockerfile .
-
-# 使用 Node.js 20 LTS
 FROM node:20-alpine AS base
-
-# 安装 pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# ============================================================================
-# 生产构建阶段
-# ============================================================================
+# 构建阶段
 FROM base AS builder
-
-# 设置工作目录
 WORKDIR /app
 
-# 复制 package 文件
-COPY package.json pnpm-workspace.yaml turbo.json ./
+COPY package.json pnpm-workspace.yaml turbo.json pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
-COPY packages ./packages/
+COPY packages/ai/package.json ./packages/ai/
+COPY packages/db/package.json ./packages/db/
+COPY packages/shared/package.json ./packages/shared/
 
-# 复制 lockfile 以确保依赖版本一致
-COPY pnpm-lock.yaml ./
-
-# 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 复制源代码
 COPY . .
-
-# 构建应用及其工作区依赖
 RUN pnpm -r --filter @devscope/api... build
 
-# ============================================================================
-# 运行阶段
-# ============================================================================
+# 运行阶段 - 直接用 builder 的 node_modules
 FROM base AS runner
-
 WORKDIR /app
 
-# 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 devscope
 
-# 复制构建产物
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/packages/db/dist ./packages/db/dist
-COPY --from=builder /app/packages/ai/dist ./packages/ai/dist
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/db/package.json ./packages/db/
-COPY --from=builder /app/packages/ai/package.json ./packages/ai/
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
+# 复制整个 apps/api 和 packages
+COPY --from=builder /app/apps/api ./apps/api
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 
-# 设置环境变量
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# 切换到非 root 用户
 USER devscope
-
-# 暴露端口
 EXPOSE 3001
-
-# 启动命令
 CMD ["node", "apps/api/dist/index.js"]
