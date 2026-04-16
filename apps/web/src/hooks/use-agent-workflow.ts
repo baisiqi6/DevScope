@@ -59,8 +59,8 @@ export interface WorkflowState {
  * Hook 选项
  */
 export interface UseAgentWorkflowOptions {
-  /** 分析类型，用于 sessionStorage key 区分 */
-  analysisType: "competitive_landscape" | "health_report" | "single_repo";
+  /** sessionStorage key 标识，用于区分不同页面的持久化状态 */
+  storageKey: string;
   /** 完成回调 */
   onComplete?: (report: ReportResult) => void;
   /** 错误回调 */
@@ -150,7 +150,7 @@ function clearStorage(analysisType: string): void {
  *   startWorkflow,
  *   cancelWorkflow,
  * } = useAgentWorkflow({
- *   analysisType: "competitive_landscape",
+ *   storageKey: "competitive",
  *   onComplete: (report) => console.log("完成:", report),
  * });
  *
@@ -162,11 +162,11 @@ function clearStorage(analysisType: string): void {
  * ```
  */
 export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
-  const { analysisType } = options;
+  const { storageKey } = options;
 
   // 从 sessionStorage 恢复初始状态
   const getInitialState = (): WorkflowState => {
-    const persisted = loadFromStorage(analysisType);
+    const persisted = loadFromStorage(storageKey);
     if (persisted && persisted.executionId) {
       if (
         persisted.status === "completed" ||
@@ -250,7 +250,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
               status: "failed",
               error: "工作流执行记录未找到，可能服务已重启",
             }));
-            clearStorage(analysisType);
+            clearStorage(storageKey);
             return;
           }
           attempts++;
@@ -335,13 +335,13 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
     return () => {
       cancelled = true;
     };
-  }, [state.status, state.executionId, analysisType]);
+  }, [state.status, state.executionId, storageKey]);
 
   // 持久化状态到 sessionStorage
   useEffect(() => {
     if (state.status === "idle" && !state.executionId) return;
 
-    saveToStorage(analysisType, {
+    saveToStorage(storageKey, {
       executionId: state.executionId,
       status: state.status,
       report: state.report,
@@ -349,7 +349,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
       startTime: state.startTime,
       workflowInput: currentInputRef.current,
     });
-  }, [state.status, state.executionId, state.report, state.error, state.startTime, analysisType]);
+  }, [state.status, state.executionId, state.report, state.error, state.startTime, storageKey]);
 
   /**
    * 启动工作流
@@ -509,7 +509,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
    * 重置状态
    */
   const reset = useCallback(() => {
-    clearStorage(analysisType);
+    clearStorage(storageKey);
     currentInputRef.current = null;
     recoveryAttemptedRef.current = false;
     isStartWorkflowRef.current = false;
@@ -525,7 +525,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
       executionId: null,
       startTime: null,
     });
-  }, [analysisType]);
+  }, [storageKey]);
 
   return {
     ...state,

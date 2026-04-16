@@ -46,7 +46,7 @@ export default function HealthReportPage() {
     cancelWorkflow,
     reset,
   } = useAgentWorkflow({
-    analysisType: "health_report",
+    storageKey: "health",
     onComplete: (report) => {
       console.log("Health report completed:", report);
     },

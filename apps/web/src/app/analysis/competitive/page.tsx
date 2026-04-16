@@ -74,7 +74,7 @@ export default function CompetitiveAnalysisPage() {
     cancelWorkflow,
     reset,
   } = useAgentWorkflow({
-    analysisType,
+    storageKey: "competitive",
     onComplete: (report) => {
       console.log("Analysis completed:", report);
     },

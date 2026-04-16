@@ -23,6 +23,7 @@ WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 devscope
+RUN mkdir -p /app/reports && chown devscope:nodejs /app/reports
 
 # 复制整个 apps/api 和 packages
 COPY --from=builder /app/apps/api ./apps/api
