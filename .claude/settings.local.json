@@ -4,7 +4,11 @@
       "Bash(pnpm install:*)",
       "Bash(pnpm --filter @devscope/shared build)",
       "Bash(pnpm --filter @devscope/ai build)",
-      "Bash(find packages/ai/src -type f -name *.ts)"
+      "Bash(find packages/ai/src -type f -name *.ts)",
+      "Read(//Users/yinxin/projects/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/yinxin/projects/coach-stage"
     ]
   }
 }
