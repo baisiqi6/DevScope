@@ -353,9 +353,15 @@ export default function CompetitiveAnalysisPage() {
       {isRunning && events.length === 0 && (
         <Card className="mb-6 border-blue-200 bg-blue-50 dark:bg-blue-950/30">
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-              <span className="animate-spin">⏳</span>
-              <p>正在恢复分析状态，服务器仍在处理中...</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                <span className="animate-spin">⏳</span>
+                <p>正在恢复分析状态，服务器仍在处理中...</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleReset}>
+                <RotateCcw className="h-4 w-4 mr-1" />
+                重新分析
+              </Button>
             </div>
           </CardContent>
         </Card>

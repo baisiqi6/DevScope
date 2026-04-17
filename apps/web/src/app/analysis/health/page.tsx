@@ -281,9 +281,15 @@ export default function HealthReportPage() {
           >
             <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/30">
               <CardContent className="py-4">
-                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                  <span className="animate-spin">⏳</span>
-                  <p>正在恢复分析状态，服务器仍在处理中...</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                    <span className="animate-spin">⏳</span>
+                    <p>正在恢复分析状态，服务器仍在处理中...</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleReset}>
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                    重新分析
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -307,7 +313,15 @@ export default function HealthReportPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
+            className="space-y-6"
           >
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">健康度报告</h2>
+              <Button variant="outline" onClick={handleReset}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                新建分析
+              </Button>
+            </div>
             <HealthReportView reportId={executionId} executionId={executionId} />
           </motion.div>
         )}
