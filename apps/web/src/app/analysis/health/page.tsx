@@ -149,7 +149,7 @@ export default function HealthReportPage() {
         </motion.div>
 
         {/* 输入区域 */}
-        {!isCompleted && (
+        {!isCompleted && !isRunning && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

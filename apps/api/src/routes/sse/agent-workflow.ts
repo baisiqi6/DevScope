@@ -350,6 +350,15 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
       console.error("[SSE] Failed to create execution record:", e);
     }
 
+    // 立即发送 executionId，前端可用于恢复状态
+    sendEvent(reply, {
+      type: "init",
+      data: {
+        executionId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
     try {
       // 根据分析类型选择对应的系统提示词
       const getSystemPrompt = (analysisType: string): string => {

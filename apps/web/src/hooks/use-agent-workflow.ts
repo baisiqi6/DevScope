@@ -424,6 +424,9 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
                   let updates: Partial<WorkflowState> = { events: newEvents };
 
                   switch (eventData.type) {
+                    case "init":
+                      updates.executionId = eventData.data.executionId;
+                      break;
                     case "thinking":
                       updates.thinkingText = prev.thinkingText + eventData.data.text;
                       break;
