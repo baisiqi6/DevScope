@@ -82,6 +82,8 @@ export const repositories = pgTable("repositories", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   /** 最后采集时间 */
   lastFetchedAt: timestamp("last_fetched_at"),
+  /** 关注时间（用户 star 该仓库的时间） */
+  starredAt: timestamp("starred_at"),
   /** 向量化状态 */
   embeddingStatus: embeddingStatusEnum("embedding_status").default("pending"),
   /** 向量化进度百分比 (0-100) */

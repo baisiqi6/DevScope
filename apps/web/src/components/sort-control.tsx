@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
-export type SortBy = "name" | "stars" | "forks" | "updatedAt";
+export type SortBy = "name" | "stars" | "forks" | "updatedAt" | "followedAt";
 export type SortOrder = "asc" | "desc";
 
 interface SortOption {
@@ -25,6 +25,7 @@ const sortOptions: SortOption[] = [
   { value: "stars", label: "按星级", icon: "⭐" },
   { value: "forks", label: "按 Fork", icon: "🔱" },
   { value: "updatedAt", label: "按更新时间", icon: "🕐" },
+  { value: "followedAt", label: "按关注时间", icon: "⭐" },
 ];
 
 interface SortControlProps {
@@ -126,6 +127,7 @@ export function sortRepositories<T extends {
   stars?: number;
   forks?: number;
   lastFetchedAt?: string | null;
+  starredAt?: string | null;
 }>(
   repositories: T[],
   sortBy: SortBy,
@@ -150,6 +152,11 @@ export function sortRepositories<T extends {
         const aTime = a.lastFetchedAt ? new Date(a.lastFetchedAt).getTime() : 0;
         const bTime = b.lastFetchedAt ? new Date(b.lastFetchedAt).getTime() : 0;
         comparison = aTime - bTime;
+        break;
+      case "followedAt":
+        const aFollowed = a.starredAt ? new Date(a.starredAt).getTime() : 0;
+        const bFollowed = b.starredAt ? new Date(b.starredAt).getTime() : 0;
+        comparison = aFollowed - bFollowed;
         break;
     }
 

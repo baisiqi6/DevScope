@@ -472,6 +472,8 @@ export const repositorySchema = z.object({
   license: z.string().optional(),
   /** 最后采集时间 */
   lastFetchedAt: z.string().optional(),
+  /** 关注时间（用户 star 该仓库的时间） */
+  starredAt: z.string().optional(),
 });
 
 /** 仓库信息类型 */

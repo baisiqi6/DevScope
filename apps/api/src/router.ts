@@ -176,6 +176,21 @@ export const appRouter = router({
       try {
         const repos = await github.getFollowing(undefined, limit);
         console.log("[getFollowing] Found repos:", repos.length);
+
+        // 更新已采集仓库的 starredAt
+        try {
+          const db = createDb();
+          for (const repo of repos) {
+            if ((repo as any).starredAt) {
+              await db.update(repositories)
+                .set({ starredAt: new Date((repo as any).starredAt) })
+                .where(eq(repositories.fullName, repo.fullName));
+            }
+          }
+        } catch (e) {
+          console.warn("[getFollowing] Failed to update starredAt:", e);
+        }
+
         return repos;
       } catch (err) {
         console.error("[getFollowing] Error:", err);
@@ -225,6 +240,7 @@ export const appRouter = router({
           language: repo.language,
           license: repo.license,
           lastFetchedAt: repo.lastFetchedAt?.toISOString(),
+          starredAt: repo.starredAt?.toISOString() ?? null,
         }));
       } catch (err) {
         console.error("[getRepositories] Error:", err);
