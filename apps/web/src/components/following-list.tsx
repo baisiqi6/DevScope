@@ -53,10 +53,9 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
         });
         break;
       case "followedAt":
-        // 按关注时间排序（使用 updatedAt 作为关注时间的近似）
         sorted.sort((a, b) => {
-          const dateA = new Date(a.updatedAt).getTime();
-          const dateB = new Date(b.updatedAt).getTime();
+          const dateA = new Date((a as any).starredAt || a.updatedAt).getTime();
+          const dateB = new Date((b as any).starredAt || b.updatedAt).getTime();
           const compare = dateA - dateB;
           return sortOrder === "asc" ? compare : -compare;
         });

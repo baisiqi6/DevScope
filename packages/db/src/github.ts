@@ -167,6 +167,7 @@ export interface GitHubFollowingRepo {
   stars: number;
   language: string | null;
   updatedAt: Date;
+  starredAt: Date;
 }
 
 /**
@@ -351,8 +352,8 @@ export class GitHubCollector {
 
       // 只在指定 username 时才传递该参数（认证用户接口不需要 username）
       const { data } = username
-        ? await this.octokit.rest.activity.listReposStarredByUser({ username, per_page: perPage, page })
-        : await this.octokit.rest.activity.listReposStarredByAuthenticatedUser({ per_page: perPage, page });
+        ? await this.octokit.rest.activity.listReposStarredByUser({ username, per_page: perPage, page, sort: "created" })
+        : await this.octokit.rest.activity.listReposStarredByAuthenticatedUser({ per_page: perPage, page, sort: "created" });
 
       if (data.length === 0) break;
 
@@ -361,6 +362,8 @@ export class GitHubCollector {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const repo = (item as any).repo || item;
+        // starred_at 在 item 顶层，不在 repo 内
+        const starredAt = (item as any).starred_at || repo.updated_at;
 
         repos.push({
           fullName: repo.full_name,
@@ -371,6 +374,7 @@ export class GitHubCollector {
           stars: repo.stargazers_count,
           language: repo.language,
           updatedAt: new Date(repo.updated_at),
+          starredAt: new Date(starredAt),
         });
       }
 
