@@ -337,35 +337,36 @@ export default function HomePage() {
             )}
 
             {!isListLoading && !pageError && sortedRepositories.length > 0 && (
-              <div
-                className={
-                  viewMode === "card"
-                    ? "grid grid-cols-1 gap-4 md:grid-cols-2"
-                    : "grid gap-3"
-                }
-              >
-                {sortedRepositories.map((repo, index) => (
-                  <FadeInItem key={repo.id} index={index}>
-                    <RepositoryCard
-                      repository={repo}
-                      onViewDetails={handleViewDetails}
-                      viewMode={viewMode}
-                    />
-                  </FadeInItem>
-                ))}
-              </div>
-              {/* 加载更多按钮 */}
-              {selectedGroupId === null && !isUngroupedSelected && (repositories?.length ?? 0) >= repoLimit && (
-                <div className="mt-6 text-center">
-                  <Button
-                    variant="outline"
-                    onClick={loadMore}
-                    className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
-                  >
-                    加载更多
-                  </Button>
+              <>
+                <div
+                  className={
+                    viewMode === "card"
+                      ? "grid grid-cols-1 gap-4 md:grid-cols-2"
+                      : "grid gap-3"
+                  }
+                >
+                  {sortedRepositories.map((repo, index) => (
+                    <FadeInItem key={repo.id} index={index}>
+                      <RepositoryCard
+                        repository={repo}
+                        onViewDetails={handleViewDetails}
+                        viewMode={viewMode}
+                      />
+                    </FadeInItem>
+                  ))}
                 </div>
-              )}
+                {selectedGroupId === null && !isUngroupedSelected && (repositories?.length ?? 0) >= repoLimit && (
+                  <div className="mt-6 text-center">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
+                    >
+                      加载更多
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
