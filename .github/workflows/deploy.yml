@@ -109,7 +109,7 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T -w /app api pnpm --filter @devscope/db db:push 2>&1 || echo "db:push failed, may need manual migration"
 
             # 健康检查
-            if ! curl -sf http://localhost:3001/trpc/health > /dev/null 2>&1; then
+            if ! curl -sf http://localhost:3100/trpc/health > /dev/null 2>&1; then
               echo "API health check failed"
               docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 api
               exit 1
