@@ -9,9 +9,9 @@
 
 import { z } from "zod";
 import { router, publicProcedure } from "./trpc";
+import type { Context } from "./context";
 import { createAI, BGEEmbeddingProvider } from "@devscope/ai";
 import {
-  createDb,
   semanticSearchRepoChunks,
   getRepositoryByFullName,
   createPipeline,
@@ -22,7 +22,7 @@ import {
   createGitHubCollector,
   getReleasesByRepoId,
 } from "@devscope/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
   repositoryAnalysisRequestSchema,
   repositoryAnalysisSchema,
@@ -89,7 +89,7 @@ export const appRouter = router({
   getTrendingRepos: publicProcedure
     .input(trendingReposRequestSchema.partial())
     .output(z.array(trendingRepoSchema))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const client = createOSSInsightClient();
 
       const limit = input?.limit ?? 10;
@@ -109,7 +109,7 @@ export const appRouter = router({
       limit: z.number().min(1).max(50).default(10),
     }))
     .output(z.array(trendingRepoSchema))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const client = createOSSInsightClient();
       return await client.getTrendingByLanguage(input.language, input.limit);
     }),
@@ -121,7 +121,7 @@ export const appRouter = router({
   getRepoInsights: publicProcedure
     .input(repoInsightsRequestSchema.partial())
     .output(repoInsightsSchema)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const client = createOSSInsightClient();
 
       if (!input?.owner || !input?.repo) {
@@ -140,7 +140,7 @@ export const appRouter = router({
       collectionId: z.string().min(1),
     }))
     .output(collectionStatsSchema)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const client = createOSSInsightClient();
       return await client.getCollection(input.collectionId);
     }),
@@ -155,7 +155,7 @@ export const appRouter = router({
       limit: z.number().min(1).max(50).default(10),
     }))
     .output(z.array(trendingRepoSchema))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const client = createOSSInsightClient();
       return await client.searchRepos(input.query, input.limit);
     }),
@@ -168,7 +168,7 @@ export const appRouter = router({
     .input(z.object({
       limit: z.number().min(1).max(100).default(30),
     }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       console.log("[getFollowing] Fetching following repos...");
       const github = createGitHubCollector();
       const limit = input?.limit ?? 30;
@@ -179,7 +179,7 @@ export const appRouter = router({
 
         // 更新已采集仓库的 starredAt
         try {
-          const db = createDb();
+          const db = ctx.db;
           for (const repo of repos) {
             if ((repo as any).starredAt) {
               await db.update(repositories)
@@ -204,53 +204,39 @@ export const appRouter = router({
    */
   getRepositories: publicProcedure
     .input(z.object({
-      limit: z.number().min(1).max(1000).optional(),
+      limit: z.number().min(1).max(100).default(50),
       offset: z.number().min(0).default(0),
-    }).optional())
-    .query(async ({ input }) => {
-      console.log("[getRepositories] Starting...");
-      const db = createDb();
-      const offset = input?.offset ?? 0;
+    }).default({}))
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
 
-      try {
-        const repos =
-          input?.limit !== undefined
-            ? await db
-                .select()
-                .from(repositories)
-                .orderBy(desc(repositories.stars))
-                .limit(input.limit)
-                .offset(offset)
-            : await db
-                .select()
-                .from(repositories)
-                .orderBy(desc(repositories.stars));
+      const repos = await db
+        .select({
+          id: repositories.id,
+          fullName: repositories.fullName,
+          name: repositories.name,
+          owner: repositories.owner,
+          description: repositories.description,
+          url: repositories.url,
+          stars: repositories.stars,
+          forks: repositories.forks,
+          openIssues: repositories.openIssues,
+          language: repositories.language,
+          license: repositories.license,
+          lastFetchedAt: repositories.lastFetchedAt,
+          starredAt: repositories.starredAt,
+          note: repositories.note,
+        })
+        .from(repositories)
+        .orderBy(desc(repositories.stars))
+        .limit(input.limit)
+        .offset(input.offset);
 
-        console.log("[getRepositories] Found repos:", repos.length);
-        return repos.map((repo) => ({
-          id: repo.id,
-          fullName: repo.fullName,
-          name: repo.name,
-          owner: repo.owner,
-          description: repo.description,
-          url: repo.url,
-          stars: repo.stars,
-          forks: repo.forks,
-          openIssues: repo.openIssues,
-          language: repo.language,
-          license: repo.license,
-          lastFetchedAt: repo.lastFetchedAt?.toISOString(),
-          starredAt: repo.starredAt?.toISOString() ?? null,
-          note: repo.note ?? null,
-        }));
-      } catch (err) {
-        console.error("[getRepositories] Error:", err);
-        if (err instanceof Error) {
-          console.error("[getRepositories] Error message:", err.message);
-          console.error("[getRepositories] Error stack:", err.stack);
-        }
-        throw err;
-      }
+      return repos.map((repo) => ({
+        ...repo,
+        lastFetchedAt: repo.lastFetchedAt?.toISOString(),
+        starredAt: repo.starredAt?.toISOString() ?? null,
+      }));
     }),
 
   /**
@@ -262,8 +248,8 @@ export const appRouter = router({
       id: z.number(),
     }))
     .output(repositoryDetailSchema)
-    .query(async ({ input }) => {
-      const db = createDb();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       const repoList = await db
         .select()
@@ -277,17 +263,21 @@ export const appRouter = router({
 
       const repo = repoList[0];
 
-      // 获取分块统计
-      const chunks = await db
-        .select()
+      // 分块统计 - SQL 聚合，不加载向量数据
+      const chunkStatsRows = await db
+        .select({
+          chunkType: repoChunks.chunkType,
+          count: sql<number>`count(*)`,
+        })
         .from(repoChunks)
-        .where(eq(repoChunks.repoId, input.id));
+        .where(eq(repoChunks.repoId, input.id))
+        .groupBy(repoChunks.chunkType);
 
       const chunkStats = {
-        total: chunks.length,
-        readme: chunks.filter((c) => c.chunkType === "readme").length,
-        issues: chunks.filter((c) => c.chunkType === "issues").length,
-        commits: chunks.filter((c) => c.chunkType === "commits").length,
+        total: chunkStatsRows.reduce((sum, r) => sum + Number(r.count), 0),
+        readme: Number(chunkStatsRows.find((r) => r.chunkType === "readme")?.count ?? 0),
+        issues: Number(chunkStatsRows.find((r) => r.chunkType === "issues")?.count ?? 0),
+        commits: Number(chunkStatsRows.find((r) => r.chunkType === "commits")?.count ?? 0),
       };
 
       return {
@@ -339,8 +329,8 @@ export const appRouter = router({
       })),
       isPrerelease: z.boolean(),
     })))
-    .query(async ({ input }) => {
-      const db = createDb();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
       const releases = await getReleasesByRepoId(db, input.repoId, input.limit);
 
       return releases.map((r) => ({
@@ -368,7 +358,7 @@ export const appRouter = router({
       repo: z.string().min(1), // 格式: owner/repo
       skipEmbeddings: z.boolean().optional(), // 是否跳过向量化（快速采集模式）
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const repoKey = normalizeRepoKey(input.repo);
       if (activeRepositoryCollections.has(repoKey)) {
         throw new Error("该仓库正在采集或向量化中，请稍后再试");
@@ -376,7 +366,7 @@ export const appRouter = router({
 
       activeRepositoryCollections.add(repoKey);
 
-      const db = createDb();
+      const db = ctx.db;
       const pipeline = createPipeline(db);
       let backgroundTaskOwnsLock = false;
 
@@ -438,8 +428,8 @@ export const appRouter = router({
       repoId: z.number(),
       note: z.string(),
     }))
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
       await db.update(repositories)
         .set({ note: input.note || null })
         .where(eq(repositories.id, input.repoId));
@@ -454,8 +444,8 @@ export const appRouter = router({
     .input(z.object({
       repoId: z.number(),
     }))
-    .query(async ({ input }) => {
-      const db = createDb();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       const repoList = await db
         .select({
@@ -498,8 +488,8 @@ export const appRouter = router({
     .input(z.object({
       repoId: z.number().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       // 如果指定了 repoId，只同步该仓库
       const whereClause = input.repoId
@@ -518,23 +508,17 @@ export const appRouter = router({
       const results = [];
 
       for (const repo of repoList) {
-        // 统计该仓库的 chunks
-        const chunksResult = await db
+        // SQL 聚合统计，不加载向量数据
+        const [stats] = await db
           .select({
-            totalCount: { count: repoChunks.id },
-            withEmbeddingCount: { count: repoChunks.id },
+            totalChunks: sql<number>`count(*)`,
+            withEmbedding: sql<number>`count(*) FILTER (WHERE ${repoChunks.embedding} IS NOT NULL)`,
           })
           .from(repoChunks)
           .where(eq(repoChunks.repoId, repo.id));
 
-        // 重新查询获取正确的统计
-        const allChunks = await db
-          .select({ embedding: repoChunks.embedding })
-          .from(repoChunks)
-          .where(eq(repoChunks.repoId, repo.id));
-
-        const totalChunks = allChunks.length;
-        const withEmbedding = allChunks.filter((c) => c.embedding !== null && c.embedding !== undefined).length;
+        const totalChunks = Number(stats?.totalChunks ?? 0);
+        const withEmbedding = Number(stats?.withEmbedding ?? 0);
 
         if (totalChunks === 0) {
           results.push({
@@ -633,7 +617,7 @@ export const appRouter = router({
     .input(repositoryAnalysisRequestSchema)
     /** 输出验证：使用 shared 包中定义的分析结果 Schema */
     .output(repositoryAnalysisSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { owner, repo, context } = input;
 
       // 构建分析提示词
@@ -671,9 +655,9 @@ export const appRouter = router({
     .input(semanticSearchRequestSchema)
     /** 输出验证：使用 shared 包中定义的搜索响应 Schema */
     .output(semanticSearchResponseSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
-      const db = createDb();
+      const db = ctx.db;
       const embedder = new BGEEmbeddingProvider();
 
       // 1. 解析仓库名称并验证格式

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { skipToken } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -81,16 +81,21 @@ export default function HomePage() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [isUngroupedSelected, setIsUngroupedSelected] = useState(false);
   const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
+  const [repoLimit, setRepoLimit] = useState(50);
 
   const {
     data: repositories,
     isLoading,
     error,
     refetch,
-  } = trpc.getRepositories.useQuery(undefined, {
+  } = trpc.getRepositories.useQuery({ limit: repoLimit, offset: 0 }, {
     enabled: true,
     refetchOnWindowFocus: false,
   });
+
+  const loadMore = useCallback(() => {
+    setRepoLimit((prev) => prev + 50);
+  }, []);
 
   const { data: groups = [], refetch: refetchGroups } =
     trpc.groups.getAll.useQuery(undefined, {
@@ -349,6 +354,18 @@ export default function HomePage() {
                   </FadeInItem>
                 ))}
               </div>
+              {/* 加载更多按钮 */}
+              {selectedGroupId === null && !isUngroupedSelected && (repositories?.length ?? 0) >= repoLimit && (
+                <div className="mt-6 text-center">
+                  <Button
+                    variant="outline"
+                    onClick={loadMore}
+                    className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
+                  >
+                    加载更多
+                  </Button>
+                </div>
+              )}
             )}
           </div>
         </div>

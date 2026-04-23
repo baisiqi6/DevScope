@@ -23,39 +23,54 @@ import * as schema from "./schema";
 export * from "./schema";
 
 // ============================================================================
-// 数据库连接
+// 数据库连接（单例模式）
 // ============================================================================
 
+let poolInstance: InstanceType<typeof Pool> | null = null;
+let dbInstance: ReturnType<typeof drizzle> | null = null;
+
 /**
- * 创建数据库连接实例
+ * 获取共享的数据库连接实例（单例模式）
+ *
+ * 首次调用时创建连接池，后续调用复用同一实例。
+ * 避免每次请求创建新连接池导致连接耗尽。
  *
  * @param connectionString - 数据库连接字符串（可选，默认从环境变量读取）
  * @returns Drizzle 数据库实例
- *
- * @example
- * ```typescript
- * import { createDb } from "@devscope/db";
- *
- * const db = createDb("postgresql://localhost:5432/devscope");
- *
- * // 查询用户
- * const users = await db.select().from(schema.users);
- * ```
- *
- * @example
- * ```typescript
- * // 使用环境变量 DATABASE_URL
- * const db = createDb();
- * ```
  */
 export function createDb(connectionString?: string) {
-  // 创建 PostgreSQL 连接池
-  const pool = new Pool({
-    connectionString: connectionString || process.env.DATABASE_URL,
-  });
+  if (dbInstance && !connectionString) {
+    return dbInstance;
+  }
 
-  // 返回 Drizzle ORM 实例
-  return drizzle(pool, { schema });
+  // 创建或复用连接池
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString: connectionString || process.env.DATABASE_URL,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    });
+
+    poolInstance.on("error", (err) => {
+      console.error("[DB] Unexpected pool error:", err);
+    });
+  }
+
+  dbInstance = drizzle(poolInstance, { schema });
+  return dbInstance;
+}
+
+/**
+ * 关闭数据库连接池
+ * 在服务关闭时调用，确保所有连接正确释放。
+ */
+export async function closeDb() {
+  if (poolInstance) {
+    await poolInstance.end();
+    poolInstance = null;
+    dbInstance = null;
+  }
 }
 
 /**

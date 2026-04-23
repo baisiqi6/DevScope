@@ -21,6 +21,7 @@ import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
+import { closeDb } from "@devscope/db";
 
 // 从多个可能的路径加载 .env 文件
 // 本地开发时在 apps/api 目录，需要向上两级；Docker 中 .env 在 cwd 下
@@ -290,6 +291,16 @@ const start = async () => {
     /** 监听所有网络接口 */
     await fastify.listen({ port, host: "0.0.0.0" });
     console.log(`🚀 API Server listening on port ${port}`);
+
+    // 优雅关闭
+    const shutdown = async () => {
+      console.log("[Server] Shutting down...");
+      await fastify.close();
+      await closeDb();
+      process.exit(0);
+    };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
 
     // 启动定时调度器（通过环境变量控制）
     if (process.env.ENABLE_SCHEDULER === "true") {

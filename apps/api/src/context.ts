@@ -1,33 +1,25 @@
 /**
  * @package @devscope/api
- * @description tRPC 上下文创建
+ * @description tRPC 请求上下文
  *
- * 为每个请求创建上下文对象，包含请求和响应信息。
+ * 为每个请求提供共享的数据库实例和其他依赖。
+ * 数据库连接池在服务启动时创建，所有请求复用同一实例。
  *
  * @module context
  */
 
-import { inferAsyncReturnType } from "@trpc/server";
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
+import { createDb, type Db } from "@devscope/db";
 
-/**
- * 创建 tRPC 上下文
- * @description 为每个请求创建包含 Fastify 请求和响应的上下文
- *
- * @param opts - Fastify 上下文选项
- * @returns tRPC 上下文对象
- */
+// 服务启动时创建共享的数据库实例
+const db = createDb();
+
 export async function createContext({ req, res }: CreateFastifyContextOptions) {
   return {
-    /** Fastify 请求对象 */
+    db,
     req,
-    /** 原始响应对象 */
     res,
   };
 }
 
-/**
- * 上下文类型
- * @description 从 createContext 函数推断的类型
- */
-export type Context = inferAsyncReturnType<typeof createContext>;
+export type Context = Awaited<ReturnType<typeof createContext>>;

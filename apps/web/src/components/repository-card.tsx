@@ -25,31 +25,9 @@ interface RepositoryCardProps {
   viewMode?: ViewMode;
   /** 仓库所属的分组列表（可选） */
   groups?: RepositoryGroup[];
-  /** 编辑备注后的回调 */
-  onNoteUpdated?: () => void;
 }
 
-export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [], onNoteUpdated }: RepositoryCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(repository.note || "");
-
-  const updateNoteMutation = trpc.updateRepoNote.useMutation({
-    onSuccess: () => {
-      setIsEditing(false);
-      onNoteUpdated?.();
-    },
-  });
-
-  const displayDesc = repository.note || repository.description;
-
-  const handleSaveNote = () => {
-    updateNoteMutation.mutate({ repoId: repository.id, note: editValue });
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    setEditValue(repository.note || "");
-  };
+export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [] }: RepositoryCardProps) {
 
   // 卡片模式 - 紧凑的方片布局
   if (viewMode === "card") {

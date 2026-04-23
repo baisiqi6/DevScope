@@ -8,7 +8,7 @@
  * @module schema
  */
 
-import { pgTable, serial, text, timestamp, vector, integer, jsonb, index, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, vector, integer, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
 
 // ============================================================================
 // 枚举定义
@@ -103,6 +103,8 @@ export const repositories = pgTable("repositories", {
 }, (table) => ({
   ownerIdx: index("repositories_owner_idx").on(table.owner),
   starsIdx: index("repositories_stars_idx").on(table.stars),
+  lastFetchedAtIdx: index("repositories_last_fetched_at_idx").on(table.lastFetchedAt),
+  embeddingStatusIdx: index("repositories_embedding_status_idx").on(table.embeddingStatus),
 }));
 
 /**
@@ -546,6 +548,7 @@ export const groupMembers = pgTable("group_members", {
   groupIdIdx: index("group_members_group_id_idx").on(table.groupId),
   repoIdIdx: index("group_members_repo_id_idx").on(table.repoId),
   groupOrderIdx: index("group_members_group_order_idx").on(table.groupId, table.orderIndex),
+  groupRepoUnique: uniqueIndex("group_members_group_repo_unique").on(table.groupId, table.repoId),
 }));
 
 /**

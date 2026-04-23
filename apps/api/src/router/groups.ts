@@ -10,7 +10,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
 import {
-  createDb,
   repositoryGroups,
   groupMembers,
   repositories,
@@ -27,7 +26,7 @@ import {
   repositoryGroupSchema,
   repositorySchema,
 } from "@devscope/shared";
-import { eq, and, desc, count, inArray, or, ilike, sql } from "drizzle-orm";
+import { eq, and, desc, count, inArray, notInArray, or, ilike, sql } from "drizzle-orm";
 
 // ============================================================================
 // 辅助函数
@@ -37,8 +36,7 @@ import { eq, and, desc, count, inArray, or, ilike, sql } from "drizzle-orm";
  * 获取默认用户 ID
  * TODO: 从会话中获取实际用户 ID
  */
-async function getDefaultUserId(): Promise<number> {
-  const db = createDb();
+async function getDefaultUserId(db: any): Promise<number> {
   const [user] = await db.select().from(users).limit(1);
   return user?.id ?? 1;
 }
@@ -52,11 +50,12 @@ export const groupsRouter = router({
    * 获取所有分组
    */
   getAll: publicProcedure
-    .query(async () => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .query(async ({ ctx }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
-      const groups = await db
+      // 单条 JOIN + GROUP BY 查询，消除 N+1
+      const rows = await db
         .select({
           id: repositoryGroups.id,
           userId: repositoryGroups.userId,
@@ -67,29 +66,15 @@ export const groupsRouter = router({
           orderIndex: repositoryGroups.orderIndex,
           createdAt: repositoryGroups.createdAt,
           updatedAt: repositoryGroups.updatedAt,
+          repoCount: sql<number>`count(distinct ${groupMembers.repoId})`,
         })
         .from(repositoryGroups)
+        .leftJoin(groupMembers, eq(groupMembers.groupId, repositoryGroups.id))
         .where(eq(repositoryGroups.userId, userId))
+        .groupBy(repositoryGroups.id)
         .orderBy(repositoryGroups.orderIndex);
 
-      // 为每个分组计算仓库数量
-      const groupsWithCount = await Promise.all(
-        groups.map(async (group) => {
-          const [result] = await db
-            .select({
-              count: sql<number>`count(distinct ${groupMembers.repoId})`,
-            })
-            .from(groupMembers)
-            .where(eq(groupMembers.groupId, group.id));
-
-          return {
-            ...group,
-            repoCount: result?.count ?? 0,
-          };
-        })
-      );
-
-      return groupsWithCount;
+      return rows;
     }),
 
   /**
@@ -97,9 +82,9 @@ export const groupsRouter = router({
    */
   getWithMembers: publicProcedure
     .input(z.object({ groupId: z.number() }))
-    .query(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 获取分组信息
       const [group] = await db
@@ -157,9 +142,9 @@ export const groupsRouter = router({
    */
   create: publicProcedure
     .input(createGroupSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 获取当前最大 orderIndex
       const [maxOrder] = await db
@@ -192,9 +177,9 @@ export const groupsRouter = router({
    */
   update: publicProcedure
     .input(updateGroupSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 验证分组属于当前用户
       const [existing] = await db
@@ -235,9 +220,9 @@ export const groupsRouter = router({
    */
   delete: publicProcedure
     .input(z.object({ groupId: z.number() }))
-    .mutation(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 验证分组属于当前用户
       const [existing] = await db
@@ -266,9 +251,9 @@ export const groupsRouter = router({
    */
   reorder: publicProcedure
     .input(reorderGroupsSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 验证所有分组都属于当前用户
       const existing = await db
@@ -305,8 +290,8 @@ export const groupMembersRouter = router({
    */
   add: publicProcedure
     .input(addGroupMemberSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       // 检查是否已存在
       const [existing] = await db
@@ -351,8 +336,8 @@ export const groupMembersRouter = router({
         repoId: z.number(),
       })
     )
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       await db
         .delete(groupMembers)
@@ -371,8 +356,8 @@ export const groupMembersRouter = router({
    */
   move: publicProcedure
     .input(moveGroupMemberSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       // 获取原成员记录
       const [member] = await db
@@ -416,8 +401,8 @@ export const groupMembersRouter = router({
    */
   reorder: publicProcedure
     .input(reorderGroupMembersSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       await Promise.all(
         input.repoIds.map((repoId, index) =>
@@ -441,8 +426,8 @@ export const groupMembersRouter = router({
    */
   batchAdd: publicProcedure
     .input(batchAddGroupMembersSchema)
-    .mutation(async ({ input }) => {
-      const db = createDb();
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
 
       // 获取最大 orderIndex
       const [maxOrder] = await db
@@ -477,9 +462,9 @@ export const groupsQueryRouter = router({
    */
   getRepoGroups: publicProcedure
     .input(z.object({ repoId: z.number() }))
-    .query(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       // 获取仓库所属的分组成员记录
       const members = await db
@@ -510,23 +495,31 @@ export const groupsQueryRouter = router({
   /**
    * 获取未分组的仓库
    */
-  getUngroupedRepos: publicProcedure.query(async () => {
-    const db = createDb();
+  getUngroupedRepos: publicProcedure.query(async ({ ctx }) => {
+    const db = ctx.db;
 
-    // 获取所有已分组的 repoId
-    const grouped = await db
-      .select({ repoId: groupMembers.repoId })
-      .from(groupMembers);
-
-    const groupedRepoIds = new Set(grouped.map((g) => g.repoId));
-
-    // 获取所有仓库，过滤出未分组的
-    const allRepos = await db
-      .select()
+    // 单条 LEFT JOIN 查询，排除已分组的仓库，不返回 readme
+    return db
+      .select({
+        id: repositories.id,
+        fullName: repositories.fullName,
+        name: repositories.name,
+        owner: repositories.owner,
+        description: repositories.description,
+        url: repositories.url,
+        stars: repositories.stars,
+        forks: repositories.forks,
+        openIssues: repositories.openIssues,
+        language: repositories.language,
+        license: repositories.license,
+        lastFetchedAt: repositories.lastFetchedAt,
+        starredAt: repositories.starredAt,
+        note: repositories.note,
+      })
       .from(repositories)
+      .leftJoin(groupMembers, eq(groupMembers.repoId, repositories.id))
+      .where(sql`${groupMembers.id} IS NULL`)
       .orderBy(desc(repositories.stars));
-
-    return allRepos.filter((repo) => !groupedRepoIds.has(repo.id));
   }),
 
   /**
@@ -534,9 +527,9 @@ export const groupsQueryRouter = router({
    */
   searchGroups: publicProcedure
     .input(z.object({ query: z.string().min(1) }))
-    .query(async ({ input }) => {
-      const db = createDb();
-      const userId = await getDefaultUserId();
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getDefaultUserId(db);
 
       return db
         .select()
