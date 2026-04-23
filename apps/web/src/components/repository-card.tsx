@@ -1,217 +1,163 @@
 /**
- * @package @devscope/web
+ * @package @devscope/web/components
  * @description 仓库卡片组件
  *
- * 展示单个 GitHub 仓库的信息卡片，支持卡片和列表两种视图模式。
- * 支持显示分组标签。
+ * 展示单个仓库的关键信息，支持用户自定义备注。
  */
 
 "use client";
 
-import type { Repository } from "@devscope/shared";
-import type { RepositoryGroup } from "@devscope/shared";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { useState } from "react";
 import { Button } from "./ui/button";
-import { motion } from "framer-motion";
-import type { ViewMode } from "./view-toggle";
-import { getGroupColor } from "@/lib/group-config";
+import { Pencil, Check, X } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 interface RepositoryCardProps {
-  repository: Repository;
-  onViewDetails: (id: number) => void;
-  viewMode?: ViewMode;
-  /** 仓库所属的分组列表（可选） */
-  groups?: RepositoryGroup[];
+  id: number;
+  fullName: string;
+  description?: string;
+  note?: string;
+  stars?: number;
+  forks?: number;
+  language?: string;
+  license?: string;
+  lastFetchedAt?: string;
+  starredAt?: string;
+  onClick?: () => void;
 }
 
-export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [] }: RepositoryCardProps) {
-  // 卡片模式 - 紧凑的方片布局
-  if (viewMode === "card") {
-    return (
-      <motion.div
-        whileHover={{ y: -4, scale: 1.01, transition: { duration: 0.2 } }}
-        className="h-full"
-      >
-        <Card className="h-full bg-gradient-to-br from-white/90 to-blue-50/30 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:shadow-blue-200/30 transition-all duration-300 overflow-hidden group">
-          {/* 顶部装饰条 */}
-          <div className="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300" />
+export function RepositoryCard({
+  id,
+  fullName,
+  description,
+  note,
+  stars,
+  forks,
+  language,
+  license,
+  lastFetchedAt,
+  starredAt,
+  onClick,
+}: RepositoryCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(note || "");
+  const updateNoteMutation = trpc.updateRepoNote.useMutation({
+    onSuccess: () => {
+      setIsEditing(false);
+    },
+  });
 
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <a
-                  href={repository.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 font-semibold text-base transition-colors block truncate"
-                >
-                  {repository.owner}/{repository.name}
-                </a>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  {repository.language && (
-                    <span className="inline-block text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
-                      {repository.language}
-                    </span>
-                  )}
-                  {/* 分组标签 */}
-                  {groups.length > 0 && (
-                    <>
-                      {groups.map((group) => {
-                        const colorConfig = getGroupColor(group.color);
-                        return (
-                          <span
-                            key={group.id}
-                            className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${colorConfig.bg} ${colorConfig.text}`}
-                          >
-                            {group.name}
-                          </span>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onViewDetails(repository.id)}
-                className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shrink-0"
-              >
-                查看详情
-              </Button>
-            </CardTitle>
-          </CardHeader>
+  const displayText = note || description;
 
-          <CardContent className="space-y-3">
-            {/* 统计信息网格 */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-2.5 text-center border border-amber-100/60">
-                <div className="text-lg">⭐</div>
-                <div className="text-sm font-bold text-amber-700">{repository.stars.toLocaleString()}</div>
-                <div className="text-xs text-amber-600/70">Stars</div>
-              </div>
-              <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-2.5 text-center border border-blue-100/60">
-                <div className="text-lg">🔱</div>
-                <div className="text-sm font-bold text-blue-700">{repository.forks.toLocaleString()}</div>
-                <div className="text-xs text-blue-600/70">Forks</div>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-2.5 text-center border border-green-100/60">
-                <div className="text-lg">📋</div>
-                <div className="text-sm font-bold text-green-700">{repository.openIssues.toLocaleString()}</div>
-                <div className="text-xs text-green-600/70">Issues</div>
-              </div>
-            </div>
+  const handleSaveNote = () => {
+    updateNoteMutation.mutate({ repoId: id, note: editValue });
+  };
 
-            {/* 底部信息 */}
-            <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100/60">
-              {repository.license && (
-                <span className="text-slate-600 bg-slate-100/60 px-2 py-1 rounded-full">
-                  ©️ {repository.license}
-                </span>
-              )}
-              {repository.lastFetchedAt && (
-                <span className="text-slate-500">
-                  更新于 {new Date(repository.lastFetchedAt).toLocaleDateString("zh-CN")}
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
-  }
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditValue(note || "");
+  };
 
-  // 列表模式 - 优化的行样式
   return (
-    <motion.div
-      whileHover={{ x: 4, transition: { duration: 0.2 } }}
-      className="h-full"
+    <div
+      className="p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+      onClick={onClick}
     >
-      <Card className="h-full bg-gradient-to-r from-white/90 via-blue-50/20 to-white/90 backdrop-blur-md border border-slate-200/60 shadow-md hover:shadow-lg hover:shadow-blue-100/30 transition-all duration-300 overflow-hidden group">
-        {/* 左侧装饰条 */}
-        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-500 via-indigo-500 to-purple-500 transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300 origin-top" />
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-sm truncate">{fullName}</h3>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {stars !== undefined && (
+            <span className="text-xs text-muted-foreground">⭐ {stars.toLocaleString()}</span>
+          )}
+        </div>
+      </div>
 
-        <CardContent className="p-4 pl-6">
-          <div className="flex items-center justify-between gap-4">
-            {/* 左侧：仓库名称和标签 */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-2">
-                <a
-                  href={repository.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 font-semibold text-base transition-colors truncate"
-                >
-                  {repository.owner}/{repository.name}
-                </a>
-                {repository.language && (
-                  <span className="shrink-0 text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
-                    {repository.language}
-                  </span>
-                )}
-                {/* 分组标签 */}
-                {groups.length > 0 && (
-                  <>
-                    {groups.map((group) => {
-                      const colorConfig = getGroupColor(group.color);
-                      return (
-                        <span
-                          key={group.id}
-                          className={`shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${colorConfig.bg} ${colorConfig.text}`}
-                        >
-                          {group.name}
-                        </span>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-
-              {/* 统计信息 */}
-              <div className="flex items-center gap-5 text-sm">
-                <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50/80 px-2.5 py-1 rounded-full">
-                  <span>⭐</span>
-                  <span className="font-semibold">{repository.stars.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-blue-700 bg-blue-50/80 px-2.5 py-1 rounded-full">
-                  <span>🔱</span>
-                  <span className="font-semibold">{repository.forks.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-green-700 bg-green-50/80 px-2.5 py-1 rounded-full">
-                  <span>📋</span>
-                  <span className="font-semibold">{repository.openIssues.toLocaleString()}</span>
-                </div>
-                {repository.license && (
-                  <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100/60 px-2.5 py-1 rounded-full">
-                    <span>©️</span>
-                    <span className="font-medium">{repository.license}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 右侧：操作按钮和时间 */}
-            <div className="flex items-center gap-3 shrink-0">
-              {repository.lastFetchedAt && (
-                <div className="text-xs text-slate-500 text-right">
-                  <div>最后更新</div>
-                  <div className="font-medium text-slate-600">
-                    {new Date(repository.lastFetchedAt).toLocaleDateString("zh-CN")}
-                  </div>
-                </div>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onViewDetails(repository.id)}
-                className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
-              >
-                查看详情
-              </Button>
-            </div>
+      {/* 简介区域 */}
+      <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+        {isEditing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveNote();
+                if (e.key === "Escape") handleCancelEdit();
+              }}
+              placeholder="添加备注..."
+              className="flex-1 text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0"
+              onClick={handleSaveNote}
+              disabled={updateNoteMutation.isLoading}
+            >
+              <Check className="h-3 w-3 text-green-600" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0"
+              onClick={handleCancelEdit}
+            >
+              <X className="h-3 w-3 text-red-400" />
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+        ) : (
+          <div className="flex items-start gap-1 group">
+            {displayText ? (
+              <p className="text-xs text-muted-foreground line-clamp-2 flex-1">
+                {displayText}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground/50 italic flex-1">
+                暂无简介
+              </p>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => {
+                setEditValue(note || "");
+                setIsEditing(true);
+              }}
+              title={note ? "编辑备注" : "添加备注"}
+            >
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 标签区域 */}
+      <div className="flex flex-wrap gap-2 mt-2">
+        {language && (
+          <span className="inline-flex items-center text-xs text-muted-foreground">
+            🔷 {language}
+          </span>
+        )}
+        {forks !== undefined && forks > 0 && (
+          <span className="inline-flex items-center text-xs text-muted-foreground">
+            🔱 {forks.toLocaleString()}
+          </span>
+        )}
+        {license && (
+          <span className="inline-flex items-center text-xs text-muted-foreground">
+            📄 {license}
+          </span>
+        )}
+        {starredAt && (
+          <span className="inline-flex items-center text-xs text-muted-foreground">
+            ⭐ 关注 {new Date(starredAt).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }

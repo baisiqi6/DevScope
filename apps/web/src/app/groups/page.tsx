@@ -51,6 +51,7 @@ function normalizeRepository(repo: {
   license?: string | null;
   lastFetchedAt?: string | Date | null;
   starredAt?: string | Date | null;
+  note?: string | null;
 }): Repository {
   return {
     id: repo.id,
@@ -72,6 +73,7 @@ function normalizeRepository(repo: {
       typeof repo.starredAt === "string"
         ? repo.starredAt
         : repo.starredAt?.toISOString(),
+    note: repo.note ?? undefined,
   };
 }
 

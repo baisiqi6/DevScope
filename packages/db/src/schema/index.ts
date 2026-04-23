@@ -84,6 +84,8 @@ export const repositories = pgTable("repositories", {
   lastFetchedAt: timestamp("last_fetched_at"),
   /** 关注时间（用户 star 该仓库的时间） */
   starredAt: timestamp("starred_at"),
+  /** 用户自定义备注 */
+  note: text("note"),
   /** 向量化状态 */
   embeddingStatus: embeddingStatusEnum("embedding_status").default("pending"),
   /** 向量化进度百分比 (0-100) */

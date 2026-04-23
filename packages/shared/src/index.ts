@@ -474,6 +474,8 @@ export const repositorySchema = z.object({
   lastFetchedAt: z.string().optional(),
   /** 关注时间（用户 star 该仓库的时间） */
   starredAt: z.string().optional(),
+  /** 用户自定义备注 */
+  note: z.string().optional(),
 });
 
 /** 仓库信息类型 */

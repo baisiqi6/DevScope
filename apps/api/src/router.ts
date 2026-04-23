@@ -241,6 +241,7 @@ export const appRouter = router({
           license: repo.license,
           lastFetchedAt: repo.lastFetchedAt?.toISOString(),
           starredAt: repo.starredAt?.toISOString() ?? null,
+          note: repo.note ?? null,
         }));
       } catch (err) {
         console.error("[getRepositories] Error:", err);
@@ -429,6 +430,20 @@ export const appRouter = router({
           activeRepositoryCollections.delete(repoKey);
         }
       }
+    }),
+
+  // 更新仓库备注
+  updateRepoNote: publicProcedure
+    .input(z.object({
+      repoId: z.number(),
+      note: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = createDb();
+      await db.update(repositories)
+        .set({ note: input.note || null })
+        .where(eq(repositories.id, input.repoId));
+      return { success: true };
     }),
 
   /**
