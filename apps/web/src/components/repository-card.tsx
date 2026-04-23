@@ -25,81 +25,31 @@ interface RepositoryCardProps {
   viewMode?: ViewMode;
   /** 仓库所属的分组列表（可选） */
   groups?: RepositoryGroup[];
+  /** 编辑备注后的回调 */
+  onNoteUpdated?: () => void;
 }
 
-function NoteEditor({ repoId, note }: { repoId: number; note?: string }) {
+export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [], onNoteUpdated }: RepositoryCardProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(note || "");
+  const [editValue, setEditValue] = useState(repository.note || "");
+
   const updateNoteMutation = trpc.updateRepoNote.useMutation({
     onSuccess: () => {
       setIsEditing(false);
+      onNoteUpdated?.();
     },
   });
 
-  const handleSave = () => {
-    updateNoteMutation.mutate({ repoId, note: editValue });
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditValue(note || "");
-  };
-
-  if (isEditing) {
-    return (
-      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="text"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSave();
-            if (e.key === "Escape") handleCancel();
-          }}
-          placeholder="添加备注..."
-          className="flex-1 text-xs border rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-          autoFocus
-        />
-        <button
-          className="p-0.5 hover:bg-green-50 rounded"
-          onClick={handleSave}
-          disabled={updateNoteMutation.isPending}
-        >
-          <Check className="h-3 w-3 text-green-600" />
-        </button>
-        <button
-          className="p-0.5 hover:bg-red-50 rounded"
-          onClick={handleCancel}
-        >
-          <X className="h-3 w-3 text-red-400" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-start gap-1 group/note" onClick={(e) => e.stopPropagation()}>
-      {note ? (
-        <p className="text-xs text-slate-500 line-clamp-2 flex-1">{note}</p>
-      ) : (
-        <p className="text-xs text-slate-400/60 italic flex-1">点击编辑备注</p>
-      )}
-      <button
-        className="p-0.5 opacity-0 group-hover/note:opacity-100 transition-opacity hover:bg-slate-100 rounded shrink-0"
-        onClick={() => {
-          setEditValue(note || "");
-          setIsEditing(true);
-        }}
-        title={note ? "编辑备注" : "添加备注"}
-      >
-        <Pencil className="h-3 w-3 text-slate-400" />
-      </button>
-    </div>
-  );
-}
-
-export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [] }: RepositoryCardProps) {
   const displayDesc = repository.note || repository.description;
+
+  const handleSaveNote = () => {
+    updateNoteMutation.mutate({ repoId: repository.id, note: editValue });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditValue(repository.note || "");
+  };
 
   // 卡片模式 - 紧凑的方片布局
   if (viewMode === "card") {
@@ -123,11 +73,69 @@ export function RepositoryCard({ repository, onViewDetails, viewMode = "card", g
                 >
                   {repository.owner}/{repository.name}
                 </a>
-                {/* 简介/备注 */}
-                {displayDesc && !repository.note && (
-                  <p className="text-xs text-slate-500 line-clamp-2 mt-1">{displayDesc}</p>
+                {/* 简介 */}
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveNote();
+                        if (e.key === "Escape") handleCancelEdit();
+                      }}
+                      placeholder="添加备注..."
+                      className="flex-1 text-xs border rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 shrink-0"
+                      onClick={handleSaveNote}
+                      disabled={updateNoteMutation.isPending}
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 shrink-0"
+                      onClick={handleCancelEdit}
+                    >
+                      <X className="h-3 w-3 text-red-500" />
+                    </Button>
+                  </div>
+                ) : displayDesc ? (
+                  <div className="flex items-start gap-1 mt-1.5">
+                    <p className={`text-xs line-clamp-2 flex-1 ${repository.note ? "text-emerald-700 font-medium" : "text-muted-foreground"}`}>
+                      {displayDesc}
+                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEditing(true);
+                        setEditValue(repository.note || "");
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 p-0.5 hover:bg-muted rounded"
+                      title="编辑备注"
+                    >
+                      <Pencil className="h-3 w-3 text-slate-400" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditing(true);
+                      setEditValue("");
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 text-xs text-muted-foreground hover:text-blue-600 flex items-center gap-1"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    添加备注
+                  </button>
                 )}
-                <NoteEditor repoId={repository.id} note={repository.note} />
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {repository.language && (
                     <span className="inline-block text-xs font-medium text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-full">
@@ -248,13 +256,69 @@ export function RepositoryCard({ repository, onViewDetails, viewMode = "card", g
                 )}
               </div>
 
-              {/* 简介/备注 */}
-              {displayDesc && !repository.note && (
-                <p className="text-xs text-slate-500 line-clamp-1 mb-1.5">{displayDesc}</p>
+              {/* 简介 */}
+              {isEditing ? (
+                <div className="flex items-center gap-1.5 mb-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveNote();
+                      if (e.key === "Escape") handleCancelEdit();
+                    }}
+                    placeholder="添加备注..."
+                    className="flex-1 text-xs border rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 shrink-0"
+                    onClick={handleSaveNote}
+                    disabled={updateNoteMutation.isPending}
+                  >
+                    <Check className="h-3 w-3 text-green-600" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 shrink-0"
+                    onClick={handleCancelEdit}
+                  >
+                    <X className="h-3 w-3 text-red-500" />
+                  </Button>
+                </div>
+              ) : displayDesc ? (
+                <div className="flex items-start gap-1 mb-2">
+                  <p className={`text-xs line-clamp-1 flex-1 ${repository.note ? "text-emerald-700 font-medium" : "text-muted-foreground"}`}>
+                    {displayDesc}
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditing(true);
+                      setEditValue(repository.note || "");
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 p-0.5 hover:bg-muted rounded"
+                    title="编辑备注"
+                  >
+                    <Pencil className="h-3 w-3 text-slate-400" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                    setEditValue("");
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity mb-2 text-xs text-muted-foreground hover:text-blue-600 flex items-center gap-1"
+                >
+                  <Pencil className="h-3 w-3" />
+                  添加备注
+                </button>
               )}
-              <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
-                <NoteEditor repoId={repository.id} note={repository.note} />
-              </div>
 
               {/* 统计信息 */}
               <div className="flex items-center gap-5 text-sm">
