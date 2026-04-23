@@ -105,8 +105,8 @@ jobs:
             # 等待服务启动
             sleep 10
 
-            # 推送数据库 schema 变更（通过 psql 执行）
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U postgres -d devscope -c "ALTER TABLE repositories ADD COLUMN IF NOT EXISTS starred_at TIMESTAMP;" 2>&1 || echo "Migration may already exist"
+            # 推送数据库 schema 变更
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T -w /app api pnpm --filter @devscope/db db:push 2>&1 || echo "db:push failed, may need manual migration"
 
             # 健康检查
             if ! curl -sf http://localhost:3001/trpc/health > /dev/null 2>&1; then
