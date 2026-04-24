@@ -28,6 +28,26 @@ interface RepositoryCardProps {
 }
 
 export function RepositoryCard({ repository, onViewDetails, viewMode = "card", groups = [] }: RepositoryCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const updateNoteMutation = trpc.updateRepoNote.useMutation({
+    onSuccess: () => {
+      setIsEditing(false);
+    },
+  });
+
+  const displayDesc = repository.note || repository.description;
+  const handleSaveNote = () => {
+    if (editValue.trim()) {
+      updateNoteMutation.mutate({ repoId: repository.id, note: editValue.trim() });
+    } else {
+      updateNoteMutation.mutate({ repoId: repository.id, note: "" });
+    }
+  };
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditValue("");
+  };
 
   // 卡片模式 - 紧凑的方片布局
   if (viewMode === "card") {
