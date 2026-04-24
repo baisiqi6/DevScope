@@ -99,8 +99,8 @@ jobs:
             # 拉取最新镜像（只拉 API 和 Web，不动 postgres 和 nginx）
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web
 
-            # 重启服务（只重启变更的服务，避免数据库中断）
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api web
+            # 重启服务（强制重建，确保配置变更生效）
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web nginx
 
             # 等待服务启动
             sleep 10
