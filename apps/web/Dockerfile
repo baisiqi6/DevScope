@@ -21,7 +21,7 @@ RUN pnpm --filter @devscope/web build
 FROM base AS runner
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl socat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 devscope
 
@@ -33,6 +33,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 
+# 启动脚本：用 socat 将 localhost:3100 转发到 api:3100（Docker 网络）
+COPY <<'EOF' /app/start.sh
+#!/bin/sh
+# 将 localhost:3100 转发到 Docker 网络中的 api:3100
+# 这样 Next.js rewrite (写死 localhost:3100) 就能访问 API 容器
+socat TCP-LISTEN:3100,bind=127.0.0.1,fork TCP:api:3100 &
+exec node apps/web/server.js
+EOF
+RUN chmod +x /app/start.sh
+
 USER devscope
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["/app/start.sh"]
