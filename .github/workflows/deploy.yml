@@ -103,8 +103,7 @@ jobs:
             # 拉取最新镜像（只拉 API 和 Web，不动 postgres 和 nginx）
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web
 
-            # 只重建 DevScope 应用服务。生产 Nginx 由多个应用共享，
-            # 必须在独立、受控的操作中修改。
+            # 只重建 DevScope 应用服务，不重启或覆盖共享 Nginx。
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web
 
             # 等待服务启动
@@ -120,11 +119,16 @@ jobs:
               exit 1
             fi
 
-            if ! curl -sf http://localhost > /dev/null 2>&1; then
+            if ! curl -sf http://localhost:3000 > /dev/null 2>&1; then
               echo "Web health check failed"
-              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web nginx
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web
               exit 1
             fi
+
+            # API/Web 容器重建后 upstream 地址可能变化。先验证全部共享配置，
+            # 再 graceful reload；不重启 Nginx，也不修改服务器专属片段。
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -t
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -s reload
 
             # 清理旧镜像
             docker image prune -f
