@@ -7,6 +7,7 @@ FROM base AS builder
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml turbo.json pnpm-lock.yaml ./
+COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/db/package.json ./packages/db/
