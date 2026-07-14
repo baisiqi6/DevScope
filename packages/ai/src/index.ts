@@ -1,8 +1,8 @@
 /**
  * @package @devscope/ai
- * @description AI 服务包 - Anthropic Claude SDK 封装
+ * @description AI 服务包 - 多提供商统一接口
  *
- * 本包封装了 Anthropic Claude API，提供统一的 AI 服务接口。
+ * 本包封装了 Anthropic 与 OpenAI-compatible API，提供统一的 AI 服务接口。
  * 支持文本补全、流式输出和结构化输出。
  *
  * @module index
@@ -139,7 +139,7 @@ export class AIProvider {
       console.error(`[AIProvider]   - config.apiKey: ${config.apiKey ? 'Yes' : 'No'}`);
       console.error(`[AIProvider]   - process.env.OPENAI_COMPATIBLE_API_KEY: ${process.env.OPENAI_COMPATIBLE_API_KEY ? 'Yes' : 'No'}`);
       console.error(`[AIProvider]   - process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'Yes' : 'No'}`);
-      console.error(`[AIProvider]   - final apiKey: ${apiKey ? 'Yes (' + apiKey.substring(0, 10) + '...)' : 'No'}`);
+      console.error(`[AIProvider]   - final apiKey: ${apiKey ? "Yes" : "No"}`);
       console.error(`[AIProvider]   - baseURL: ${baseURL}`);
 
       if (!apiKey) {
@@ -735,16 +735,12 @@ export class BGEEmbeddingProvider {
 
     this.defaultModel = modelName;
 
-    // 打印配置信息（便于调试）
-    // 总是打印，便于问题排查
+    // 只记录非敏感配置，绝不输出 API Key 内容或长度。
     console.log(`[BGEEmbeddingProvider] Initialized with:`, {
       baseURL,
       modelName,
       hasApiKey: !!apiKey && apiKey !== "dummy-key",
-      apiKeyPresent: !!apiKey,
       apiKeyIsDummy: apiKey === "dummy-key",
-      apiKeyPrefix: apiKey ? `${apiKey.substring(0, 10)}...` : 'empty',
-      apiKeyLength: apiKey?.length || 0,
     });
   }
 
@@ -778,7 +774,6 @@ export class BGEEmbeddingProvider {
   async embed(text: string): Promise<number[]> {
     try {
       console.log(`[BGEEmbeddingProvider.embed] Calling embeddings API with model: ${this.defaultModel}, baseURL: ${this.client.baseURL}`);
-      console.log(`[BGEEmbeddingProvider.embed] API Key present: ${!!this.client.apiKey}, starts with: ${this.client.apiKey?.substring(0, 10)}...`);
 
       const response = await this.client.embeddings.create({
         model: this.defaultModel,
@@ -791,8 +786,6 @@ export class BGEEmbeddingProvider {
       console.error(`[BGEEmbeddingProvider.embed] Error calling embeddings API:`);
       console.error(`[BGEEmbeddingProvider.embed] BaseURL: ${this.client.baseURL}`);
       console.error(`[BGEEmbeddingProvider.embed] Model: ${this.defaultModel}`);
-      console.error(`[BGEEmbeddingProvider.embed] API Key: ${this.client.apiKey ? `${this.client.apiKey.substring(0, 10)}...` : 'NOT SET'}`);
-      console.error(`[BGEEmbeddingProvider.embed] Error details:`, error);
       console.error(`[BGEEmbeddingProvider.embed] Error message: ${error.message}`);
       console.error(`[BGEEmbeddingProvider.embed] Error status: ${error.status}`);
       console.error(`[BGEEmbeddingProvider.embed] Error code: ${error.code}`);

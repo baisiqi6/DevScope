@@ -39,6 +39,9 @@ lerna-debug.log*
 # Turbo
 .turbo
 
+# Local agent planning
+.planning/
+
 # Drizzle
 drizzle/
 
@@ -51,3 +54,6 @@ drizzle/
 /report.md
 /temp-analyze.json
 /apps/api/reports/
+
+# 生产主机专属 Nginx 路由和认证哈希
+/nginx/conf.d/server-local/

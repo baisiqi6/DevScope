@@ -30,7 +30,7 @@ import {
   Search,
   X
 } from "lucide-react";
-import type { Repository, RepositoryGroup } from "@devscope/shared";
+import type { CreateGroupInput, Repository, RepositoryGroup } from "@devscope/shared";
 import { getGroupIcon, getGroupColor } from "@/lib/group-config";
 
 function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
@@ -180,14 +180,9 @@ export default function GroupsManagementPage() {
     }
 
     return dedupeRepositories(
-      selectedGroup.members
-        .map((member: { repository: Parameters<typeof normalizeRepository>[0] | null }) => member.repository)
-        .filter(
-          (
-            repo: Parameters<typeof normalizeRepository>[0] | null
-          ): repo is Parameters<typeof normalizeRepository>[0] => Boolean(repo)
-        )
-        .map(normalizeRepository)
+      selectedGroup.members.flatMap((member) =>
+        member.repository ? [normalizeRepository(member.repository)] : []
+      )
     );
   }, [selectedGroup]);
 
@@ -291,7 +286,7 @@ export default function GroupsManagementPage() {
     window.open(`/repository/${id}`, '_blank');
   };
 
-  const handleCreateGroup = (input: { name: string; color?: string; icon?: string; description?: string }) => {
+  const handleCreateGroup = (input: CreateGroupInput) => {
     createGroupMutation.mutate(input);
   };
 
@@ -312,7 +307,7 @@ export default function GroupsManagementPage() {
 
   // 过滤分组
   const filteredGroups = searchQuery
-    ? groups.filter((g: RepositoryGroup) =>
+    ? groups.filter((g) =>
         g.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : groups;
@@ -540,7 +535,7 @@ export default function GroupsManagementPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group: RepositoryGroup) => {
+              {filteredGroups.map((group) => {
                 const colorConfig = getGroupColor(group.color);
                 const iconConfig = getGroupIcon(group.icon);
                 const IconComponent = iconConfig.icon;

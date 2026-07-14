@@ -329,7 +329,7 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
       if (!userId && existingUsers.length === 0) {
         // 创建默认用户
         const [newUser] = await db.insert(users).values({
-          username: "default",
+          name: "default",
           email: "default@devscope.local",
         }).returning();
         userId = newUser.id;

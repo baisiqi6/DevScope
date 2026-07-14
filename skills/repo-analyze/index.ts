@@ -20,6 +20,7 @@
 
 // 加载环境变量
 import { config } from "dotenv";
+import { pathToFileURL } from "node:url";
 config();
 
 import { z } from "zod";
@@ -195,5 +196,7 @@ export async function main(args: string[]): Promise<void> {
   }
 }
 
-// 执行入口
-main(process.argv.slice(2));
+// 仅在直接执行 CLI 时运行；测试或库导入不会触发 process.exit。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main(process.argv.slice(2));
+}

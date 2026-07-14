@@ -1,9 +1,8 @@
 name: Build and Deploy
 
 on:
-  push:
-    branches:
-      - main
+  # 生产服务仍在运行，服务器上存在需要保护的本地配置。
+  # 在 CI、迁移和配置对账全部完成前，只允许手动部署。
   workflow_dispatch:
 
 env:
@@ -90,8 +89,13 @@ jobs:
             set -e
             cd /home/devscope/DevScope
 
-            # 拉取最新配置文件（失败不阻断部署，镜像已由 CI 构建好）
-            git pull origin main || echo "git pull failed, using current code"
+            # 部署前必须先对账生产工作树，不得覆盖受保护的 compose
+            # 或共享 Nginx 配置。
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              echo "Server worktree is dirty; reconcile protected config before deployment"
+              exit 1
+            fi
+            git pull --ff-only origin main
 
             # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
@@ -99,14 +103,14 @@ jobs:
             # 拉取最新镜像（只拉 API 和 Web，不动 postgres 和 nginx）
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web
 
-            # 重启服务（强制重建，确保配置变更生效）
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web nginx
+            # 只重建 DevScope 应用服务，不重启或覆盖共享 Nginx。
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web
 
             # 等待服务启动
             sleep 10
 
-            # 推送数据库 schema 变更
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T -w /app api pnpm --filter @devscope/db db:push 2>&1 || echo "db:push failed, may need manual migration"
+            # Schema 变更必须使用经过审查且纳入版本控制的迁移，
+            # 不允许由应用部署工作流隐式执行。
 
             # 健康检查
             if ! curl -sf http://localhost:3100/trpc/health > /dev/null 2>&1; then
@@ -115,11 +119,16 @@ jobs:
               exit 1
             fi
 
-            if ! curl -sf http://localhost > /dev/null 2>&1; then
+            if ! curl -sf http://localhost:3000 > /dev/null 2>&1; then
               echo "Web health check failed"
-              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web nginx
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web
               exit 1
             fi
+
+            # API/Web 容器重建后 upstream 地址可能变化。先验证全部共享配置，
+            # 再 graceful reload；不重启 Nginx，也不修改服务器专属片段。
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -t
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -s reload
 
             # 清理旧镜像
             docker image prune -f

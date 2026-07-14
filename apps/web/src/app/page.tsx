@@ -4,7 +4,7 @@ import { useMemo, useState, useCallback } from "react";
 import { skipToken } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import type { Repository, RepositoryGroup } from "@devscope/shared";
+import type { CreateGroupInput, Repository, RepositoryGroup } from "@devscope/shared";
 import { trpc } from "@/lib/trpc";
 import { RepositoryCard } from "@/components/repository-card";
 import { CollectForm } from "@/components/collect-form";
@@ -144,18 +144,9 @@ export default function HomePage() {
     }
 
     return dedupeRepositories(
-      selectedGroup.members
-        .map(
-          (member: {
-            repository: Parameters<typeof normalizeRepository>[0] | null;
-          }) => member.repository
-        )
-        .filter(
-          (
-            repo: Parameters<typeof normalizeRepository>[0] | null
-          ): repo is Parameters<typeof normalizeRepository>[0] => Boolean(repo)
-        )
-        .map(normalizeRepository)
+      selectedGroup.members.flatMap((member) =>
+        member.repository ? [normalizeRepository(member.repository)] : []
+      )
     );
   }, [selectedGroup]);
 
@@ -185,7 +176,7 @@ export default function HomePage() {
   const currentGroupName =
     selectedGroupId !== null
       ? selectedGroup?.name ??
-        groups.find((group: RepositoryGroup) => group.id === selectedGroupId)?.name ??
+        groups.find((group) => group.id === selectedGroupId)?.name ??
         "\u5206\u7ec4\u4ed3\u5e93"
       : isUngroupedSelected
         ? "未分组仓库"
@@ -231,12 +222,7 @@ export default function HomePage() {
     setIsUngroupedSelected(false);
   };
 
-  const handleCreateGroup = (input: {
-    name: string;
-    color?: string;
-    icon?: string;
-    description?: string;
-  }) => {
+  const handleCreateGroup = (input: CreateGroupInput) => {
     createGroupMutation.mutate(input);
   };
 
@@ -380,5 +366,3 @@ export default function HomePage() {
     </main>
   );
 }
-
-

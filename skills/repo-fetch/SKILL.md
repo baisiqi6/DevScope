@@ -12,6 +12,7 @@ GitHub 仓库数据采集工具。
 ## 功能描述
 
 从 GitHub API 获取仓库数据，支持：
+
 - 基础仓库信息（stars、forks、语言、许可证等）
 - Issues 数据
 - Commits 数据
@@ -38,11 +39,11 @@ cat repos.txt | repo-fetch --batch --include-issues
 
 ## 选项
 
-| 选项 | 说明 |
-|------|------|
-| `--include-issues` | 包含 Issues 数据（最近 10 条） |
+| 选项                | 说明                            |
+| ------------------- | ------------------------------- |
+| `--include-issues`  | 包含 Issues 数据（最近 10 条）  |
 | `--include-commits` | 包含 Commits 数据（最近 10 条） |
-| `--batch` | 从 stdin 读取多个仓库标识符 |
+| `--batch`           | 从 stdin 读取多个仓库标识符     |
 
 ## 输入格式
 
@@ -78,18 +79,18 @@ cat repos.txt | repo-fetch --batch --include-issues
 
 ## 环境变量
 
-| 变量 | 说明 | 必需 |
-|------|------|------|
+| 变量           | 说明             | 必需 |
+| -------------- | ---------------- | ---- |
 | `GITHUB_TOKEN` | GitHub API Token | 可选 |
 
 > 不提供 Token 时使用匿名请求，速率限制为 60 次/小时。提供 Token 后提升至 5000 次/小时。
 
 ## 错误码
 
-| 代码 | 说明 |
-|------|------|
-| 0 | 成功 |
-| 1 | 输入无效或 API 错误 |
+| 代码 | 说明                |
+| ---- | ------------------- |
+| 0    | 成功                |
+| 1    | 输入无效或 API 错误 |
 
 ## 示例
 
@@ -111,11 +112,14 @@ npx tsx skills/repo-fetch/index.ts facebook/react --include-issues --include-com
 cat repos.txt | npx tsx skills/repo-fetch/index.ts --batch
 ```
 
-### 管道组合
+### 与分析工具配合
 
 ```bash
-echo "vercel/next.js" | npx tsx skills/repo-fetch/index.ts --include-issues | npx tsx skills/repo-analyze/index.ts
+npx tsx skills/repo-fetch/index.ts vercel/next.js --include-issues > repo-data.json
+npx tsx skills/repo-analyze/index.ts vercel/next.js > analysis.json
 ```
+
+当前 `repo-analyze` 的 stdin 只接受每行一个 `owner/repo`，不能直接消费本工具输出的 JSON。
 
 ## 相关 Skill
 

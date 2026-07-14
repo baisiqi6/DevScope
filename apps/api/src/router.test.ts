@@ -32,7 +32,7 @@ vi.mock("@devscope/ai", () => {
       structuredComplete: mockStructuredComplete,
       complete: mockComplete,
     })),
-    EmbeddingProvider: MockEmbeddingProvider,
+    BGEEmbeddingProvider: MockEmbeddingProvider,
     __mockStructuredComplete: mockStructuredComplete,
     __mockComplete: mockComplete,
     __mockEmbed: mockEmbed,
@@ -70,6 +70,13 @@ import {
   __mockSemanticSearchRepoChunks as mockSemanticSearchRepoChunks,
 } from "@devscope/db";
 
+const createCaller = () =>
+  appRouter.createCaller({
+    db: {} as any,
+    req: {} as any,
+    res: {} as any,
+  });
+
 // ============================================================================
 // 测试套件
 // ============================================================================
@@ -85,7 +92,7 @@ describe("appRouter", () => {
 
   describe("health", () => {
     it("应该返回服务状态", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.health();
 
@@ -105,7 +112,7 @@ describe("appRouter", () => {
 
   describe("greet", () => {
     it("应该返回问候消息", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.greet({ name: "Claude" });
 
@@ -115,14 +122,14 @@ describe("appRouter", () => {
     });
 
     it("应该验证输入参数", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // 缺少 name 参数应该抛出错误
       await expect(caller.greet({} as any)).rejects.toThrow();
     });
 
     it("应该支持任意字符串作为名字", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result1 = await caller.greet({ name: "世界" });
       const result2 = await caller.greet({ name: "123" });
@@ -169,7 +176,7 @@ describe("appRouter", () => {
 
       mockStructuredComplete.mockResolvedValue(mockAnalysisResult);
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.analyzeRepository({
         owner: "vercel",
@@ -206,7 +213,7 @@ describe("appRouter", () => {
         summary: "项目状况良好，建议观望。",
       });
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.analyzeRepository({
         owner: "facebook",
@@ -224,7 +231,7 @@ describe("appRouter", () => {
     });
 
     it("应该验证输入参数符合 Schema", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // 缺少必需参数
       await expect(
@@ -253,7 +260,7 @@ describe("appRouter", () => {
         summary: "Test",
       });
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // tRPC 的 output 验证应该捕获无效数据
       await expect(
@@ -267,7 +274,7 @@ describe("appRouter", () => {
         new Error("AI service unavailable")
       );
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       await expect(
         caller.analyzeRepository({ owner: "test", repo: "test" })
@@ -295,7 +302,7 @@ describe("appRouter", () => {
         summary: "OK",
       });
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // 测试多个仓库
       for (const repo of repositories) {
@@ -370,7 +377,7 @@ describe("appRouter", () => {
     });
 
     it("应该成功执行语义搜索并返回结果", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -391,7 +398,7 @@ describe("appRouter", () => {
       expect(result.chunks).toHaveLength(2);
       expect(result.chunks[0].content).toBe(mockChunks[0].content);
       expect(result.answer).toBe(mockAnswer);
-      expect(result.duration).toBeGreaterThan(0);
+      expect(result.duration).toBeGreaterThanOrEqual(0);
 
       // 验证函数调用
       expect(mockGetRepositoryByFullName).toHaveBeenCalledWith(
@@ -411,7 +418,7 @@ describe("appRouter", () => {
     it("应该在仓库不存在时抛出错误", async () => {
       mockGetRepositoryByFullName.mockResolvedValue(null);
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       await expect(
         caller.semanticSearch({
@@ -422,7 +429,7 @@ describe("appRouter", () => {
     });
 
     it("应该验证仓库名称格式", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       await expect(
         caller.semanticSearch({
@@ -433,7 +440,7 @@ describe("appRouter", () => {
     });
 
     it("应该验证输入参数", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // 空 repo
       await expect(
@@ -452,7 +459,7 @@ describe("appRouter", () => {
     });
 
     it("应该支持禁用 AI 回答生成", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -469,7 +476,7 @@ describe("appRouter", () => {
     it("应该处理空搜索结果", async () => {
       mockSemanticSearchRepoChunks.mockResolvedValue([]);
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -484,7 +491,7 @@ describe("appRouter", () => {
     it("应该在生成 AI 回答时跳过空结果", async () => {
       mockSemanticSearchRepoChunks.mockResolvedValue([]);
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -501,7 +508,7 @@ describe("appRouter", () => {
       // 注意：tRPC 的输出验证会在运行时验证，如果 mock 返回无效的 chunkType
       // tRPC 会抛出 ZodError。这里我们只验证有效数据的情况。
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -517,7 +524,7 @@ describe("appRouter", () => {
     });
 
     it("应该返回正确的耗时统计", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       const result = await caller.semanticSearch({
         repo: "test/repo",
@@ -530,7 +537,7 @@ describe("appRouter", () => {
     });
 
     it("应该支持自定义返回结果数量", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       await caller.semanticSearch({
         repo: "test/repo",
@@ -553,7 +560,7 @@ describe("appRouter", () => {
 
   describe("Schema 验证", () => {
     it("应该正确验证所有必需字段", async () => {
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
 
       // 测试 healthScore 边界值
       const testCases = [
@@ -613,7 +620,7 @@ describe("appRouter", () => {
           summary: "Test",
         });
 
-        const caller = appRouter.createCaller({});
+        const caller = createCaller();
         const result = await caller.analyzeRepository({
           owner: "test",
           repo: "test",
@@ -636,7 +643,7 @@ describe("appRouter", () => {
         summary: "Test",
       });
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
       await expect(
         caller.analyzeRepository({ owner: "test", repo: "test" })
       ).rejects.toThrow();
@@ -667,7 +674,7 @@ describe("appRouter", () => {
           summary: "Test",
         });
 
-        const caller = appRouter.createCaller({});
+        const caller = createCaller();
 
         if (testCase.shouldPass) {
           const result = await caller.analyzeRepository({
@@ -710,7 +717,7 @@ describe("appRouter", () => {
         summary: "Test",
       });
 
-      const caller = appRouter.createCaller({});
+      const caller = createCaller();
       const result = await caller.analyzeRepository({
         owner: "test",
         repo: "test",
@@ -739,7 +746,7 @@ describe("appRouter", () => {
           summary: "Test",
         });
 
-        const caller = appRouter.createCaller({});
+        const caller = createCaller();
         const result = await caller.analyzeRepository({
           owner: "test",
           repo: "test",

@@ -7,11 +7,11 @@
 
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, type HTMLMotionProps } from "framer-motion";
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
-export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface GlassCardProps extends Omit<HTMLMotionProps<"div">, "children"> {
   /**
    * 是否显示渐变边框
    */

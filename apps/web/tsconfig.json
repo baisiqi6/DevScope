@@ -13,6 +13,10 @@
     "resolveJsonModule": true,
     "allowJs": true,
     "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "declaration": false,
+    "declarationMap": false,
     "noEmit": true,
     "incremental": true,
     "plugins": [
@@ -23,6 +27,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@devscope/api": [
+        "../api/src/router.ts"
       ]
     },
     "isolatedModules": true

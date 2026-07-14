@@ -1,272 +1,122 @@
-# 架构设计文档
+# DevScope 架构说明
 
-## 系统架构
+本文描述当前代码中的实际架构，不记录尚未落地的历史方案。
 
-DevScope 采用典型的 Monorepo 前后端分离架构，并配备独立的 CLI Skills 系统：
+## 系统边界
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              用户/开发者                                   │
-└─────────────────────────────────────────────────────────────────────────┘
-          │                                    │
-          ▼                                    ▼
-┌──────────────────────┐          ┌──────────────────────────────────┐
-│  CLI Skills 层       │          │  Web 应用层                      │
-│  ┌────────────────┐  │          │  ┌─────────────────────────────┐ │
-│  │  repo-fetch    │  │          │  │  apps/web (Next.js 15)      │ │
-│  │  (GitHub API)  │──┼──┐       │  │  ┌─────────────┐            │ │
-│  └────────────────┘  │  │       │  │  │ App Router  │            │ │
-│  ┌────────────────┐  │  │       │  │  └─────────────┘            │ │
-│  │  repo-analyze  │  │  │       │  │  ┌──────────────┐           │ │
-│  │  (AI 分析)     │◄─┼──┼───┐   │  │  │  shadcn/ui   │           │ │
-│  └────────────────┘  │  │   │   │  │  └──────────────┘           │ │
-│  ┌────────────────┐  │  │   │   │  │  ┌─────────────────────┐    │ │
-│  │ report-generate│  │  │   │   │  │  │    React Query      │    │ │
-│  │ (报告生成)     │  │  │   │   │  │  └─────────────────────┘    │ │
-│  └────────────────┘  │  │   │   │  └─────────────────────────────┘ │
-└──────────────────────┘  │   │   └──────────────────────────────────┘
-         │                 │   │                │
-         │                 │   │         │ tRPC (类型安全 RPC) │
-         │                 │   │                ▼
-         │                 │   │   ┌──────────────────────────────────┐
-         │                 │   │   │  apps/api (Fastify)              │
-         │                 │   │   │  ┌─────────────┐  ┌──────────────┐│
-         │                 │   │   │  │  tRPC Router│  │  中间件      ││
-         │                 │   │   │  │  (API 路由) │  │  (CORS 等)   ││
-         │                 │   │   │  └─────────────┘  └──────────────┘│
-         │                 │   │   └──────────────────────────────────┘
-         │                 │   │                │
-         ▼                 ▼   ▼                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  packages/ai                        packages/db                     │
-│  ┌────────────────┐                 ┌────────────────────┐          │
-│  │ AIProvider     │                 │ Drizzle ORM        │          │
-│  │ (Claude Tool   │                 │ (数据库操作)        │          │
-│  │  Use API)      │                 │ + pgvector         │          │
-│  └────────────────┘                 └────────────────────┘          │
-│                                                                  │
-│  packages/shared                                                 │
-│  ┌────────────────┐                                             │
-│  │ Zod Schemas    │  ◄────── 类型定义 ──────┐                   │
-│  │ TS Types       │                         │                   │
-│  └────────────────┘                         │                   │
-└─────────────────────────────────────────────┼───────────────────┘
-                                              │
-                                              ▼
-                                ┌──────────────────────────┐
-                                │  PostgreSQL + pgvector   │
-                                │  (向量数据库，可选)       │
-                                └──────────────────────────┘
+```text
+浏览器
+  │
+  ▼
+Next.js Web :3000
+  │  /api/trpc 与 /api/agent 反向代理
+  ▼
+Fastify + tRPC API :3100
+  ├── PostgreSQL + pgvector :5432
+  ├── GitHub / OSS Insight
+  ├── DeepSeek 或其他 OpenAI-compatible API
+  ├── Anthropic（可选）
+  ├── BGE-M3 embedding 服务
+  └── Langtum/Langcore（实验性、可选）
+
+CLI Skills
+  repo-fetch → repo-analyze → report-generate
 ```
 
-## 包依赖关系
+生产环境由 Nginx 作为唯一公开入口。Web、API 和 PostgreSQL 只绑定到回环地址，不能直接暴露到公网。
 
-```
-apps/web
-  └── @devscope/shared
+## Monorepo 职责
 
-apps/api
-  ├── @devscope/db
-  ├── @devscope/ai
-  └── @devscope/shared
+| 目录              | 职责                                                            |
+| ----------------- | --------------------------------------------------------------- |
+| `apps/web`        | Next.js App Router 页面、组件、tRPC 客户端和 SSE 交互           |
+| `apps/api`        | Fastify 入口、tRPC 路由、Agent/Workflow SSE 路由和调度器        |
+| `packages/ai`     | Anthropic 与 OpenAI-compatible 的统一文本、流式和结构化输出接口 |
+| `packages/db`     | Drizzle schema、数据库访问、GitHub 数据采集和分析管道           |
+| `packages/shared` | Zod schema、共享 TypeScript 类型、GitHub 客户端                 |
+| `skills`          | 可独立执行或通过管道组合的命令行工具                            |
 
-packages/db
-  └── @devscope/shared
+主要依赖方向：
 
-packages/ai
-  └── @devscope/shared
-
-packages/shared
-  (基础包，无内部依赖)
-
-skills/repo-fetch
-  └── @devscope/shared
-
-skills/repo-analyze
-  ├── @devscope/ai
-  └── @devscope/shared
-
-skills/report-generate
-  └── @devscope/shared
+```text
+apps/web ───────────────► packages/shared
+apps/api ───────────────► packages/ai, packages/db, packages/shared
+packages/db ────────────► packages/shared
+skills/repo-analyze ────► packages/ai, packages/shared
+skills/repo-fetch ──────► packages/shared
+skills/report-generate ─► packages/shared
 ```
 
-## 目录职责
+共享包不能反向依赖应用层；Web 不直接连接数据库。
 
-### apps/web - 前端应用
+## 请求与数据流
 
-- **src/app/** - Next.js App Router 页面
-- **src/components/** - React 组件
-  - **ui/** - shadcn/ui 基础组件
-  - **features/** - 业务功能组件
-- **src/lib/** - 工具函数和客户端配置
+### Web 请求
 
-### apps/api - 后端 API
+浏览器统一访问同源路径：
 
-- **src/index.ts** - Fastify 服务器入口
-- **src/router.ts** - tRPC 路由定义
-- **src/trpc.ts** - tRPC 配置和处理器
-- **src/context.ts** - 请求上下文创建
+- tRPC：`/api/trpc/*`
+- Agent SSE：`/api/agent/*`
 
-### packages/db - 数据库层
+Next.js 根据 `API_REWRITE_TARGET` 将请求转发到 API 服务，开发默认值为 `http://localhost:3100`，生产容器中为 `http://api:3100`。
 
-- **src/schema/** - Drizzle 数据模型定义
-- **src/index.ts** - 数据库连接和导出
+### 仓库分析
 
-### packages/ai - AI 服务
-
-- **src/index.ts** - Anthropic SDK 封装，提供统一的 AI 接口
-  - `complete()` - 基础文本生成
-  - `structuredComplete()` - 结构化输出（Tool Use）
-
-### packages/shared - 共享类型
-
-- **src/index.ts** - Zod schema 和 TypeScript 类型定义
-  - `repositoryAnalysisSchema` - 仓库分析结果结构
-  - `activityLevelSchema` - 活跃度枚举
-  - `recommendationLevelSchema` - 推荐级别枚举
-
-### skills/ - CLI Skills 系统
-
-#### skills/repo-fetch - GitHub 数据获取
-
-- 调用 GitHub REST API 获取仓库信息
-- 支持批量获取和管道输入
-- 可配置获取 Issues、Commits 等详细数据
-
-#### skills/repo-analyze - AI 仓库分析
-
-- 使用 `@devscope/ai` 进行结构化分析
-- 输出符合 Zod Schema 的分析结果
-- 支持单个或批量分析
-
-#### skills/report-generate - 报告生成
-
-- 汇总分析结果
-- 生成 Markdown/JSON/HTML 格式报告
-- 支持多种报告类型（summary/detailed/comparison）
-
-## 数据流
-
-### 1. CLI Skills 管道流程
-
-```
-echo "vercel/next.js"
-    │
-    ▼
-repo-fetch → 获取 GitHub 数据 (JSON)
-    │
-    ▼
-repo-analyze → AI 分析 (结构化输出)
-    │
-    ▼
-report-generate → 生成报告 (Markdown)
+```text
+GitHub 数据 → 数据库存储/聚合 → AI 结构化分析 → Zod 校验 → 页面或报告
 ```
 
-### 2. Web/API 流程
+AI 层支持两类 provider：
 
-```
-用户 → Web UI → React Query → tRPC Client
-                                    │
-                                    ▼
-                            tRPC Server (Fastify)
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-              packages/ai    packages/db    外部 API (GitHub)
-            (AI 调用)        (数据库)        (通过 repo-fetch)
-```
+- `openai-compatible`：优先读取 `OPENAI_COMPATIBLE_*`，也支持 `DEEPSEEK_*`；
+- `anthropic`：读取 `ANTHROPIC_API_KEY`。
 
-## 类型安全
+环境中存在 OpenAI-compatible 或 DeepSeek 配置时会自动选择兼容模式，否则回退到 Anthropic。
 
-整个项目通过以下方式实现端到端类型安全：
+### 语义搜索
 
-1. **TypeScript** - 所有代码使用 TypeScript 编写
-2. **Zod** - 运行时类型验证
-3. **tRPC** - 前后端类型自动同步
-4. **Drizzle** - 数据库类型推断
+BGE-M3 生成 1024 维向量，数据库通过 pgvector 保存和检索。服务可使用硅基流动或其他 OpenAI-compatible embedding endpoint。
 
-## AI 结构化输出
+### CLI Skills
 
-使用 Claude 的 Tool Use API 实现强制结构化输出：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. 定义 Zod Schema                                          │
-│     ┌─────────────────────────────────────────────────────┐  │
-│     │ repositoryAnalysisSchema = z.object({               │  │
-│     │   healthScore: z.number().min(0).max(100),          │  │
-│     │   activityLevel: z.enum(["high", "medium", ...]),   │  │
-│     │   ...                                               │  │
-│     │ })                                                  │  │
-│     └─────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. Zod Schema → JSON Schema                                 │
-│     自动转换并发送给 Claude API                              │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  3. Claude 返回符合 Schema 的数据                             │
-│     {                                                        │
-│       "healthScore": 85,                                     │
-│       "activityLevel": "high",                               │
-│       ...                                                    │
-│     }                                                        │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  4. Zod 验证返回数据                                          │
-│     确保类型和约束正确                                        │
-└─────────────────────────────────────────────────────────────┘
+```bash
+echo "vercel/next.js" \
+  | npx tsx skills/repo-fetch/index.ts --include-issues --include-commits \
+  | npx tsx skills/repo-analyze/index.ts \
+  | npx tsx skills/report-generate/index.ts --title "Next.js 分析报告"
 ```
 
-## 向量搜索设计（规划中）
+三个工具以 JSON/stdin 为主要衔接方式，适合单独使用，也适合脚本编排。
 
-使用 PostgreSQL + pgvector 实现语义搜索：
+## 类型与验证边界
 
-1. 文档内容通过 AI 生成 embedding
-2. 存储在 pgvector 列中（1536 维）
-3. 使用 HNSW 索引加速查询
-4. 余弦相似度进行搜索
+- TypeScript：编译期类型检查；
+- Zod：API 输入、输出与 AI 结构化结果的运行时校验；
+- tRPC：Web 与 API 的类型共享；
+- Drizzle：数据库 schema 和查询类型推断。
 
-```
-CREATE INDEX ON repo_embeddings
-USING hnsw (embedding vector_cosine_ops);
-```
+这些机制不能替代鉴权和租户隔离。当前 tRPC 路由仍使用 `publicProcedure`，所以系统只适合在外层访问控制保护下作为单用户私有服务运行。
 
-## 开发规范
+## 当前风险与演进方向
 
-### 代码风格
+### 单用户假设
 
-- 使用 Prettier 进行代码格式化
-- 遵循 ESLint 规则
-- 使用 `pnpm lint` 检查代码
+部分业务仍存在默认用户、首个用户或未显式传递 `userId` 的路径。公开多用户版必须先建立统一身份上下文，并强制所有数据访问携带租户范围。
 
-### 提交规范
+### 数据库演进
 
-建议使用 Conventional Commits：
+公开版前需要完成正式迁移基线、外键和唯一约束复核，并避免使用 `db:push` 直接修改生产 schema。
 
-```
-feat: 新功能
-fix: 修复 bug
-docs: 文档更新
-style: 代码格式
-refactor: 重构
-test: 测试
-chore: 构建/工具
-```
+### 实验能力
 
-### 命名规范
+Workflow、Langtum/Langcore、调度器及部分报告接口包含可选配置或未完成路径。它们应继续与稳定核心解耦，不应阻塞仓库、搜索和基础分析功能。
 
-| 类型 | 规范 | 示例 |
-|------|------|------|
-| 文件 | kebab-case | `repo-analyze.ts` |
-| 组件 | PascalCase | `HealthScoreChart` |
-| 函数/变量 | camelCase | `analyzeRepository` |
-| 常量 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |
-| 类型 | PascalCase + 后缀 | `AnalysisResult` |
-| Zod Schema | camelCase + Schema | `repositoryAnalysisSchema` |
+### 生产边界
+
+- Nginx 是唯一公网入口；
+- Web、API、PostgreSQL 仅绑定回环地址；
+- 私有版在应用鉴权落地前使用反向代理访问控制；
+- 密钥只进入服务器环境文件或密钥系统，不进入 Git；
+- 部署必须使用干净工作树、可追溯镜像和显式迁移。
+
+具体操作见 [生产运行手册](docs/PRODUCTION_RUNBOOK.md)。

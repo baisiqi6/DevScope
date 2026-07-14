@@ -23,9 +23,4 @@ import type { AppRouter } from "@devscope/api";
  * };
  * ```
  */
-export const trpc = createTRPCReact<AppRouter>({
-  unstable_overrides: {
-    useMutation: undefined,
-    useQuery: undefined,
-  },
-});
+export const trpc = createTRPCReact<AppRouter>();

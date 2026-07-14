@@ -123,13 +123,13 @@ export default function SearchPage() {
             <h2 className="text-lg font-semibold mb-4 text-slate-800">示例查询</h2>
             <div className="space-y-2 text-sm text-slate-600">
               <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("vercel/next.js"); setQuery("How to deploy Next.js on Vercel?"); }}>
-                • <strong>For Next.js:</strong> "How to deploy Next.js on Vercel?"
+                • <strong>For Next.js:</strong> “How to deploy Next.js on Vercel?”
               </p>
               <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("facebook/react"); setQuery("What are React hooks and how to use them?"); }}>
-                • <strong>For React:</strong> "What are React hooks and how to use them?"
+                • <strong>For React:</strong> “What are React hooks and how to use them?”
               </p>
               <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("microsoft/TypeScript"); setQuery("How to define generic types?"); }}>
-                • <strong>For TypeScript:</strong> "How to define generic types?"
+                • <strong>For TypeScript:</strong> “How to define generic types?”
               </p>
             </div>
           </motion.div>

@@ -260,10 +260,6 @@ describe("repo-fetch", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => [],
-        }) // issues (空)
-        .mockResolvedValueOnce({
-          ok: true,
           json: async () => mockCommitsResponse,
         });
 

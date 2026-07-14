@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["repo-fetch/index.ts", "repo-analyze/index.ts", "report-generate/index.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

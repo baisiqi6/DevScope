@@ -2,7 +2,7 @@
 name: report-generate
 description: 分析报告生成工具，基于仓库分析数据生成综合报告，支持多种报告类型和输出格式
 user-invocable: true
-argument-hint: "[--title <text>] [--type summary|detailed|comparison] [--format markdown|json|html]"
+argument-hint: '[--title <text>] [--type summary|detailed|comparison] [--format markdown|json|html]'
 ---
 
 # report-generate
@@ -12,6 +12,7 @@ argument-hint: "[--title <text>] [--type summary|detailed|comparison] [--format 
 ## 功能描述
 
 基于仓库分析数据生成综合报告，支持：
+
 - 多种报告类型（汇总、详细、对比）
 - 多种输出格式（Markdown、JSON、HTML）
 - 自动统计和排名
@@ -41,27 +42,27 @@ echo "vercel/next.js" \
 
 ## 选项
 
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
-| `--title <text>` | 报告标题 | "Open Source Analysis Report" |
-| `--type <type>` | 报告类型 | summary |
-| `--format <format>` | 输出格式 | markdown |
+| 选项                | 说明     | 默认值                        |
+| ------------------- | -------- | ----------------------------- |
+| `--title <text>`    | 报告标题 | "Open Source Analysis Report" |
+| `--type <type>`     | 报告类型 | summary                       |
+| `--format <format>` | 输出格式 | markdown                      |
 
 ### 报告类型
 
-| 类型 | 说明 |
-|------|------|
-| `summary` | 汇总报告，适合快速浏览 |
-| `detailed` | 详细报告，包含完整分析内容 |
-| `comparison` | 对比报告，适合多仓库比较 |
+| 类型         | 说明                       |
+| ------------ | -------------------------- |
+| `summary`    | 汇总报告，适合快速浏览     |
+| `detailed`   | 详细报告，包含完整分析内容 |
+| `comparison` | 对比报告，适合多仓库比较   |
 
 ### 输出格式
 
-| 格式 | 说明 |
-|------|------|
+| 格式       | 说明                  |
+| ---------- | --------------------- |
 | `markdown` | Markdown 格式（默认） |
-| `json` | JSON 结构化格式 |
-| `html` | HTML 格式 |
+| `json`     | JSON 结构化格式       |
+| `html`     | HTML 格式             |
 
 ## 输入格式
 
@@ -94,6 +95,7 @@ stdin 接收 JSON 格式的分析结果数组：
 本报告分析了 3 个开源仓库。整体表现良好，平均健康度为 78.5 分。
 
 投资建议分布：
+
 - 建议投资: 2 个
 - 建议观望: 1 个
 - 建议避免: 0 个
@@ -112,6 +114,7 @@ stdin 接收 JSON 格式的分析结果数组：
 ---
 
 **元数据**
+
 - 总仓库数: 3
 - 平均健康度: 78.5
 - 顶级仓库: vercel/next.js, facebook/react, vuejs/vue
@@ -136,10 +139,10 @@ stdin 接收 JSON 格式的分析结果数组：
 
 ## 错误码
 
-| 代码 | 说明 |
-|------|------|
-| 0 | 成功 |
-| 1 | 输入无效 |
+| 代码 | 说明     |
+| ---- | -------- |
+| 0    | 成功     |
+| 1    | 输入无效 |
 
 ## 示例
 

@@ -3,7 +3,7 @@
  * @description DevScopeAgent 单元测试
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock Anthropic SDK
 const mockCreate = vi.fn();
@@ -28,6 +28,12 @@ import { DevScopeAgent, createAgent } from "./agent.js";
 describe("DevScopeAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("DEEPSEEK_API_KEY", "");
+    vi.stubEnv("OPENAI_COMPATIBLE_API_KEY", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe("constructor", () => {

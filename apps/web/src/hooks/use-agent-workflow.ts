@@ -104,6 +104,8 @@ function getStorageKey(analysisType: string): string {
 }
 
 function saveToStorage(analysisType: string, state: PersistedWorkflowState): void {
+  if (typeof window === "undefined") return;
+
   try {
     sessionStorage.setItem(getStorageKey(analysisType), JSON.stringify(state));
   } catch (e) {
@@ -112,6 +114,8 @@ function saveToStorage(analysisType: string, state: PersistedWorkflowState): voi
 }
 
 function loadFromStorage(analysisType: string): PersistedWorkflowState | null {
+  if (typeof window === "undefined") return null;
+
   try {
     const raw = sessionStorage.getItem(getStorageKey(analysisType));
     if (!raw) return null;
@@ -123,6 +127,8 @@ function loadFromStorage(analysisType: string): PersistedWorkflowState | null {
 }
 
 function clearStorage(analysisType: string): void {
+  if (typeof window === "undefined") return;
+
   try {
     sessionStorage.removeItem(getStorageKey(analysisType));
   } catch (e) {
@@ -421,7 +427,7 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
                 // 更新状态
                 setState((prev) => {
                   const newEvents = [...prev.events, eventData];
-                  let updates: Partial<WorkflowState> = { events: newEvents };
+                  const updates: Partial<WorkflowState> = { events: newEvents };
 
                   switch (eventData.type) {
                     case "init":
@@ -573,6 +579,6 @@ export function getEventDisplayText(event: AgentWorkflowEvent): string {
  */
 export function getEventIconType(
   event: AgentWorkflowEvent
-): "thinking" | "tool_use" | "tool_result" | "text" | "report" | "complete" | "terminal" {
+): "init" | "thinking" | "tool_use" | "tool_result" | "text" | "report" | "complete" | "terminal" {
   return event.type;
 }

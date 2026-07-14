@@ -78,16 +78,30 @@ const {
   mockUpsertRepository,
   mockInsertRepoChunks,
   mockInsertHackernewsItems,
+  mockDeleteRepoChunksByRepoId,
+  mockDeleteHackernewsItemsByRepoId,
+  mockDeleteReleasesByRepoId,
+  mockInsertReleases,
   mockEmbedBatch,
   mockChunkMultiple,
   mockCollectRepository,
+  mockGetReleases,
 } = vi.hoisted(() => ({
   mockUpsertRepository: vi.fn(),
   mockInsertRepoChunks: vi.fn(),
   mockInsertHackernewsItems: vi.fn(),
+  mockDeleteRepoChunksByRepoId: vi.fn(),
+  mockDeleteHackernewsItemsByRepoId: vi.fn(),
+  mockDeleteReleasesByRepoId: vi.fn(),
+  mockInsertReleases: vi.fn(),
   mockEmbedBatch: vi.fn(),
   mockChunkMultiple: vi.fn(),
   mockCollectRepository: vi.fn(),
+  mockGetReleases: vi.fn(),
+}));
+
+vi.mock("drizzle-orm", () => ({
+  eq: vi.fn(),
 }));
 
 // Mock GitHubCollector
@@ -95,6 +109,7 @@ vi.mock("./github", () => ({
   GitHubCollector: class MockGitHubCollector {
     constructor() {}
     collectRepository = mockCollectRepository;
+    getReleases = mockGetReleases;
   },
   parseRepoFullName: vi.fn().mockReturnValue({ owner: "test", repo: "repo" }),
 }));
@@ -108,7 +123,7 @@ vi.mock("@devscope/ai", () => ({
     ]);
     chunkMultiple = mockChunkMultiple;
   },
-  EmbeddingProvider: class MockEmbeddingProvider {
+  BGEEmbeddingProvider: class MockEmbeddingProvider {
     constructor() {}
     embed = vi.fn().mockResolvedValue([0.1, 0.2, 0.3]);
     embedBatch = mockEmbedBatch;
@@ -120,6 +135,14 @@ vi.mock("./index", () => ({
   upsertRepository: mockUpsertRepository,
   insertRepoChunks: mockInsertRepoChunks,
   insertHackernewsItems: mockInsertHackernewsItems,
+  deleteRepoChunksByRepoId: mockDeleteRepoChunksByRepoId,
+  deleteHackernewsItemsByRepoId: mockDeleteHackernewsItemsByRepoId,
+  deleteReleasesByRepoId: mockDeleteReleasesByRepoId,
+  insertReleases: mockInsertReleases,
+  repositories: {
+    id: "id",
+    updatedAt: "updatedAt",
+  },
 }));
 
 // ============================================================================
@@ -137,6 +160,11 @@ describe("DataCollectionPipeline", () => {
     mockUpsertRepository.mockResolvedValue({ id: 1, fullName: "test/repo" });
     mockInsertRepoChunks.mockResolvedValue([]);
     mockInsertHackernewsItems.mockResolvedValue([]);
+    mockDeleteRepoChunksByRepoId.mockResolvedValue(undefined);
+    mockDeleteHackernewsItemsByRepoId.mockResolvedValue(undefined);
+    mockDeleteReleasesByRepoId.mockResolvedValue(undefined);
+    mockInsertReleases.mockResolvedValue([]);
+    mockGetReleases.mockResolvedValue([]);
     mockEmbedBatch.mockResolvedValue([
       [0.1, 0.2, 0.3],
       [0.4, 0.5, 0.6],
@@ -147,7 +175,11 @@ describe("DataCollectionPipeline", () => {
     ]);
     mockCollectRepository.mockResolvedValue(mockRepositoryData);
 
-    mockDb = vi.fn() as any;
+    const mockWhere = vi.fn().mockResolvedValue([]);
+    const mockSet = vi.fn(() => ({ where: mockWhere }));
+    mockDb = {
+      update: vi.fn(() => ({ set: mockSet })),
+    } as any;
     pipeline = new DataCollectionPipeline(mockDb as any, {
       githubToken: "test-token",
       openaiToken: "test-openai-token",
@@ -197,7 +229,7 @@ describe("DataCollectionPipeline", () => {
       expect(result.repository.fullName).toBe("test/repo");
       expect(result.repository.name).toBe("repo");
       expect(result.chunksCollected).toBe(2);
-      expect(result.embeddingsGenerated).toBe(2);
+      expect(result.embeddingsGenerated).toBe(0);
       expect(result.hnItemsCollected).toBe(1);
       expect(result.duration).toBeGreaterThanOrEqual(0);
     });
@@ -307,26 +339,18 @@ describe("DataCollectionPipeline", () => {
   // ========================================================================
 
   describe("Embedding 生成", () => {
-    it("应该批量生成 Embedding", async () => {
+    it("应该把 Embedding 延后到后台任务", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockEmbedBatch).toHaveBeenCalledWith([
-        "Chunk 1",
-        "Chunk 2",
-      ]);
+      expect(mockEmbedBatch).not.toHaveBeenCalled();
     });
 
-    it("应该正确调用 embedBatch 并获取结果", async () => {
+    it("应该先保存不带 Embedding 的分块", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockEmbedBatch).toHaveBeenCalledTimes(1);
-      expect(mockEmbedBatch).toHaveBeenCalledWith(["Chunk 1", "Chunk 2"]);
-      // Verify the mock was called and the promise resolved
-      const mockResult = await mockEmbedBatch.mock.results[0].value;
-      expect(mockResult).toEqual([
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-      ]);
+      const insertedChunks = mockInsertRepoChunks.mock.calls[0][1];
+      expect(insertedChunks).toHaveLength(2);
+      expect(insertedChunks.every((chunk: any) => chunk.embedding === null)).toBe(true);
     });
 
     it("应该没有文本分块时跳过 Embedding 生成", async () => {
@@ -354,20 +378,20 @@ describe("DataCollectionPipeline", () => {
         repoId: 1,
         content: "Chunk 1",
         chunkType: "readme",
-        sourceId: undefined,
+        sourceId: null,
         chunkIndex: 0,
         tokenCount: 10,
       });
     });
 
-    it("应该正确保存所有生成的 embedding", async () => {
+    it("应该在快速采集阶段把 embedding 保存为 null", async () => {
       await pipeline.run({ repo: "test/repo" });
 
       expect(mockInsertRepoChunks).toHaveBeenCalled();
       const insertedChunks = mockInsertRepoChunks.mock.calls[0][1];
       expect(insertedChunks).toHaveLength(2);
-      expect(insertedChunks[0].embedding).toEqual([0.1, 0.2, 0.3]);
-      expect(insertedChunks[1].embedding).toEqual([0.4, 0.5, 0.6]);
+      expect(insertedChunks[0].embedding).toBeNull();
+      expect(insertedChunks[1].embedding).toBeNull();
     });
   });
 
@@ -569,7 +593,7 @@ describe("DataCollectionPipeline", () => {
       expect(result.error).toBeDefined();
     });
 
-    it("应该在 Embedding 生成失败时传播错误", async () => {
+    it("应该在快速采集阶段不调用 Embedding 服务", async () => {
       // Create a new pipeline instance for this test
       const errorPipeline = new DataCollectionPipeline(mockDb as any, {
         githubToken: "test-token",
@@ -587,9 +611,9 @@ describe("DataCollectionPipeline", () => {
 
       const result = await errorPipeline.run({ repo: "test/repo" });
 
-      expect(result.status).toBe("failed");
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain("OpenAI API error");
+      expect(result.status).toBe("completed");
+      expect(result.error).toBeUndefined();
+      expect(mockEmbedBatch).not.toHaveBeenCalled();
     });
 
     it("应该在数据库操作失败时传播错误", async () => {

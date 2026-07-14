@@ -33,7 +33,7 @@ const envPath = envPaths.find((p) => fs.existsSync(p)) || envPaths[0];
 console.log(`[Env] Loading .env from: ${envPath}`);
 console.log(`[Env] File exists: ${fs.existsSync(envPath)}`);
 dotenv.config({ path: envPath });
-console.log(`[Env] SILICONFLOW_API_KEY loaded: ${!!process.env.SILICONFLOW_API_KEY ? 'Yes (length: ' + process.env.SILICONFLOW_API_KEY.length + ')' : 'No'}`);
+console.log(`[Env] SILICONFLOW_API_KEY loaded: ${process.env.SILICONFLOW_API_KEY ? "Yes" : "No"}`);
 console.log(`[Env] BGE_API_URL loaded: ${process.env.BGE_API_URL || 'Not set'}`);
 console.log(`[Env] BGE_MODEL_NAME loaded: ${process.env.BGE_MODEL_NAME || 'Not set'}`);
 
@@ -280,7 +280,7 @@ const start = async () => {
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DEEPSEEK_API_KEY: ${hasDeepSeekKey ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"} ${hasSiliconFlowKey ? `(value: ${process.env.SILICONFLOW_API_KEY?.substring(0, 10)}...)` : ""}`);
+    console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  LANGTUM_API_KEY: ${hasLangtumKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  BGE_API_URL: ${hasBgeApiUrl ? "✅ 已配置" : "❌ 未配置"} ${hasBgeApiUrl ? `(${process.env.BGE_API_URL})` : ""}`);
     console.log(`  BGE_MODEL_NAME: ${hasBgeModelName ? "✅ 已配置" : "❌ 未配置"} ${hasBgeModelName ? `(${process.env.BGE_MODEL_NAME})` : ""}`);
