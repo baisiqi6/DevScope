@@ -16,7 +16,7 @@ COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm --filter @devscope/web build
+RUN pnpm -r --filter @devscope/web... build
 
 # 运行阶段
 FROM base AS runner
