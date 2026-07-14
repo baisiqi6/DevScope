@@ -161,7 +161,7 @@ describe("GitHubCollector", () => {
 
       mockRest.issues.listForRepo.mockResolvedValue({ data: mockIssues as never });
 
-      const result = await collector.getIssues("owner", "repo", 10);
+      const result = await collector.getIssues("owner", "repo", { limit: 10 });
 
       expect(result).toHaveLength(2);
       expect(result[0].number).toBe(1);

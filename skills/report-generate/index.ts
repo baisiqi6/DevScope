@@ -15,6 +15,7 @@
  */
 
 import { z } from "zod";
+import { pathToFileURL } from "node:url";
 
 // ============================================================================
 // 输入验证
@@ -183,17 +184,19 @@ function generateSummaryText(data: any[], avgScore: number): string {
  * 生成报告
  */
 export function generateReport(
-  input: z.infer<typeof ReportInputSchema>
+  input: z.input<typeof ReportInputSchema>
 ): Report {
-  switch (input.type) {
+  const parsed = ReportInputSchema.parse(input);
+
+  switch (parsed.type) {
     case "summary":
-      return generateSummaryReport(input.analyses);
+      return generateSummaryReport(parsed.analyses);
     case "detailed":
-      return generateDetailedReport(input);
+      return generateDetailedReport(parsed);
     case "comparison":
-      return generateComparisonReport(input.analyses);
+      return generateComparisonReport(parsed.analyses);
     default:
-      return generateSummaryReport(input.analyses);
+      return generateSummaryReport(parsed.analyses);
   }
 }
 
@@ -263,12 +266,12 @@ function generateDetailedReport(input: z.infer<typeof ReportInputSchema>): Repor
     type: "detailed",
     sections: [
       ...summary.sections,
-      ...detailedSections,
-      ...(input.content ? [{
-        title: "额外内容",
-        content: input.content,
+      {
+        title: "详细分析",
+        content: input.content || "无额外内容",
         level: 1,
-      }] : []),
+      },
+      ...detailedSections,
     ],
   };
 }
@@ -400,9 +403,12 @@ export async function main(args: string[]): Promise<void> {
 /**
  * 生成 Markdown 格式
  */
-function generateMarkdown(report: Report): string {
+export function generateMarkdown(report: Report): string {
   let md = `# ${report.title}\n\n`;
   md += `**生成时间**: ${report.generatedAt}\n\n`;
+  if (report.summary) {
+    md += `${report.summary}\n\n`;
+  }
   md += `---\n\n`;
 
   for (const section of report.sections) {
@@ -420,5 +426,7 @@ function generateMarkdown(report: Report): string {
   return md;
 }
 
-// 执行入口
-main(process.argv.slice(2));
+// 仅在直接执行 CLI 时运行；测试或库导入不会触发 process.exit。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main(process.argv.slice(2));
+}

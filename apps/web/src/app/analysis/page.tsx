@@ -212,7 +212,11 @@ function AnalysisContent() {
               <Button
                 variant="outline"
                 size="lg"
-                onClick={() => window.location.href = `/repo-stats?repo=${encodeURIComponent(displayResult.repo_data.full_name)}`}
+                onClick={() => {
+                  if (displayResult.repo_data) {
+                    window.location.href = `/repo-stats?repo=${encodeURIComponent(displayResult.repo_data.full_name)}`;
+                  }
+                }}
               >
                 📊 查看详细统计数据
               </Button>

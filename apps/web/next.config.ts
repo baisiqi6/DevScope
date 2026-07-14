@@ -6,12 +6,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
   transpilePackages: ["@devscope/shared", "@devscope/api"],
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   // 添加代理配置，将 API 请求转发到后端服务器
   async rewrites() {
     return [

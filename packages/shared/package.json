@@ -7,16 +7,16 @@
   "types": "./dist/index.d.mts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.mjs",
-      "default": "./dist/index.mjs",
-      "types": "./dist/index.d.mts"
+      "require": "./dist/index.mjs"
     }
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "lint": "tsc",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {

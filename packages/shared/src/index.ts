@@ -457,7 +457,7 @@ export const repositorySchema = z.object({
   /** 仓库所有者 */
   owner: z.string(),
   /** 仓库描述 */
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   /** GitHub URL */
   url: z.string(),
   /** Stars 数量 */
@@ -933,9 +933,21 @@ export const terminalEventDataSchema = z.object({
 });
 
 /**
+ * SSE 初始化事件数据
+ */
+export const initEventDataSchema = z.object({
+  executionId: z.string(),
+  timestamp: z.string(),
+});
+
+/**
  * SSE 事件 Schema (联合类型)
  */
 export const agentWorkflowEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("init"),
+    data: initEventDataSchema,
+  }),
   z.object({
     type: z.literal("thinking"),
     data: thinkingEventDataSchema,
@@ -1241,7 +1253,7 @@ export const repositoryGroupSchema = z.object({
   /** 分组图标 */
   icon: z.string().default("folder"),
   /** 分组描述 */
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   /** 显示顺序 */
   orderIndex: z.number(),
   /** 创建时间 */

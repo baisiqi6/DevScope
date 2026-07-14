@@ -171,7 +171,9 @@ export class GitHubClient {
       `/repos/${owner}/${repo}/issues?state=open&per_page=${limit}`
     );
 
-    return data.map((issue) => ({
+    return data
+      .filter((issue) => !issue.pull_request)
+      .map((issue) => ({
       number: issue.number,
       title: issue.title,
       state: issue.state,
@@ -180,7 +182,7 @@ export class GitHubClient {
       updatedAt: issue.updated_at,
       comments: issue.comments,
       labels: issue.labels.map((l: any) => l.name),
-    }));
+      }));
   }
 
   /**

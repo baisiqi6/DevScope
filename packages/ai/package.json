@@ -6,28 +6,26 @@
   "module": "./dist/index.mjs",
   "exports": {
     ".": {
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.mjs",
-      "default": "./dist/index.mjs",
-      "types": "./dist/index.d.mts"
+      "require": "./dist/index.mjs"
     },
     "./langtum": {
+      "types": "./dist/langtum.d.mts",
       "import": "./dist/langtum.mjs",
-      "require": "./dist/langtum.mjs",
-      "default": "./dist/langtum.mjs",
-      "types": "./dist/langtum.d.mts"
+      "require": "./dist/langtum.mjs"
     },
     "./agent": {
+      "types": "./dist/agent.d.mts",
       "import": "./dist/agent.mjs",
-      "require": "./dist/agent.mjs",
-      "default": "./dist/agent.mjs",
-      "types": "./dist/agent.d.mts"
+      "require": "./dist/agent.mjs"
     }
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "lint": "tsc",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "vitest",
     "test:ui": "vitest --ui",

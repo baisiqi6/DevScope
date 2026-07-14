@@ -38,6 +38,7 @@ export default function HealthReportPage() {
     currentTool,
     thinkingText,
     outputText,
+    terminalOutput,
     report,
     error,
     executionId,
@@ -304,6 +305,7 @@ export default function HealthReportPage() {
             currentTool={currentTool}
             thinkingText={thinkingText}
             outputText={outputText}
+            terminalOutput={terminalOutput}
           />
         )}
 

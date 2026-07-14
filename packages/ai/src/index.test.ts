@@ -48,6 +48,7 @@ describe("AIProvider", () => {
 
     // 创建 AIProvider 实例
     ai = new AIProvider({
+      provider: "anthropic",
       apiKey: "test-api-key",
       defaultModel: "claude-3-5-sonnet-20241022",
       maxTokens: 4096,

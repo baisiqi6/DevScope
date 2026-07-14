@@ -7,6 +7,7 @@
     "dev": "turbo run dev",
     "dev:clean": "node scripts/kill-ports.js && turbo run dev",
     "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck && pnpm exec tsc --noEmit -p skills/tsconfig.typecheck.json",
     "test": "turbo run test",
     "clean": "turbo run clean",
     "kill-ports": "node scripts/kill-ports.js",
@@ -29,6 +30,16 @@
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.4",
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.2",
+      "form-data": "4.0.6",
+      "picomatch@2": "2.3.2",
+      "picomatch@4": "4.0.4",
+      "postcss": "8.5.10",
+      "shell-quote": "1.8.4"
+    }
+  },
   "dependencies": {
     "dotenv": "^16.6.1"
   }

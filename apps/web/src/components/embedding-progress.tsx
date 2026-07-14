@@ -29,7 +29,8 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
     { repoId: repoId! },
     {
       enabled: repoId !== null,
-      refetchInterval: (data) => {
+      refetchInterval: (query) => {
+        const data = query.state.data;
         // 如果正在处理中，每 2 秒轮询一次
         if (data?.status === 'processing') {
           return 2000;
@@ -124,7 +125,8 @@ export function EmbeddingStatusBadge({ repoId }: { repoId: number }) {
   const { data } = trpc.getEmbeddingStatus.useQuery(
     { repoId },
     {
-      refetchInterval: (data) => {
+      refetchInterval: (query) => {
+        const data = query.state.data;
         if (data?.status === 'processing') return 2000;
         if (data?.status === 'completed' || data?.status === 'failed') return false;
         return 5000;

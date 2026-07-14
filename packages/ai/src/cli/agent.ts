@@ -55,7 +55,7 @@ async function main() {
           console.log(`   输入: ${JSON.stringify(input)}`);
         }
       },
-      onToolResult: (name, result) => {
+      onToolResult: () => {
         console.log(`   ✅ 完成`);
       },
     });

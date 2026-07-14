@@ -37,29 +37,13 @@ export async function syncEmbeddingStatus(repoId: number) {
   console.log(`\n=== Checking repository: ${repo.fullName} (ID: ${repoId}) ===`);
   console.log(`Current status: ${repo.embeddingStatus}, progress: ${repo.embeddingProgress}%`);
 
-  // 统计该仓库的 chunks 数量
-  const chunksStats = await db
-    .select({
-      totalChunks: { count: repoChunks.id },
-      withEmbedding: { count: repoChunks.embedding }, // 会有 null，需要过滤
-    })
-    .from(repoChunks)
-    .where(eq(repoChunks.repoId, repoId));
-
-  const totalChunks = Number(chunksStats[0]?.totalChunks || 0);
-
-  // 统计有 embedding 的 chunks 数量
-  const chunksWithEmbedding = await db
-    .select({ count: repoChunks.id })
-    .from(repoChunks)
-    .where(eq(repoChunks.repoId, repoId));
-
-  // 简单方式：查询所有 chunks，然后在内存中过滤
+  // 查询所有 chunks，并在内存中统计向量化状态。
   const allChunks = await db
     .select({ embedding: repoChunks.embedding })
     .from(repoChunks)
     .where(eq(repoChunks.repoId, repoId));
 
+  const totalChunks = allChunks.length;
   const withEmbedding = allChunks.filter((c) => c.embedding !== null && c.embedding !== undefined).length;
   const withoutEmbedding = totalChunks - withEmbedding;
 

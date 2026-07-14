@@ -658,7 +658,6 @@ export const appRouter = router({
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
       const db = ctx.db;
-      const embedder = new BGEEmbeddingProvider();
 
       // 1. 解析仓库名称并验证格式
       const parts = input.repo.split("/");
@@ -677,6 +676,7 @@ export const appRouter = router({
       }
 
       // 3. 生成查询的 embedding 向量
+      const embedder = new BGEEmbeddingProvider();
       const queryEmbedding = await embedder.embed(input.query);
 
       // 4. 使用 pgvector 进行语义搜索

@@ -19,6 +19,7 @@
  */
 
 import { z } from "zod";
+import { pathToFileURL } from "node:url";
 import { GitHubClient, RepositoryInfo, Issue, Commit } from "@devscope/shared";
 
 // ============================================================================
@@ -192,5 +193,7 @@ export async function main(args: string[]): Promise<void> {
 // 导出类型
 export type { z };
 
-// 执行入口
-main(process.argv.slice(2));
+// 仅在直接执行 CLI 时运行；测试或库导入不会触发 process.exit。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main(process.argv.slice(2));
+}

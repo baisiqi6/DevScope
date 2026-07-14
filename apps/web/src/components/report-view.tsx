@@ -75,7 +75,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
     // 如果有 AI 详细分析，优先使用
     if (report.aiAnalysis) {
-      let md = report.aiAnalysis;
+      const md = report.aiAnalysis;
       // 添加报告元数据头部
       const header = `---\n**报告 ID**: ${report.reportId}\n**生成时间**: ${new Date(report.generatedAt).toLocaleString("zh-CN")}\n**分析类型**: ${report.analysisType}\n---\n\n`;
       return header + md;

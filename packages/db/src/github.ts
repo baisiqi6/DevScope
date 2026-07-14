@@ -326,8 +326,9 @@ export class GitHubCollector {
       per_page: limit,
     });
 
+    // GitHub 的 Issues API 同时返回 Pull Requests，需要显式排除。
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: any) => ({
+    return data.filter((item: any) => !item.pull_request).map((item: any) => ({
       sha: item.sha,
       message: item.commit.message,
       author: item.commit.author?.name || "unknown",
@@ -415,7 +416,7 @@ export class GitHubCollector {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: any) => ({
+    return data.filter((item: any) => !item.pull_request).map((item: any) => ({
       number: item.number,
       title: item.title,
       state: item.state,
@@ -457,7 +458,7 @@ export class GitHubCollector {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: any) => ({
+    return data.filter((item: any) => !item.pull_request).map((item: any) => ({
       number: item.number,
       title: item.title,
       state: item.state,

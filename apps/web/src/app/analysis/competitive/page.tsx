@@ -66,6 +66,7 @@ export default function CompetitiveAnalysisPage() {
     currentTool,
     thinkingText,
     outputText,
+    terminalOutput,
     report,
     error,
     executionId,
@@ -374,6 +375,7 @@ export default function CompetitiveAnalysisPage() {
           currentTool={currentTool}
           thinkingText={thinkingText}
           outputText={outputText}
+          terminalOutput={terminalOutput}
           status={status}
         />
       )}
@@ -405,7 +407,7 @@ export default function CompetitiveAnalysisPage() {
                 <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
                   <li>输入要分析的 GitHub 仓库列表</li>
                   <li>选择分析类型</li>
-                  <li>点击"开始分析"</li>
+                  <li>点击“开始分析”</li>
                   <li>观察 Agent 实时思考过程</li>
                   <li>查看生成的结构化报告</li>
                 </ol>

@@ -39,6 +39,9 @@ lerna-debug.log*
 # Turbo
 .turbo
 
+# Local agent planning
+.planning/
+
 # Drizzle
 drizzle/
 

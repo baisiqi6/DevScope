@@ -143,15 +143,15 @@ function RepositoryDetailContent({ id }: { id: number }) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 p-3 rounded-lg">
                   <div className="text-amber-700 text-xs font-medium mb-1">Stars</div>
-                  <div className="text-xl font-bold text-amber-900">{repository.stars.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-amber-900">{(repository.stars ?? 0).toLocaleString()}</div>
                 </div>
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-3 rounded-lg">
                   <div className="text-blue-700 text-xs font-medium mb-1">Forks</div>
-                  <div className="text-xl font-bold text-blue-900">{repository.forks.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-blue-900">{(repository.forks ?? 0).toLocaleString()}</div>
                 </div>
                 <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-3 rounded-lg">
                   <div className="text-green-700 text-xs font-medium mb-1">Open Issues</div>
-                  <div className="text-xl font-bold text-green-900">{repository.openIssues.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-green-900">{(repository.openIssues ?? 0).toLocaleString()}</div>
                 </div>
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 p-3 rounded-lg">
                   <div className="text-purple-700 text-xs font-medium mb-1">License</div>
