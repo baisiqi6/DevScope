@@ -58,6 +58,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 应用鉴权和租户隔离完成后，再评估是否移除外层保护。
 
+### 服务器专属 Nginx 片段
+
+仓库内的 `nginx/conf.d/default.conf` 只维护 DevScope 通用代理，并通过通配符加载以下服务器专属片段：
+
+- `nginx/conf.d/server-local/shared-routes*.conf`：同机其他应用的 location 和 upstream；
+- `nginx/conf.d/server-local/devscope-auth*.conf`：DevScope location 共用的访问控制；
+- `nginx/conf.d/server-local/.devscope.htpasswd`：Basic Auth 密码哈希。
+
+`server-local/` 已被 Git 忽略，但仍会被现有 Nginx 目录挂载读取。生产主机负责备份这些文件；部署不得删除、覆盖或提交它们。修改后只允许先执行 `nginx -t`，成功后再 reload。
+
 ## 数据库密码轮换
 
 轮换时应在同一维护窗口内完成：
