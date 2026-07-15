@@ -66,6 +66,24 @@ Next.js 根据 `API_REWRITE_TARGET` 将请求转发到 API 服务，开发默认
 GitHub 数据 → 数据库存储/聚合 → AI 结构化分析 → Zod 校验 → 页面或报告
 ```
 
+仓库详情页可以启动单仓库健康分析。Agent 通过 SSE 推送过程事件；完成后的
+结构化报告会先经过 Zod 校验，再通过一个数据库事务写入
+`workflow_reports` 并把对应 `workflow_executions` 标记为 `completed`。
+
+```text
+仓库详情页
+  → POST /api/agent/workflow/stream
+  → workflow_executions (running)
+  → Agent 分析 + Zod 校验
+  → PostgreSQL 事务：workflow_reports + execution completed
+  → 仓库报告历史 / 报告详情页
+```
+
+PostgreSQL 是报告的事实来源。`reports/<executionId>` 仍可生成 JSON/Markdown，
+但只作为可选导出缓存；容器文件写入失败或容器重建不会影响已入库报告的读取。
+报告列表和详情查询当前都显式按服务端解析的 `userId` 过滤。现阶段该值仍来自
+单用户上下文，未来接入会话鉴权时应替换统一的当前用户解析逻辑。
+
 AI 层支持两类 provider：
 
 - `openai-compatible`：优先读取 `OPENAI_COMPATIBLE_*`，也支持 `DEEPSEEK_*`；
@@ -109,7 +127,9 @@ echo "vercel/next.js" \
 
 ### 实验能力
 
-Workflow、Langtum/Langcore、调度器及部分报告接口包含可选配置或未完成路径。它们应继续与稳定核心解耦，不应阻塞仓库、搜索和基础分析功能。
+仓库健康分析的报告入库、历史列表和详情读取已经形成可恢复的数据库链路。
+Workflow、Langtum/Langcore、调度器及其他报告类型仍包含可选配置或未完成路径，
+应继续与稳定核心解耦，不应阻塞仓库、搜索和基础分析功能。
 
 ### 生产边界
 

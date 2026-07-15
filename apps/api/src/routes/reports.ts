@@ -8,7 +8,14 @@
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { loadReport } from "@devscope/db";
+import {
+  createDb,
+  getWorkflowReportByExecutionId,
+  loadReport,
+  ownsWorkflowExecution,
+} from "@devscope/db";
+import { competitiveAnalysisReportSchema } from "@devscope/shared";
+import { findCurrentUserId } from "../current-user";
 
 // ============================================================================
 // 路由注册
@@ -23,7 +30,24 @@ export async function registerReportsRoutes(fastify: FastifyInstance): Promise<v
     const { executionId } = req.params as { executionId: string };
 
     try {
-      const report = await loadReport(executionId);
+      const db = createDb();
+      const userId = await findCurrentUserId(db);
+
+      if (userId === null) {
+        return reply.status(404).send({
+          error: "Report not found",
+          executionId,
+        });
+      }
+
+      // 数据库优先；仅为旧报告保留受 userId 约束的文件缓存回退。
+      let report = await getWorkflowReportByExecutionId(db, executionId, userId);
+      if (!report && await ownsWorkflowExecution(db, executionId, userId)) {
+        const cachedReport = await loadReport(executionId);
+        report = cachedReport
+          ? competitiveAnalysisReportSchema.parse(cachedReport)
+          : null;
+      }
 
       if (!report) {
         return reply.status(404).send({

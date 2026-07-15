@@ -21,6 +21,7 @@ import {
   createOSSInsightClient,
   createGitHubCollector,
   getReleasesByRepoId,
+  listWorkflowReportsByRepository,
 } from "@devscope/db";
 import { desc, eq, sql } from "drizzle-orm";
 import {
@@ -39,6 +40,7 @@ import {
 } from "@devscope/shared";
 import { workflowRouter } from "./router/workflow";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
+import { findCurrentUserId } from "./current-user";
 
 const activeRepositoryCollections = new Set<string>();
 
@@ -298,6 +300,37 @@ export const appRouter = router({
         createdAt: repo.createdAt.toISOString(),
         chunkStats,
       };
+    }),
+
+  /**
+   * 获取仓库健康分析报告历史
+   * @description 按当前用户和仓库隔离，最新报告优先
+   */
+  getRepositoryHealthReports: publicProcedure
+    .input(z.object({
+      repoFullName: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo"),
+    }))
+    .output(z.array(z.object({
+      reportId: z.string(),
+      executionId: z.string(),
+      summary: z.string().nullable(),
+      createdAt: z.string(),
+    })))
+    .query(async ({ ctx, input }) => {
+      const userId = await findCurrentUserId(ctx.db);
+      if (userId === null) {
+        return [];
+      }
+      const reports = await listWorkflowReportsByRepository(
+        ctx.db,
+        input.repoFullName,
+        userId
+      );
+
+      return reports.map((report) => ({
+        ...report,
+        createdAt: report.createdAt.toISOString(),
+      }));
     }),
 
   /**
