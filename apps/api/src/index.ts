@@ -7,10 +7,8 @@
  * @module index
  */
 
-// 加载环境变量（必须在最顶部）
-import path from "path";
-import dotenv from "dotenv";
-import fs from 'fs';
+// 必须先加载环境变量，再求值会初始化数据库连接池的模块。
+import "./env";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
@@ -22,20 +20,6 @@ import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 import { closeDb } from "@devscope/db";
 import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
-
-// 从多个可能的路径加载 .env 文件
-// 本地开发时在 apps/api 目录，需要向上两级；Docker 中 .env 在 cwd 下
-const envPaths = [
-  path.resolve(process.cwd(), ".env"),           // Docker / 项目根目录
-  path.resolve(process.cwd(), "../../.env"),      // 本地开发 (apps/api -> 根目录)
-];
-const envPath = envPaths.find((p) => fs.existsSync(p)) || envPaths[0];
-console.log(`[Env] Loading .env from: ${envPath}`);
-console.log(`[Env] File exists: ${fs.existsSync(envPath)}`);
-dotenv.config({ path: envPath });
-console.log(`[Env] SILICONFLOW_API_KEY loaded: ${process.env.SILICONFLOW_API_KEY ? "Yes" : "No"}`);
-console.log(`[Env] BGE_API_URL loaded: ${process.env.BGE_API_URL || 'Not set'}`);
-console.log(`[Env] BGE_MODEL_NAME loaded: ${process.env.BGE_MODEL_NAME || 'Not set'}`);
 
 // ============================================================================
 // 服务器初始化

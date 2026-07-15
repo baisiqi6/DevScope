@@ -8,6 +8,7 @@
  * @module context
  */
 
+import "./env";
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 import { createDb, type Db } from "@devscope/db";
 

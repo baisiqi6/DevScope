@@ -13,8 +13,8 @@ import {
   repositoryGroups,
   groupMembers,
   repositories,
-  users,
 } from "@devscope/db";
+import { getOrCreateCurrentUserId } from "../current-user";
 import {
   createGroupSchema,
   updateGroupSchema,
@@ -29,19 +29,6 @@ import {
 import { eq, and, desc, count, inArray, notInArray, or, ilike, sql } from "drizzle-orm";
 
 // ============================================================================
-// 辅助函数
-// ============================================================================
-
-/**
- * 获取默认用户 ID
- * TODO: 从会话中获取实际用户 ID
- */
-async function getDefaultUserId(db: any): Promise<number> {
-  const [user] = await db.select().from(users).limit(1);
-  return user?.id ?? 1;
-}
-
-// ============================================================================
 // 分组路由
 // ============================================================================
 
@@ -52,7 +39,7 @@ export const groupsRouter = router({
   getAll: publicProcedure
     .query(async ({ ctx }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 单条 JOIN + GROUP BY 查询，消除 N+1
       const rows = await db
@@ -84,7 +71,7 @@ export const groupsRouter = router({
     .input(z.object({ groupId: z.number() }))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 获取分组信息
       const [group] = await db
@@ -144,7 +131,7 @@ export const groupsRouter = router({
     .input(createGroupSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 获取当前最大 orderIndex
       const [maxOrder] = await db
@@ -179,7 +166,7 @@ export const groupsRouter = router({
     .input(updateGroupSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 验证分组属于当前用户
       const [existing] = await db
@@ -222,7 +209,7 @@ export const groupsRouter = router({
     .input(z.object({ groupId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 验证分组属于当前用户
       const [existing] = await db
@@ -253,7 +240,7 @@ export const groupsRouter = router({
     .input(reorderGroupsSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 验证所有分组都属于当前用户
       const existing = await db
@@ -464,7 +451,7 @@ export const groupsQueryRouter = router({
     .input(z.object({ repoId: z.number() }))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       // 获取仓库所属的分组成员记录
       const members = await db
@@ -529,7 +516,7 @@ export const groupsQueryRouter = router({
     .input(z.object({ query: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
-      const userId = await getDefaultUserId(db);
+      const userId = await getOrCreateCurrentUserId(db);
 
       return db
         .select()
