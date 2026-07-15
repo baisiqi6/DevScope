@@ -22,6 +22,7 @@ import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 import { closeDb } from "@devscope/db";
+import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
 
 // 从多个可能的路径加载 .env 文件
 // 本地开发时在 apps/api 目录，需要向上两级；Docker 中 .env 在 cwd 下
@@ -90,61 +91,14 @@ function createTRPCHandle() {
         // GET 请求：从查询参数获取
         const query = req.query as Record<string, string>;
         if (query.input) {
-          try {
-            const parsed = JSON.parse(query.input);
-
-            // httpBatchLink 批量格式: {"0": {"json": {...}}, "1": {"json": {...}}}
-            if (parsed["0"]) {
-              const keys = Object.keys(parsed).sort();
-              if (keys.length > 1 && keys.every(k => parsed[k]?.json !== undefined)) {
-                input = keys.map(k => parsed[k].json);
-              } else {
-                input = parsed["0"].json ?? parsed["0"];
-              }
-            } else {
-              input = parsed.json ?? parsed;
-            }
-          } catch {
-            input = query.input as any;
-          }
+          input = parseTRPCQueryInput(query.input);
         }
       } else {
         // POST 请求：支持批量请求格式
         const body = await req.body;
         const requestBody = body as any;
 
-        if (requestBody) {
-          // httpBatchLink 批量格式: {"0": {"json": {...}}, "1": {"json": {...}}}
-          if (requestBody["0"]?.json) {
-            const keys = Object.keys(requestBody).sort();
-            if (keys.length > 1 && keys.every(k => requestBody[k]?.json !== undefined)) {
-              input = keys.map(k => requestBody[k].json);
-            } else {
-              input = requestBody["0"].json;
-            }
-          }
-          // httpBatchLink 格式 (无 json 包装): {"0": {...}, "1": {...}}
-          else if (requestBody["0"]) {
-            const keys = Object.keys(requestBody).sort();
-            if (keys.length > 1) {
-              input = keys.map(k => requestBody[k]);
-            } else {
-              input = requestBody["0"];
-            }
-          }
-          // 标准 tRPC 格式: { "json": { ... } }
-          else if (requestBody.json !== undefined) {
-            input = requestBody.json;
-          }
-          // 兼容旧格式: { "input": { ... } }
-          else if (requestBody.input !== undefined) {
-            input = requestBody.input;
-          }
-          // 直接使用请求体
-          else if (Object.keys(requestBody).length > 0) {
-            input = requestBody;
-          }
-        }
+        input = unwrapTRPCInput(requestBody);
       }
 
       // 调用路由（支持批量请求）

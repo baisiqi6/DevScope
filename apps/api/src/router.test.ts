@@ -43,6 +43,7 @@ vi.mock("@devscope/ai", () => {
 vi.mock("@devscope/db", () => {
   const mockGetRepositoryByFullName = vi.fn();
   const mockSemanticSearchRepoChunks = vi.fn();
+  const mockListWorkflowReportsByRepository = vi.fn();
 
   return {
     createDb: vi.fn(() => ({
@@ -53,8 +54,11 @@ vi.mock("@devscope/db", () => {
     })),
     getRepositoryByFullName: mockGetRepositoryByFullName,
     semanticSearchRepoChunks: mockSemanticSearchRepoChunks,
+    listWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
+    users: { id: "users.id" },
     __mockGetRepositoryByFullName: mockGetRepositoryByFullName,
     __mockSemanticSearchRepoChunks: mockSemanticSearchRepoChunks,
+    __mockListWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
   };
 });
 
@@ -68,14 +72,35 @@ import { __mockComplete as mockComplete, __mockEmbed as mockEmbed } from "@devsc
 import {
   __mockGetRepositoryByFullName as mockGetRepositoryByFullName,
   __mockSemanticSearchRepoChunks as mockSemanticSearchRepoChunks,
+  __mockListWorkflowReportsByRepository as mockListWorkflowReportsByRepository,
 } from "@devscope/db";
 
-const createCaller = () =>
+const createCaller = (db: any = {}) =>
   appRouter.createCaller({
-    db: {} as any,
+    db,
     req: {} as any,
     res: {} as any,
   });
+
+function createCurrentUserDb(userId: number) {
+  return {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        limit: vi.fn().mockResolvedValue([{ id: userId }]),
+      })),
+    })),
+  };
+}
+
+function createCurrentUserDbWithoutUser() {
+  return {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        limit: vi.fn().mockResolvedValue([]),
+      })),
+    })),
+  };
+}
 
 // ============================================================================
 // 测试套件
@@ -316,6 +341,76 @@ describe("appRouter", () => {
       }
 
       expect(mockStructuredComplete).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  // ========================================================================
+  // 仓库健康报告历史测试
+  // ========================================================================
+
+  describe("getRepositoryHealthReports", () => {
+    it("应该按当前用户和仓库返回最新报告摘要", async () => {
+      const db = createCurrentUserDb(7);
+      mockListWorkflowReportsByRepository.mockResolvedValue([
+        {
+          reportId: "report-2",
+          executionId: "execution-2",
+          summary: "最新报告",
+          createdAt: new Date("2026-07-15T02:00:00.000Z"),
+        },
+        {
+          reportId: "report-1",
+          executionId: "execution-1",
+          summary: null,
+          createdAt: new Date("2026-07-14T02:00:00.000Z"),
+        },
+      ]);
+
+      const result = await createCaller(db).getRepositoryHealthReports({
+        repoFullName: "owner/repo",
+      });
+
+      expect(mockListWorkflowReportsByRepository).toHaveBeenCalledWith(
+        db,
+        "owner/repo",
+        7
+      );
+      expect(result).toEqual([
+        {
+          reportId: "report-2",
+          executionId: "execution-2",
+          summary: "最新报告",
+          createdAt: "2026-07-15T02:00:00.000Z",
+        },
+        {
+          reportId: "report-1",
+          executionId: "execution-1",
+          summary: null,
+          createdAt: "2026-07-14T02:00:00.000Z",
+        },
+      ]);
+    });
+
+    it("应该拒绝无效仓库名称", async () => {
+      await expect(
+        createCaller(createCurrentUserDb(7)).getRepositoryHealthReports({
+          repoFullName: "invalid",
+        })
+      ).rejects.toThrow();
+
+      expect(mockListWorkflowReportsByRepository).not.toHaveBeenCalled();
+    });
+
+    it("尚未初始化默认用户时应该返回空历史", async () => {
+      const db = createCurrentUserDbWithoutUser();
+
+      await expect(
+        createCaller(db).getRepositoryHealthReports({
+          repoFullName: "owner/repo",
+        })
+      ).resolves.toEqual([]);
+
+      expect(mockListWorkflowReportsByRepository).not.toHaveBeenCalled();
     });
   });
 

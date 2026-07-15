@@ -9,38 +9,24 @@
 
 import { Suspense, use } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { AnimatedBackground } from "@/components/animated-background";
 import { EmbeddingProgress, EmbeddingStatusBadge } from "@/components/embedding-progress";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
-
-interface ReleaseAsset {
-  name: string;
-  size: number;
-  downloadCount: number;
-  url: string;
-  browserDownloadUrl: string;
-}
-
-interface Release {
-  id: number;
-  tagName: string;
-  name: string;
-  body: string | null;
-  author: string;
-  createdAt: string;
-  publishedAt: string | null;
-  htmlUrl: string;
-  zipUrl: string | null;
-  tarUrl: string | null;
-  assets: ReleaseAsset[];
-  isPrerelease: boolean;
-}
+import { Activity, ArrowRight, FileText } from "lucide-react";
 
 interface RepositoryDetailPageProps {
   params: Promise<{
@@ -68,6 +54,15 @@ function RepositoryDetailContent({ id }: { id: number }) {
       retry: false,
     }
   );
+
+  const { data: healthReports, isLoading: isLoadingHealthReports } =
+    trpc.getRepositoryHealthReports.useQuery(
+      { repoFullName: repository?.fullName ?? "placeholder/repository" },
+      {
+        enabled: Boolean(repository?.fullName),
+        retry: false,
+      }
+    );
 
   if (isLoading || isLoadingReleases) {
     return (
@@ -117,8 +112,8 @@ function RepositoryDetailContent({ id }: { id: number }) {
         >
           <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex-1">
+              <CardTitle className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
                   <a
                     href={repository.url}
                     target="_blank"
@@ -157,6 +152,84 @@ function RepositoryDetailContent({ id }: { id: number }) {
                   <div className="text-purple-700 text-xs font-medium mb-1">License</div>
                   <div className="text-xl font-bold text-purple-900">{repository.license || "N/A"}</div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* 健康分析与历史报告 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
+        >
+          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
+            <CardHeader>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity />
+                    健康分析
+                  </CardTitle>
+                  <CardDescription>
+                    基于仓库数据启动 AI 健康度评估，完成后会保存到报告历史。
+                  </CardDescription>
+                </div>
+                <Button asChild>
+                  <Link href={`/analysis/health?repo=${encodeURIComponent(repository.fullName)}`}>
+                    开始分析
+                    <ArrowRight data-icon="inline-end" />
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">历史报告</h3>
+                  <Badge variant="secondary">
+                    {healthReports?.length ?? 0} 份
+                  </Badge>
+                </div>
+
+                {isLoadingHealthReports ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    正在加载报告历史...
+                  </p>
+                ) : healthReports && healthReports.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {healthReports.map((report) => (
+                      <div
+                        key={report.reportId}
+                        className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="flex min-w-0 items-start gap-3">
+                          <FileText className="mt-0.5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="line-clamp-2 text-sm font-medium">
+                              {report.summary || "仓库健康度报告"}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {new Date(report.createdAt).toLocaleString("zh-CN")}
+                            </p>
+                          </div>
+                        </div>
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/analysis/health/report/${report.executionId}`}>
+                            打开报告
+                          </Link>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed py-8 text-center">
+                    <p className="text-sm font-medium">还没有健康分析报告</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      首次分析完成后，报告会显示在这里。
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

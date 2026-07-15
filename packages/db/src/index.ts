@@ -107,3 +107,8 @@ export * from "./ossinsight";
  * 报告存储服务
  */
 export * from "./report-storage";
+
+/**
+ * 工作流报告数据库存储
+ */
+export * from "./workflow-reports";

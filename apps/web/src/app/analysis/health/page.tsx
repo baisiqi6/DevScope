@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +55,14 @@ export default function HealthReportPage() {
       console.error("Health report failed:", error);
     },
   });
+
+  // 从仓库详情页进入时预填 owner/repo，不覆盖用户已恢复的输入状态。
+  useEffect(() => {
+    const repoFromUrl = new URLSearchParams(window.location.search).get("repo");
+    if (repoFromUrl) {
+      setRepo((currentRepo) => currentRepo || repoFromUrl);
+    }
+  }, []);
 
   /**
    * 开始分析

@@ -991,8 +991,6 @@ export const agentWorkflowRequestSchema = z.object({
   analysisType: z.enum(["competitive_landscape", "health_report", "single_repo"]),
   /** 额外上下文 */
   context: z.string().optional(),
-  /** 用户 ID */
-  userId: z.number().optional(),
 });
 
 /** Agent 工作流请求类型 */

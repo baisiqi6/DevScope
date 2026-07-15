@@ -10,13 +10,18 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { createAgent, StreamCallbacks } from "@devscope/ai";
-import { createDb, saveReport } from "@devscope/db";
+import {
+  completeWorkflowWithReport,
+  createDb,
+  saveReport,
+  workflowExecutions,
+} from "@devscope/db";
 import type {
   AgentWorkflowEvent,
   CompetitiveAnalysisReport,
 } from "@devscope/shared";
-import { workflowExecutions } from "@devscope/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getOrCreateCurrentUserId } from "../../current-user";
 import {
   COMPETITIVE_ANALYSIS_SYSTEM_PROMPT,
   HEALTH_REPORT_SYSTEM_PROMPT,
@@ -34,7 +39,6 @@ interface SSERequestBody {
   repos: string[];
   analysisType: "competitive_landscape" | "health_report" | "single_repo";
   context?: string;
-  userId?: number;
 }
 
 // ============================================================================
@@ -318,28 +322,15 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
     reply.raw.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     reply.raw.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // 初始化数据库记录
+    // 初始化数据库记录。当前用户由服务端解析，不接受客户端指定 userId。
     const db = createDb();
+    let executionUserId: number;
     try {
-      // 尝试获取或创建默认用户
-      const { users } = await import("@devscope/db");
-      const existingUsers = await db.select().from(users).limit(1);
-      let userId = input.userId;
-
-      if (!userId && existingUsers.length === 0) {
-        // 创建默认用户
-        const [newUser] = await db.insert(users).values({
-          name: "default",
-          email: "default@devscope.local",
-        }).returning();
-        userId = newUser.id;
-      } else if (!userId && existingUsers.length > 0) {
-        userId = existingUsers[0].id;
-      }
+      executionUserId = await getOrCreateCurrentUserId(db);
 
       await db.insert(workflowExecutions).values({
         executionId,
-        userId: userId!,
+        userId: executionUserId,
         workflowId: "agent_competitive_analysis",
         workflowType: input.analysisType,
         status: "running",
@@ -348,6 +339,17 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
       });
     } catch (e) {
       console.error("[SSE] Failed to create execution record:", e);
+      sendEvent(reply, {
+        type: "complete",
+        data: {
+          executionId,
+          status: "failed",
+          error: "无法初始化工作流执行记录",
+          timestamp: new Date().toISOString(),
+        },
+      });
+      reply.raw.end();
+      return;
     }
 
     // 立即发送 executionId，前端可用于恢复状态
@@ -375,6 +377,7 @@ export async function registerAgentWorkflowSSE(fastify: FastifyInstance): Promis
 
       // 创建终端输出拦截器
       const cleanupTerminal = createTerminalInterceptor(reply);
+      let workflowCompleted = false;
 
       try {
         // 创建 Agent
@@ -439,33 +442,33 @@ ${input.context ? `\n额外上下文：\n${input.context}\n` : ""}
           result.output  // 传入 AI 的详细文本分析
         );
 
-        // 保存报告
-        const { reportId, path: reportPath } = await saveReport(executionId, report);
+        // PostgreSQL 是事实来源：报告入库和执行完成必须在同一事务内成功。
+        await completeWorkflowWithReport(db, {
+          userId: executionUserId,
+          repoFullName: input.repos.length === 1 ? input.repos[0] : null,
+          report,
+        });
+        workflowCompleted = true;
+
+        // 文件系统只作为可选导出缓存；失败不影响数据库中的已完成报告。
+        let reportPath = "";
+        try {
+          const savedReport = await saveReport(executionId, report);
+          reportPath = savedReport.path;
+        } catch (error) {
+          console.warn("[SSE] Failed to write optional report cache:", error);
+        }
 
         // 发送报告事件
         sendEvent(reply, {
           type: "report",
           data: {
-            reportId,
+            reportId: report.reportId,
             reportPath,
             summary: report.executiveSummary.overview,
             timestamp: new Date().toISOString(),
           },
         });
-
-        // 更新执行状态
-        try {
-          await db
-            .update(workflowExecutions)
-            .set({
-              status: "completed",
-              completedAt: new Date(),
-              result: report as any,
-            })
-            .where(eq(workflowExecutions.executionId, executionId));
-        } catch (e) {
-          console.error("[SSE] Failed to update execution record:", e);
-        }
 
         // 发送完成事件
         sendEvent(reply, {
@@ -480,6 +483,11 @@ ${input.context ? `\n额外上下文：\n${input.context}\n` : ""}
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         console.error("[SSE] Agent workflow error:", error);
+
+        // 报告已完成入库后，客户端断开等事件投递错误不能反转数据库状态。
+        if (workflowCompleted) {
+          return;
+        }
 
         sendEvent(reply, {
           type: "complete",
@@ -498,8 +506,15 @@ ${input.context ? `\n额外上下文：\n${input.context}\n` : ""}
             .set({
               status: "failed",
               error: errorMessage,
+              updatedAt: new Date(),
             })
-            .where(eq(workflowExecutions.executionId, executionId));
+            .where(
+              and(
+                eq(workflowExecutions.executionId, executionId),
+                eq(workflowExecutions.userId, executionUserId),
+                eq(workflowExecutions.status, "running")
+              )
+            );
         } catch (e) {
           console.error("[SSE] Failed to update execution record:", e);
         }
