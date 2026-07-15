@@ -97,27 +97,30 @@ describe("Agent 输入与输出契约", () => {
     expect(ReportGenerateToolInputSchema.safeParse({ title: "报告" }).success).toBe(true);
   });
 
-  it("风险类别只接受最终报告支持的四个枚举", () => {
-    const base = {
-      healthScore: 80,
-      activityLevel: "high",
-      keyMetrics: {
-        starsGrowthRate: 1,
-        issueResolutionRate: 80,
-        contributorDiversityScore: 70,
-      },
-      opportunities: [],
-      recommendation: "invest",
-      summary: "项目状态良好。",
-    };
+  it.each(["Issue Management", "Stability"])(
+    "风险类别拒绝最终报告不支持的标签：%s",
+    (invalidCategory) => {
+      const base = {
+        healthScore: 80,
+        activityLevel: "high",
+        keyMetrics: {
+          starsGrowthRate: 1,
+          issueResolutionRate: 80,
+          contributorDiversityScore: 70,
+        },
+        opportunities: [],
+        recommendation: "invest",
+        summary: "项目状态良好。",
+      };
 
-    expect(repositoryAnalysisSchema.safeParse({
-      ...base,
-      riskFactors: [{ category: "technical", description: "测试风险", severity: 20 }],
-    }).success).toBe(true);
-    expect(repositoryAnalysisSchema.safeParse({
-      ...base,
-      riskFactors: [{ category: "Issue Management", description: "测试风险", severity: 20 }],
-    }).success).toBe(false);
-  });
+      expect(repositoryAnalysisSchema.safeParse({
+        ...base,
+        riskFactors: [{ category: "technical", description: "测试风险", severity: 20 }],
+      }).success).toBe(true);
+      expect(repositoryAnalysisSchema.safeParse({
+        ...base,
+        riskFactors: [{ category: invalidCategory, description: "测试风险", severity: 20 }],
+      }).success).toBe(false);
+    }
+  );
 });
