@@ -522,28 +522,13 @@ export default function RepoStatsPage() {
       {/* 动画背景 */}
       <AnimatedBackground />
 
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope - 仓库统计
-          </motion.h1>
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/")}
-            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-          >
-            返回首页
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold">仓库统计</h1>
+          <Button variant="ghost" onClick={() => router.push("/")}>
+            返回仓库列表
           </Button>
         </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8">
         <Suspense fallback={<div className="text-center py-8">加载中...</div>}>
           <StatsContent />
         </Suspense>

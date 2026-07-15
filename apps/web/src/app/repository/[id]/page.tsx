@@ -90,20 +90,11 @@ function RepositoryDetailContent({ id }: { id: number }) {
       {/* 动画背景 */}
       <AnimatedBackground />
 
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/")}
-            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-          >
-            ← 返回列表
-          </Button>
-        </div>
-      </header>
-
       <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <Button asChild variant="ghost" className="mb-4">
+          <Link href="/">← 返回仓库列表</Link>
+        </Button>
+
         {/* 仓库基本信息 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

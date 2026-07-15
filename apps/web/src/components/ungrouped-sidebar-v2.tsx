@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import type { Repository } from "@devscope/shared";
 import { Badge } from "./ui/badge";
@@ -19,8 +18,6 @@ interface UngroupedSidebarProps {
 }
 
 const TAG_WIDTH = 60;
-const PANEL_WIDTH = 320;
-const SIDEBAR_WIDTH = TAG_WIDTH + PANEL_WIDTH;
 
 export function UngroupedSidebar({
   ungroupedRepos,
@@ -76,27 +73,23 @@ export function UngroupedSidebar({
 
   return (
     <div
-      className="pointer-events-none fixed right-0 top-0 z-40 h-screen"
-      style={{ width: SIDEBAR_WIDTH }}
+      className="pointer-events-none fixed right-0 top-16 z-40 h-[calc(100dvh-4rem)] w-screen max-w-[380px]"
     >
-      <motion.div
-        className="absolute inset-y-0 right-0 flex pointer-events-auto"
-        initial={false}
-        animate={{ x: isOpen ? 0 : PANEL_WIDTH }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => {
-          if (draggingRepoId !== null && draggingRepoId !== undefined) {
-            return;
-          }
-          setOpen(false);
-        }}
+      <div
+        className="pointer-events-auto absolute inset-y-0 right-0 flex w-full transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]"
+        style={{ transform: isOpen ? "translateX(0)" : `translateX(calc(100% - ${TAG_WIDTH}px))` }}
       >
-        <div
+        <button
+          type="button"
+          aria-label={isOpen ? "收起未分组仓库" : "展开未分组仓库"}
+          aria-controls="ungrouped-repository-panel"
+          aria-expanded={isOpen}
+          onClick={() => setOpen(!isOpen)}
           className="
             relative my-auto w-[60px] shrink-0 cursor-pointer overflow-hidden
             rounded-l-2xl border-b border-l border-t border-amber-400
-            bg-gradient-to-b from-amber-500 to-orange-500 py-4 shadow-lg
+            bg-amber-600 py-4 shadow-lg focus-visible:outline-none focus-visible:ring-2
+            focus-visible:ring-ring focus-visible:ring-offset-2
           "
         >
           <div className="flex flex-col items-center justify-center gap-3">
@@ -118,38 +111,18 @@ export function UngroupedSidebar({
             </Badge>
 
             {!isOpen && hasUngrouped && (
-              <motion.div
-                animate={{ x: [0, -5, 0], opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-              >
+              <span>
                 <ChevronRight className="h-4 w-4 rotate-180 text-white/80" />
-              </motion.div>
+              </span>
             )}
           </div>
+        </button>
 
-          {!isOpen && hasUngrouped && (
-            <>
-              <motion.div
-                className="absolute inset-0 bg-white/20"
-                animate={{ scale: [1, 1.02, 1], opacity: [0, 0.3, 0] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-              <div className="absolute right-4 top-4">
-                <motion.div
-                  className="h-2 w-2 rounded-full bg-white"
-                  animate={{ scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        <motion.div
-          className="h-full w-[320px] overflow-hidden border-l-2 border-amber-300 bg-white shadow-2xl"
-          initial={false}
-          animate={{ opacity: isOpen ? 1 : 0.98 }}
-          transition={{ duration: 0.2, ease: "easeInOut" }}
+        <div
+          id="ungrouped-repository-panel"
+          aria-hidden={!isOpen}
+          inert={!isOpen}
+          className="h-full min-w-0 flex-1 overflow-hidden border-l border-amber-300 bg-background shadow-2xl"
         >
           <div className="flex h-full min-h-0 flex-col">
             <div className="sticky top-0 z-10 border-b border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3">
@@ -185,11 +158,8 @@ export function UngroupedSidebar({
                 </div>
               ) : (
                 sortedUngroupedRepos.map((repo) => (
-                  <motion.div
+                  <div
                     key={repo.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.2 }}
                     className="group"
                   >
                     <Card
@@ -246,13 +216,13 @@ export function UngroupedSidebar({
                         />
                       </div>
                     </Card>
-                  </motion.div>
+                  </div>
                 ))
               )}
             </div>
           </div>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }

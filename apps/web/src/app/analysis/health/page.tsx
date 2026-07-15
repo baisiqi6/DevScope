@@ -17,7 +17,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AgentThinkingView } from "@/components/agent-thinking-view";
 import { HealthReportView } from "@/components/health-report-view";
-import { Navigation } from "@/components/navigation";
 import { AnimatedBackground } from "@/components/animated-background";
 import { ExecutionTimer } from "@/components/execution-timer";
 import { useAgentWorkflow } from "@/hooks/use-agent-workflow";
@@ -31,6 +30,7 @@ import { motion } from "framer-motion";
 export default function HealthReportPage() {
   const [repo, setRepo] = useState<string>("");
   const [context, setContext] = useState<string>("");
+  const [inputError, setInputError] = useState<string | null>(null);
 
   const {
     status,
@@ -71,10 +71,11 @@ export default function HealthReportPage() {
     const repoClean = repo.trim();
 
     if (!repoClean || !repoClean.includes("/")) {
-      alert("请输入有效的仓库地址 (格式: owner/repo)");
+      setInputError("请输入有效的仓库地址，格式为 owner/repo。");
       return;
     }
 
+    setInputError(null);
     startWorkflow({
       repos: [repoClean],
       analysisType: "health_report",
@@ -89,6 +90,7 @@ export default function HealthReportPage() {
     reset();
     setRepo("");
     setContext("");
+    setInputError(null);
   };
 
   const isRunning = status === "running";
@@ -99,21 +101,6 @@ export default function HealthReportPage() {
     <main className="min-h-screen">
       {/* 动画背景 */}
       <AnimatedBackground />
-
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope - 健康度报告
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
 
       <div className="container mx-auto px-4 py-8 max-w-5xl">
         {/* 页面标题 */}
@@ -193,12 +180,22 @@ export default function HealthReportPage() {
                   <Textarea
                     id="repo"
                     value={repo}
-                    onChange={(e) => setRepo(e.target.value)}
+                    onChange={(e) => {
+                      setRepo(e.target.value);
+                      if (inputError) setInputError(null);
+                    }}
                     placeholder="RubyMetric/chsrc"
                     rows={2}
                     disabled={isRunning}
                     className="font-mono text-lg"
+                    aria-invalid={Boolean(inputError)}
+                    aria-describedby={inputError ? "repo-input-error" : undefined}
                   />
+                  {inputError && (
+                    <p id="repo-input-error" role="alert" className="mt-2 text-sm text-destructive">
+                      {inputError}
+                    </p>
+                  )}
                 </div>
 
                 {/* 额外上下文 */}

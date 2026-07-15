@@ -10,7 +10,6 @@
 import { type DragEvent, useMemo, useRef, useState } from "react";
 import { skipToken } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
-import { Navigation } from "@/components/navigation";
 import { AnimatedBackground } from "@/components/animated-background";
 import { GroupTabs } from "@/components/group-tabs";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
@@ -318,27 +317,7 @@ export default function GroupsManagementPage() {
       <AnimatedBackground />
 
       {/* 页面内容容器 - 添加动态右边距 */}
-      <motion.div
-        animate={{
-          paddingRight: isSidebarOpen ? 380 : 0,
-        }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-      >
-
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
+      <div className={isSidebarOpen ? "lg:pr-[380px]" : undefined}>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* 顶部工具栏 */}
@@ -350,8 +329,10 @@ export default function GroupsManagementPage() {
         >
           {/* 搜索框 */}
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <label htmlFor="group-search" className="sr-only">搜索分组</label>
+            <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
+              id="group-search"
               type="text"
               placeholder="搜索分组..."
               value={searchQuery}
@@ -360,10 +341,12 @@ export default function GroupsManagementPage() {
             />
             {searchQuery && (
               <button
+                type="button"
+                aria-label="清空分组搜索"
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <X className="h-4 w-4" />
+                <X aria-hidden="true" className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -463,7 +446,7 @@ export default function GroupsManagementPage() {
                   : "border-transparent"
           }`}
         >
-          <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="mb-4 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
                 {selectedGroupId !== null ? selectedGroup?.name ?? "分组仓库" : "全部仓库"}
@@ -653,7 +636,7 @@ export default function GroupsManagementPage() {
         onRepoDragStart={handleRepoDragStart}
         onRepoDragEnd={handleRepoDragEnd}
       />
-      </motion.div>
+      </div>
     </main>
   );
 }

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-15T03:00:00.000Z",
+  "title": "Design System: DevScope",
+  "extensions": {
+    "colorMeta": {
+      "accent-blue": {
+        "role": "primary",
+        "displayName": "研究蓝",
+        "canonical": "#2563eb",
+        "tonalRamp": ["#172554", "#1e3a8a", "#1e40af", "#1d4ed8", "#2563eb", "#60a5fa", "#bfdbfe", "#eff6ff"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "冷雾画布",
+        "canonical": "#f8fafc",
+        "tonalRamp": ["#0f172a", "#1e293b", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f8fafc"]
+      }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "标题", "purpose": "页面与主要区域标题。" },
+      "body": { "displayName": "正文", "purpose": "正文、数据说明和列表内容。" },
+      "label": { "displayName": "标签", "purpose": "表单、按钮和导航标签。" }
+    },
+    "shadows": [
+      { "name": "floating-low", "value": "0 8px 24px rgba(15, 23, 42, 0.08)", "purpose": "仅用于菜单和离开文档流的浮层。" }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "150ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "hover、focus 和展开状态反馈。" },
+      { "name": "state-standard", "value": "200ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "面板和导航状态变化。" }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "当前页面唯一的主要操作。",
+      "html": "<button class=\"ds-button-primary\">开始分析</button>",
+      "css": ".ds-button-primary { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 6px; background: #2563eb; color: #fcfdff; font: 500 14px/1.25 system-ui, sans-serif; transition: background 150ms cubic-bezier(0.22,1,0.36,1); } .ds-button-primary:hover { background: #1d4ed8; } .ds-button-primary:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "搜索、仓库地址和上下文输入。",
+      "html": "<input class=\"ds-input\" aria-label=\"仓库地址\" value=\"vercel/next.js\" />",
+      "css": ".ds-input { height: 40px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fcfdff; color: #0f172a; font: 400 14px/1.5 system-ui, sans-serif; } .ds-input:hover { border-color: #cbd5e1; } .ds-input:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "description": "全局导航中的当前页面状态。",
+      "html": "<a class=\"ds-nav-item\" href=\"#\">仓库列表</a>",
+      "css": ".ds-nav-item { display: inline-flex; min-height: 40px; align-items: center; padding: 8px 12px; border-radius: 6px; background: #eff6ff; color: #1d4ed8; font: 500 14px/1.25 system-ui, sans-serif; text-decoration: none; } .ds-nav-item:hover { background: #dbeafe; } .ds-nav-item:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }"
+    },
+    {
+      "name": "Repository Surface",
+      "kind": "card",
+      "description": "承载仓库摘要的平面内容表面。",
+      "html": "<article class=\"ds-repository\"><strong>vercel/next.js</strong><p>React 框架与工具链</p></article>",
+      "css": ".ds-repository { padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fcfdff; color: #0f172a; font: 400 14px/1.5 system-ui, sans-serif; } .ds-repository p { margin: 8px 0 0; color: #64748b; } .ds-repository:focus-within { outline: 2px solid #2563eb; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "研究案头",
+    "overview": "DevScope 使用浅色、低干扰的工作环境承载仓库研究任务。品牌识别来自统一的蓝色强调、清晰排版和可靠状态反馈，不来自渐变文字、玻璃拟态或漂浮光斑。",
+    "keyCharacteristics": ["浅色克制", "单一强调色", "结构性响应式", "标准交互优先"],
+    "rules": [
+      { "name": "语义色规则", "body": "彩色元素必须表达真实状态或操作。", "section": "colors" },
+      { "name": "边框优先规则", "body": "先用背景层和 1px 边框建立结构。", "section": "elevation" }
+    ],
+    "dos": ["使用语义 token 统一颜色、圆角、焦点和状态。", "为窄屏重排结构并支持 prefers-reduced-motion。"],
+    "donts": ["不要使用通用 AI SaaS 模板。", "不要展示尚未实现的多用户能力。"]
+  }
+}

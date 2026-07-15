@@ -3,13 +3,11 @@
 import { useMemo, useState, useCallback } from "react";
 import { skipToken } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import type { CreateGroupInput, Repository, RepositoryGroup } from "@devscope/shared";
 import { trpc } from "@/lib/trpc";
 import { RepositoryCard } from "@/components/repository-card";
 import { CollectForm } from "@/components/collect-form";
 import { FollowingList } from "@/components/following-list";
-import { Navigation } from "@/components/navigation";
 import { ViewModeToggle, useViewMode } from "@/components/view-toggle";
 import {
   SortControl,
@@ -230,23 +228,9 @@ export default function HomePage() {
     <main className="min-h-screen">
       <AnimatedBackground />
 
-      <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/70 backdrop-blur-md">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <motion.h1
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
-
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-1">
+          <div className="min-w-0 lg:col-span-1">
             <div className="mb-4 flex gap-2">
               <Button
                 size="sm"
@@ -271,7 +255,7 @@ export default function HomePage() {
             )}
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <GroupTabs
               groups={groups}
               selectedGroupId={selectedGroupId}
@@ -284,11 +268,11 @@ export default function HomePage() {
               onCreateGroup={() => setShowCreateGroupDialog(true)}
             />
 
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-xl font-semibold">
                 {currentGroupName} ({sortedRepositories.length})
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <SortControl
                   value={sortBy}
                   order={order}
@@ -301,13 +285,13 @@ export default function HomePage() {
 
             {isListLoading && (
               <div className="py-8 text-center text-muted-foreground">
-                鍔犺浇涓?..
+                正在加载...
               </div>
             )}
 
             {pageError && (
-              <div className="py-8 text-center text-red-500">
-                鍔犺浇澶辫触: {pageError.message}
+              <div role="alert" className="py-8 text-center text-destructive">
+                加载失败：{pageError.message}
               </div>
             )}
 
