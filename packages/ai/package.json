@@ -10,11 +10,6 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.mjs"
     },
-    "./langtum": {
-      "types": "./dist/langtum.d.mts",
-      "import": "./dist/langtum.mjs",
-      "require": "./dist/langtum.mjs"
-    },
     "./agent": {
       "types": "./dist/agent.d.mts",
       "import": "./dist/agent.mjs",
@@ -32,7 +27,6 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
     "@devscope/shared": "workspace:*",
     "openai": "^4.77.0",
     "zod": "^3.24.1"

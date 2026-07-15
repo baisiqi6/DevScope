@@ -476,14 +476,14 @@ describe("repo-analyze", () => {
         },
         riskFactors: [
           {
-            category: "技术",
+            category: "technical",
             description: "测试风险",
             severity: 5,
           },
         ],
         opportunities: [
           {
-            category: "商业",
+            category: "business",
             description: "测试机会",
             potential: 7,
           },

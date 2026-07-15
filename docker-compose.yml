@@ -32,7 +32,6 @@ services:
     container_name: devscope-api
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/devscope
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}

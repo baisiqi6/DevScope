@@ -85,7 +85,7 @@ function StatsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const getStats = trpc.workflow.getRepositoryStats.useQuery(
+  const getStats = trpc.getRepositoryStats.useQuery(
     { repo: repo || "" },
     {
       enabled: !!repo,

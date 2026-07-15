@@ -229,6 +229,11 @@ export const recommendationLevelSchema = z.enum(["invest", "watch", "avoid"]);
 export type RecommendationLevel = z.infer<typeof recommendationLevelSchema>;
 
 /**
+ * 风险类别枚举
+ */
+export const riskCategorySchema = z.enum(["technical", "community", "business", "compliance"]);
+
+/**
  * 关键指标 Schema
  * @description 项目的关键量化指标
  */
@@ -250,7 +255,7 @@ export type KeyMetrics = z.infer<typeof keyMetricsSchema>;
  */
 export const riskFactorSchema = z.object({
   /** 风险类别 */
-  category: z.string(),
+  category: riskCategorySchema,
   /** 风险描述 */
   description: z.string(),
   /** 严重程度（0-100，0 表示无风险） */
@@ -1023,11 +1028,6 @@ export const confidenceLevelSchema = z.enum(["high", "medium", "low"]);
  * 风险等级枚举
  */
 export const riskLevelSchema = z.enum(["low", "medium", "high", "critical"]);
-
-/**
- * 风险类别枚举
- */
-export const riskCategorySchema = z.enum(["technical", "community", "business", "compliance"]);
 
 /**
  * 数据来源类型枚举

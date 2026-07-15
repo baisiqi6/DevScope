@@ -56,9 +56,8 @@ printf '%s\n' vercel/next.js facebook/react \
 | ----------------- | --------------------------------------------------------------- |
 | DeepSeek          | `DEEPSEEK_API_KEY`、可选 `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` |
 | OpenAI-compatible | `OPENAI_COMPATIBLE_API_KEY`、可选 `OPENAI_COMPATIBLE_BASE_URL`  |
-| Anthropic         | `ANTHROPIC_API_KEY`                                             |
 
-存在 OpenAI-compatible 或 DeepSeek 配置时优先使用兼容模式，否则使用 Anthropic。
+未提供上述任一组 API Key 时，工具会明确报错并退出。
 
 ## 输出
 

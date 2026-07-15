@@ -56,9 +56,6 @@ SILICONFLOW_API_KEY=your_siliconflow_api_key_here
 BGE_API_URL=https://api.siliconflow.cn/v1
 BGE_MODEL_NAME=BAAI/bge-m3
 
-# Langcore
-LANGTUM_API_KEY=your_langcore_api_key_here
-LANGTUM_BASE_URL=https://demo.langcore.cn
 EOF
     echo ".env 文件已创建，请编辑填入实际值"
 fi

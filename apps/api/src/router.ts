@@ -38,7 +38,6 @@ import {
   type RepositoryAnalysis,
   type CollectionResult,
 } from "@devscope/shared";
-import { workflowRouter } from "./router/workflow";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
 import { findCurrentUserId } from "./current-user";
 
@@ -76,9 +75,6 @@ function getAI() {
  * @description 包含所有 tRPC 路由
  */
 export const appRouter = router({
-  // 工作流相关路由
-  workflow: workflowRouter,
-
   // 仓库分组相关路由
   groups: groupsRouter,
   groupMembers: groupMembersRouter,
@@ -198,6 +194,37 @@ export const appRouter = router({
         console.error("[getFollowing] Error:", err);
         throw err;
       }
+    }),
+
+  /**
+   * 获取仓库详细统计数据
+   * @description 获取代码活跃度、Issues、PRs、贡献者和社区文件统计
+   */
+  getRepositoryStats: publicProcedure
+    .input(z.object({
+      repo: z.string().regex(/^[^/]+\/[^/]+$/, "Invalid repository format. Expected: owner/repo"),
+    }))
+    .query(async ({ input }) => {
+      const github = createGitHubCollector();
+      const [owner, name] = input.repo.split("/");
+      const stats = await github.getRepositoryStats(owner, name);
+
+      return {
+        repository: {
+          ...stats.repository,
+          createdAt: stats.repository.createdAt.toISOString(),
+          updatedAt: stats.repository.updatedAt.toISOString(),
+          pushedAt: stats.repository.pushedAt.toISOString(),
+        },
+        commitFrequency: {
+          ...stats.commitFrequency,
+          lastCommitDate: stats.commitFrequency.lastCommitDate.toISOString(),
+        },
+        issuesStats: stats.issuesStats,
+        prStats: stats.prStats,
+        contributorsStats: stats.contributorsStats,
+        communityFiles: stats.communityFiles,
+      };
     }),
 
   /**

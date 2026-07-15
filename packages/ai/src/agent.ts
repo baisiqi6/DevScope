@@ -1,14 +1,13 @@
 /**
  * @package @devscope/ai/agent
- * @description Claude Agent SDK 集成模块
+ * @description OpenAI-compatible Agent 集成模块
  *
- * 将 DevScope Skills 包装为 Claude 可调用的 Tools，
+ * 将 DevScope Skills 包装为模型可调用的 Tools，
  * 实现 Agent 自主决策和多工具协作。
  *
  * @module agent
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
 import { GitHubClient, repositoryAnalysisSchema } from "@devscope/shared";
@@ -34,7 +33,7 @@ export interface AgentTool<TInput = unknown, TOutput = unknown> {
 /**
  * Agent 提供者类型
  */
-type AgentProviderType = "anthropic" | "openai-compatible";
+type AgentProviderType = "openai-compatible";
 
 /**
  * Agent 配置
@@ -46,7 +45,7 @@ export interface DevScopeAgentConfig {
   apiKey?: string;
   /** API Base URL (用于 openai-compatible 模式) */
   baseURL?: string;
-  /** 使用的模型 (默认: claude-sonnet-4-6 或 deepseek-chat) */
+  /** 使用的模型 (默认: deepseek-chat) */
   model?: string;
   /** 最大 token 数 */
   maxTokens?: number;
@@ -230,7 +229,7 @@ function createRepoAnalyzeHandler(ai: { structuredComplete: (prompt: string, opt
 **重要提示**：
 1. 当前日期是 ${currentDate}。在判断项目活跃度时，请参考此日期来评估最后更新时间、最近提交等时间戳的合理性。不要将2025年或2026年的日期误判为"未来时间"或"数据异常"。
 2. **所有分析内容必须使用中文输出**，包括风险因素描述（description）、机会因素描述（description）和总结（summary）。
-3. 风险类别（category）可以使用英文标签，如 "Issue Management"、"Community Engagement" 等。
+3. 风险类别（category）只能使用以下英文枚举之一："technical"、"community"、"business"、"compliance"。
 4. 但描述性文本必须是中文。`,
       temperature: 0.3,
     });
@@ -354,12 +353,12 @@ async function handleReportGenerate(input: z.infer<typeof ReportGenerateToolInpu
 
 /**
  * DevScope Agent
- * @description 集成 Claude Agent SDK，支持自主调用多个工具
+ * @description 通过 OpenAI-compatible API 支持自主调用多个工具
  *
  * @example
  * ```typescript
  * const agent = new DevScopeAgent({
- *   model: "claude-sonnet-4-6",
+ *   model: "deepseek-chat",
  * });
  *
  * // 简单查询
@@ -374,8 +373,7 @@ async function handleReportGenerate(input: z.infer<typeof ReportGenerateToolInpu
  */
 export class DevScopeAgent {
   private providerType: AgentProviderType;
-  private anthropicClient: Anthropic | null;
-  private openaiClient: OpenAI | null;
+  private openaiClient: OpenAI;
   private model: string;
   private maxTokens: number;
   private systemPrompt: string;
@@ -383,29 +381,16 @@ export class DevScopeAgent {
   private tools: Map<string, AgentTool> = new Map();
 
   constructor(config: DevScopeAgentConfig = {}) {
-    // 检测或使用指定的 provider 类型
-    this.providerType = config.provider || this.detectProviderFromEnv();
+    this.providerType = config.provider || "openai-compatible";
+    const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
+    const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 
-    // 根据 provider 类型初始化客户端
-    if (this.providerType === "anthropic") {
-      this.anthropicClient = new Anthropic({
-        apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
-      });
-      this.openaiClient = null;
-      this.model = config.model || "claude-sonnet-4-6";
-    } else {
-      // OpenAI 兼容模式（DeepSeek、通义千问等）
-      const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
-      const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-
-      if (!apiKey) {
-        throw new Error("API Key is required for openai-compatible provider. Set DEEPSEEK_API_KEY or OPENAI_COMPATIBLE_API_KEY environment variable.");
-      }
-
-      this.openaiClient = new OpenAI({ apiKey, baseURL });
-      this.anthropicClient = null;
-      this.model = config.model || "deepseek-chat";
+    if (!apiKey) {
+      throw new Error("API Key is required. Set DEEPSEEK_API_KEY or OPENAI_COMPATIBLE_API_KEY environment variable.");
     }
+
+    this.openaiClient = new OpenAI({ apiKey, baseURL });
+    this.model = config.model || process.env.DEEPSEEK_MODEL || "deepseek-chat";
 
     this.maxTokens = config.maxTokens || 4096;
     this.systemPrompt = config.systemPrompt || `你是一个专业的开源项目分析师助手。
@@ -428,16 +413,6 @@ export class DevScopeAgent {
 
     // 注册内置工具
     this.registerBuiltInTools();
-  }
-
-  /**
-   * 从环境变量自动检测 provider 类型
-   */
-  private detectProviderFromEnv(): AgentProviderType {
-    if (process.env.DEEPSEEK_API_KEY || process.env.OPENAI_COMPATIBLE_API_KEY) {
-      return "openai-compatible";
-    }
-    return "anthropic";
   }
 
   /**
@@ -492,24 +467,14 @@ export class DevScopeAgent {
 
     for (const [name, tool] of this.tools) {
       if (enabledTools.includes(name)) {
-        if (this.providerType === "anthropic") {
-          // Anthropic 格式
-          tools.push({
+        tools.push({
+          type: "function",
+          function: {
             name: tool.name,
             description: tool.description,
-            input_schema: this.zodToJsonSchema(tool.inputSchema),
-          });
-        } else {
-          // OpenAI 兼容格式 (DeepSeek)
-          tools.push({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: this.zodToJsonSchema(tool.inputSchema),
-            },
-          });
-        }
+            parameters: this.zodToJsonSchema(tool.inputSchema),
+          },
+        });
       }
     }
 
@@ -605,96 +570,7 @@ export class DevScopeAgent {
    * 运行 Agent (非流式)
    */
   async run(prompt: string): Promise<AgentResult<string>> {
-    if (this.providerType === "anthropic") {
-      return this.runAnthropic(prompt);
-    } else {
-      return this.runOpenAICompatible(prompt);
-    }
-  }
-
-  /**
-   * 使用 Anthropic SDK 运行 Agent
-   */
-  private async runAnthropic(prompt: string): Promise<AgentResult<string>> {
-    const toolCalls: AgentResult["toolCalls"] = [];
-    const messages: Anthropic.MessageParam[] = [
-      { role: "user", content: prompt },
-    ];
-
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-
-    // Agent 循环
-    while (true) {
-      const response = await this.anthropicClient!.messages.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: this.systemPrompt,
-        messages,
-        tools: this.getToolDefinitions(),
-      });
-
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      // 检查是否需要工具调用
-      const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-      );
-
-      if (toolUseBlocks.length === 0) {
-        // 没有工具调用，返回最终结果
-        const textBlocks = response.content.filter(
-          (block): block is Anthropic.TextBlock => block.type === "text"
-        );
-        const finalText = textBlocks.map((b) => b.text).join("");
-
-        return {
-          output: finalText,
-          toolCalls,
-          usage: {
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-          },
-        };
-      }
-
-      // 执行工具调用
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const block of toolUseBlocks) {
-        try {
-          const result = await this.executeTool(block.name, block.input);
-          toolCalls.push({
-            tool: block.name,
-            input: block.input,
-            output: result,
-          });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          });
-        } catch (error) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            is_error: true,
-            content: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      // 添加助手消息和工具结果到对话历史
-      messages.push({
-        role: "assistant",
-        content: response.content,
-      });
-      messages.push({
-        role: "user",
-        content: toolResults,
-      });
-    }
+    return this.runOpenAICompatible(prompt);
   }
 
   /**
@@ -809,123 +685,7 @@ export class DevScopeAgent {
    * 运行 Agent (流式)
    */
   async stream(prompt: string, callbacks: StreamCallbacks = {}): Promise<AgentResult<string>> {
-    if (this.providerType === "anthropic") {
-      return this.streamAnthropic(prompt, callbacks);
-    } else {
-      // OpenAI 兼容模式使用非流式实现（简化版）
-      return this.streamOpenAICompatible(prompt, callbacks);
-    }
-  }
-
-  /**
-   * 使用 Anthropic SDK 流式运行 Agent
-   */
-  private async streamAnthropic(prompt: string, callbacks: StreamCallbacks): Promise<AgentResult<string>> {
-    const toolCalls: AgentResult["toolCalls"] = [];
-    const messages: Anthropic.MessageParam[] = [
-      { role: "user", content: prompt },
-    ];
-
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-
-    while (true) {
-      const stream = this.anthropicClient!.messages.stream({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: this.systemPrompt,
-        messages,
-        tools: this.getToolDefinitions(),
-      });
-
-      let currentToolUse: { id: string; name: string; input: any } | null = null;
-      let currentText = "";
-
-      stream.on("text", (text) => {
-        currentText += text;
-        callbacks.onText?.(text);
-      });
-
-      // @ts-ignore - contentBlockStart event not in MessageStreamEvents type
-      stream.on("contentBlockStart", (event: any) => {
-        if (event.content_block?.type === "tool_use") {
-          currentToolUse = {
-            id: event.content_block.id,
-            name: event.content_block.name,
-            input: {},
-          };
-          callbacks.onToolUse?.(event.content_block.name, {});
-        }
-      });
-
-      stream.on("inputJson", (_partialJson, snapshot) => {
-        if (currentToolUse) {
-          currentToolUse.input = snapshot;
-        }
-      });
-
-      const response = await stream.finalMessage();
-
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      // 检查工具调用
-      const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-      );
-
-      if (toolUseBlocks.length === 0) {
-        const textBlocks = response.content.filter(
-          (block): block is Anthropic.TextBlock => block.type === "text"
-        );
-        const finalText = textBlocks.map((b) => b.text).join("");
-
-        return {
-          output: finalText,
-          toolCalls,
-          usage: {
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-          },
-        };
-      }
-
-      // 执行工具调用
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const block of toolUseBlocks) {
-        try {
-          const result = await this.executeTool(block.name, block.input);
-          toolCalls.push({
-            tool: block.name,
-            input: block.input,
-            output: result,
-          });
-          callbacks.onToolResult?.(block.name, result);
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          });
-        } catch (error) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            is_error: true,
-            content: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      messages.push({
-        role: "assistant",
-        content: response.content,
-      });
-      messages.push({
-        role: "user",
-        content: toolResults,
-      });
-    }
+    return this.streamOpenAICompatible(prompt, callbacks);
   }
 
   /**

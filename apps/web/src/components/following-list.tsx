@@ -8,7 +8,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -19,9 +18,7 @@ interface FollowingListProps {
 }
 
 export function FollowingList({ onSelectRepo }: FollowingListProps) {
-  const router = useRouter();
   const [limit, setLimit] = useState(30);
-  const [analyzingRepo, setAnalyzingRepo] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<FollowingSortBy>("followedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
@@ -64,21 +61,6 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
 
     return sorted;
   }, [following, sortBy, sortOrder]);
-
-  // 单个仓库分析
-  const analyzeSingleMutation = trpc.workflow.analyzeRepo.useMutation({
-    onSuccess: (data) => {
-      setAnalyzingRepo(null);
-      // 保存结果到 sessionStorage
-      sessionStorage.setItem("analysisResult", JSON.stringify(data));
-      // 跳转到分析结果页面
-      router.push(`/analysis?executionId=${data.execution_id}`);
-    },
-    onError: (error) => {
-      setAnalyzingRepo(null);
-      alert(`分析失败: ${error.message}`);
-    },
-  });
 
   const handleCollect = (fullName: string) => {
     if (onSelectRepo) {
@@ -188,18 +170,6 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
                       onClick={() => window.location.href = `/repo-stats?repo=${encodeURIComponent(repo.fullName)}`}
                     >
                       <span className="mr-1.5">📊</span>统计
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="bg-gradient-to-r from-purple-500 to-pink-600 text-white hover:from-purple-600 hover:to-pink-700 border-0 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
-                      disabled={analyzingRepo === repo.fullName}
-                      onClick={() => {
-                        setAnalyzingRepo(repo.fullName);
-                        analyzeSingleMutation.mutate({ repo: repo.fullName });
-                      }}
-                    >
-                      <span className="mr-1.5">{analyzingRepo === repo.fullName ? "⏳" : "🤖"}</span>
-                      {analyzingRepo === repo.fullName ? "分析中..." : "AI分析"}
                     </Button>
                   </div>
                 </div>
