@@ -4,7 +4,7 @@
  * PostgreSQL 是完整报告的事实来源；文件系统只保留为可选导出缓存。
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { competitiveAnalysisReportSchema } from "@devscope/shared";
 import type { Db } from "./index";
@@ -35,15 +35,19 @@ export async function completeWorkflowWithReport(
   input: CompleteWorkflowWithReportInput
 ): Promise<void> {
   const report = competitiveAnalysisReportSchema.parse(input.report);
+  const completedAt = new Date();
 
   await db.transaction(async (tx) => {
     const updatedExecutions = await tx
       .update(workflowExecutions)
       .set({
         status: "completed",
-        completedAt: new Date(),
+        completedAt,
         result: report,
-        updatedAt: new Date(),
+        progressPercent: 100,
+        currentNode: "completed",
+        durationMs: sql<number>`GREATEST(0, ROUND(EXTRACT(EPOCH FROM (${completedAt} - ${workflowExecutions.startedAt})) * 1000))::integer`,
+        updatedAt: completedAt,
       })
       .where(
         and(

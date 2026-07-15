@@ -1086,9 +1086,9 @@ export const technologyComparisonItemSchema = z.object({
 export const communityMetricItemSchema = z.object({
   /** 仓库 */
   repo: z.string(),
-  /** 贡献者数量 */
+  /** 近期提交样本中的不同作者数量 */
   contributorCount: z.number(),
-  /** Issue 解决率 */
+  /** AI 估算的 Issue 解决率（百分比 0-100） */
   issueResolutionRate: z.number(),
   /** 提交频率 */
   commitFrequency: z.enum(["daily", "weekly", "monthly", "sporadic"]),
@@ -1116,8 +1116,8 @@ export const riskItemSchema = z.object({
   category: riskCategorySchema,
   /** 描述 */
   description: z.string(),
-  /** 严重程度 (1-100) */
-  severity: z.number().min(1).max(100),
+  /** 严重程度 (0-100) */
+  severity: z.number().min(0).max(100),
   /** 缓解措施 */
   mitigation: z.string().optional(),
 });

@@ -97,6 +97,32 @@ describe("Agent 输入与输出契约", () => {
     expect(ReportGenerateToolInputSchema.safeParse({ title: "报告" }).success).toBe(true);
   });
 
+  it("report_generate 只接受带仓库标识的完整分析对象", () => {
+    const analysis = {
+      repo: "vercel/next.js",
+      healthScore: 92,
+      activityLevel: "high",
+      keyMetrics: {
+        starsGrowthRate: 85,
+        issueResolutionRate: 72,
+        contributorDiversityScore: 90,
+      },
+      riskFactors: [],
+      opportunities: [],
+      recommendation: "invest",
+      summary: "项目状态良好。",
+    };
+
+    expect(ReportGenerateToolInputSchema.safeParse({
+      title: "报告",
+      analyses: [analysis],
+    }).success).toBe(true);
+    expect(ReportGenerateToolInputSchema.safeParse({
+      title: "报告",
+      analyses: ["vercel/next.js"],
+    }).success).toBe(false);
+  });
+
   it.each(["Issue Management", "Stability"])(
     "风险类别拒绝最终报告不支持的标签：%s",
     (invalidCategory) => {

@@ -111,13 +111,17 @@ export const RepoAnalyzeToolInputSchema = z.object({
   context: z.string().optional(),
 });
 
+const ReportAnalysisSchema = repositoryAnalysisSchema.extend({
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo"),
+});
+
 /**
  * report-generate 工具输入 Schema
  */
 export const ReportGenerateToolInputSchema = z.object({
   title: z.string().min(1),
   type: z.enum(["summary", "detailed", "comparison"]).default("summary"),
-  analyses: z.array(z.any()).optional(),
+  analyses: z.array(ReportAnalysisSchema).default([]),
   format: z.enum(["json", "markdown", "html"]).default("markdown"),
 });
 
@@ -230,7 +234,9 @@ function createRepoAnalyzeHandler(ai: { structuredComplete: (prompt: string, opt
 1. 当前日期是 ${currentDate}。在判断项目活跃度时，请参考此日期来评估最后更新时间、最近提交等时间戳的合理性。不要将2025年或2026年的日期误判为"未来时间"或"数据异常"。
 2. **所有分析内容必须使用中文输出**，包括风险因素描述（description）、机会因素描述（description）和总结（summary）。
 3. 风险类别（category）只能使用以下英文枚举之一："technical"、"community"、"business"、"compliance"。
-4. 但描述性文本必须是中文。`,
+4. starsGrowthRate、issueResolutionRate、contributorDiversityScore、风险 severity 和机会 potential 都使用 0-100 量纲；不要输出 0-1 小数或 0-10 分值。
+5. 无法从当前 GitHub 样本直接计算的指标必须明确视为 AI 估算，不要伪装成精确统计。
+6. 但描述性文本必须是中文。`,
       temperature: 0.3,
     });
 
