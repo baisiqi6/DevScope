@@ -1,26 +1,20 @@
-﻿"use client";
+﻿'use client';
 
-import { useMemo, useState, useCallback } from "react";
-import { skipToken } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import type { CreateGroupInput, Repository, RepositoryGroup } from "@devscope/shared";
-import { trpc } from "@/lib/trpc";
-import { RepositoryCard } from "@/components/repository-card";
-import { CollectForm } from "@/components/collect-form";
-import { FollowingList } from "@/components/following-list";
-import { ViewModeToggle, useViewMode } from "@/components/view-toggle";
-import {
-  SortControl,
-  sortRepositories,
-  useSortPreferences,
-} from "@/components/sort-control";
-import { GroupTabs } from "@/components/group-tabs";
-import { CreateGroupDialog } from "@/components/create-group-dialog";
-import { Button } from "@/components/ui/button";
-import {
-  AnimatedBackground,
-  FadeInItem,
-} from "@/components/animated-background";
+import { useMemo, useState, useCallback } from 'react';
+import { skipToken } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import type { CreateGroupInput, Repository, RepositoryGroup } from '@devscope/shared';
+import { trpc } from '@/lib/trpc';
+import { RepositoryCard } from '@/components/repository-card';
+import { CollectForm } from '@/components/collect-form';
+import { FollowingList } from '@/components/following-list';
+import { ViewModeToggle, useViewMode } from '@/components/view-toggle';
+import { SortControl, sortRepositories, useSortPreferences } from '@/components/sort-control';
+import { GroupTabs } from '@/components/group-tabs';
+import { CreateGroupDialog } from '@/components/create-group-dialog';
+import { Button } from '@/components/ui/button';
+import { AnimatedBackground } from '@/components/animated-background';
+import { Plus, RefreshCw, Star, X } from 'lucide-react';
 
 function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
   return Array.from(new Map(repos.map((repo) => [repo.id, repo])).values());
@@ -55,27 +49,19 @@ function normalizeRepository(repo: {
     language: repo.language ?? undefined,
     license: repo.license ?? undefined,
     lastFetchedAt:
-      typeof repo.lastFetchedAt === "string"
+      typeof repo.lastFetchedAt === 'string'
         ? repo.lastFetchedAt
         : repo.lastFetchedAt?.toISOString(),
-    starredAt:
-      typeof repo.starredAt === "string"
-        ? repo.starredAt
-        : repo.starredAt?.toISOString(),
+    starredAt: typeof repo.starredAt === 'string' ? repo.starredAt : repo.starredAt?.toISOString(),
     note: repo.note ?? undefined,
   };
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"collect" | "following">(
-    "collect"
-  );
-  const [viewMode, setViewMode] = useViewMode("card");
-  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences(
-    "stars",
-    "desc"
-  );
+  const [activePanel, setActivePanel] = useState<'collect' | 'following' | null>(null);
+  const [viewMode, setViewMode] = useViewMode('list');
+  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences('stars', 'desc');
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [isUngroupedSelected, setIsUngroupedSelected] = useState(false);
   const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
@@ -86,20 +72,22 @@ export default function HomePage() {
     isLoading,
     error,
     refetch,
-  } = trpc.getRepositories.useQuery({ limit: repoLimit, offset: 0 }, {
-    enabled: true,
-    refetchOnWindowFocus: false,
-  });
+  } = trpc.getRepositories.useQuery(
+    { limit: repoLimit, offset: 0 },
+    {
+      enabled: true,
+      refetchOnWindowFocus: false,
+    }
+  );
 
   const loadMore = useCallback(() => {
     setRepoLimit((prev) => prev + 50);
   }, []);
 
-  const { data: groups = [], refetch: refetchGroups } =
-    trpc.groups.getAll.useQuery(undefined, {
-      enabled: true,
-      refetchOnWindowFocus: false,
-    });
+  const { data: groups = [], refetch: refetchGroups } = trpc.groups.getAll.useQuery(undefined, {
+    enabled: true,
+    refetchOnWindowFocus: false,
+  });
 
   const { data: ungroupedRepos = [], refetch: refetchUngrouped } =
     trpc.groupsQuery.getUngroupedRepos.useQuery(undefined, {
@@ -173,18 +161,17 @@ export default function HomePage() {
 
   const currentGroupName =
     selectedGroupId !== null
-      ? selectedGroup?.name ??
+      ? (selectedGroup?.name ??
         groups.find((group) => group.id === selectedGroupId)?.name ??
-        "\u5206\u7ec4\u4ed3\u5e93"
+        '\u5206\u7ec4\u4ed3\u5e93')
       : isUngroupedSelected
-        ? "未分组仓库"
-        : "\u5168\u90e8\u4ed3\u5e93";
+        ? '未分组仓库'
+        : '\u5168\u90e8\u4ed3\u5e93';
 
   const totalRepoCount = uniqueRepositories.length;
   const ungroupedRepoCount = uniqueUngroupedRepos.length;
   const pageError = error ?? selectedGroupError;
-  const isListLoading =
-    isLoading || (selectedGroupId !== null && isSelectedGroupLoading);
+  const isListLoading = isLoading || (selectedGroupId !== null && isSelectedGroupLoading);
 
   const handleViewDetails = (id: number) => {
     router.push(`/repository/${id}`);
@@ -200,9 +187,15 @@ export default function HomePage() {
   };
 
   const handleSelectFromFollowing = (fullName: string) => {
-    setActiveTab("collect");
-    (window as { __pendingCollectRepo?: string }).__pendingCollectRepo =
-      fullName;
+    setActivePanel('collect');
+    (window as { __pendingCollectRepo?: string }).__pendingCollectRepo = fullName;
+  };
+
+  const handleRetry = () => {
+    void Promise.all([
+      refetch(),
+      selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+    ]);
   };
 
   const handleSelectAll = () => {
@@ -228,118 +221,163 @@ export default function HomePage() {
     <main className="min-h-screen">
       <AnimatedBackground />
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="min-w-0 lg:col-span-1">
-            <div className="mb-4 flex gap-2">
-              <Button
-                size="sm"
-                variant={activeTab === "collect" ? "default" : "outline"}
-                onClick={() => setActiveTab("collect")}
-              >
-                采集仓库
-              </Button>
-              <Button
-                size="sm"
-                variant={activeTab === "following" ? "default" : "outline"}
-                onClick={() => setActiveTab("following")}
-              >
-                我的关注
-              </Button>
-            </div>
+      <div className="container mx-auto max-w-7xl px-4 py-6 sm:py-8">
+        <header className="mb-6 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">仓库工作区</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              浏览已采集仓库，按分组筛选并进入详情或分析。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              aria-controls="home-action-panel"
+              aria-expanded={activePanel === 'collect'}
+              onClick={() =>
+                setActivePanel((current) => (current === 'collect' ? null : 'collect'))
+              }
+            >
+              <Plus />
+              采集仓库
+            </Button>
+            <Button
+              variant="outline"
+              aria-controls="home-action-panel"
+              aria-expanded={activePanel === 'following'}
+              onClick={() =>
+                setActivePanel((current) => (current === 'following' ? null : 'following'))
+              }
+            >
+              <Star />
+              我的关注
+            </Button>
+          </div>
+        </header>
 
-            {activeTab === "collect" ? (
+        {activePanel && (
+          <section
+            id="home-action-panel"
+            aria-label={activePanel === 'collect' ? '采集仓库' : '我的关注'}
+            className="relative mb-8 rounded-lg border bg-card p-4 sm:p-6"
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute right-2 top-2"
+              onClick={() => setActivePanel(null)}
+              aria-label="关闭面板"
+            >
+              <X />
+            </Button>
+            {activePanel === 'collect' ? (
               <CollectForm onCollected={handleCollected} />
             ) : (
               <FollowingList onSelectRepo={handleSelectFromFollowing} />
             )}
+          </section>
+        )}
+
+        <section aria-labelledby="repository-list-heading" className="min-w-0">
+          <GroupTabs
+            groups={groups}
+            selectedGroupId={selectedGroupId}
+            isUngroupedSelected={isUngroupedSelected}
+            totalRepoCount={totalRepoCount}
+            ungroupedRepoCount={ungroupedRepoCount}
+            onSelectAll={handleSelectAll}
+            onSelectUngrouped={handleSelectUngrouped}
+            onSelectGroup={handleSelectGroup}
+            onCreateGroup={() => setShowCreateGroupDialog(true)}
+          />
+
+          <div className="my-4 flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 id="repository-list-heading" className="text-lg font-semibold">
+                {currentGroupName}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                当前显示 {sortedRepositories.length} 个仓库
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SortControl
+                value={sortBy}
+                order={order}
+                onSortChange={setSortBy}
+                onOrderToggle={toggleOrder}
+              />
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            </div>
           </div>
 
-          <div className="min-w-0 lg:col-span-2">
-            <GroupTabs
-              groups={groups}
-              selectedGroupId={selectedGroupId}
-              isUngroupedSelected={isUngroupedSelected}
-              totalRepoCount={totalRepoCount}
-              ungroupedRepoCount={ungroupedRepoCount}
-              onSelectAll={handleSelectAll}
-              onSelectUngrouped={handleSelectUngrouped}
-              onSelectGroup={handleSelectGroup}
-              onCreateGroup={() => setShowCreateGroupDialog(true)}
-            />
-
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-xl font-semibold">
-                {currentGroupName} ({sortedRepositories.length})
-              </h2>
-              <div className="flex flex-wrap items-center gap-3">
-                <SortControl
-                  value={sortBy}
-                  order={order}
-                  onSortChange={setSortBy}
-                  onOrderToggle={toggleOrder}
-                />
-                <ViewModeToggle value={viewMode} onChange={setViewMode} />
-              </div>
+          {isListLoading && (
+            <div aria-busy="true" aria-label="正在加载仓库" className="space-y-2">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-28 animate-pulse rounded-lg border bg-muted/50" />
+              ))}
             </div>
+          )}
 
-            {isListLoading && (
-              <div className="py-8 text-center text-muted-foreground">
-                正在加载...
+          {pageError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center"
+            >
+              <p className="font-medium text-destructive">仓库列表加载失败</p>
+              <p className="mt-1 text-sm text-muted-foreground">请检查 API 与数据库连接后重试。</p>
+              <details className="mx-auto mt-3 max-w-3xl text-left text-xs text-muted-foreground">
+                <summary className="cursor-pointer text-center">查看错误详情</summary>
+                <p className="mt-2 break-words rounded bg-background/70 p-3">{pageError.message}</p>
+              </details>
+              <Button variant="outline" className="mt-4" onClick={handleRetry}>
+                <RefreshCw />
+                重新加载
+              </Button>
+            </div>
+          )}
+
+          {!isListLoading && !pageError && sortedRepositories.length === 0 && (
+            <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+              <p className="font-medium">当前范围内还没有仓库</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                采集一个 GitHub 仓库，或切换到其他分组查看。
+              </p>
+              <Button className="mt-4" onClick={() => setActivePanel('collect')}>
+                <Plus />
+                采集仓库
+              </Button>
+            </div>
+          )}
+
+          {!isListLoading && !pageError && sortedRepositories.length > 0 && (
+            <>
+              <div
+                className={
+                  viewMode === 'card' ? 'grid grid-cols-1 gap-4 md:grid-cols-2' : 'grid gap-3'
+                }
+              >
+                {sortedRepositories.map((repo) => (
+                  <RepositoryCard
+                    key={repo.id}
+                    repository={repo}
+                    onViewDetails={handleViewDetails}
+                    viewMode={viewMode}
+                  />
+                ))}
               </div>
-            )}
-
-            {pageError && (
-              <div role="alert" className="py-8 text-center text-destructive">
-                加载失败：{pageError.message}
-              </div>
-            )}
-
-            {!isListLoading && !pageError && sortedRepositories.length === 0 && (
-              <div className="py-8 text-center text-muted-foreground">
-                <p className="mb-4">
-                  {"\u8fd8\u6ca1\u6709\u91c7\u96c6\u5230\u53ef\u5c55\u793a\u7684\u4ed3\u5e93\u6570\u636e"}
-                </p>
-                <p className="text-sm">
-                  {"\u53ef\u4ee5\u5148\u5728\u5de6\u4fa7\u8f93\u5165\u4ed3\u5e93\u5730\u5740\u5f00\u59cb\u91c7\u96c6"}
-                </p>
-              </div>
-            )}
-
-            {!isListLoading && !pageError && sortedRepositories.length > 0 && (
-              <>
-                <div
-                  className={
-                    viewMode === "card"
-                      ? "grid grid-cols-1 gap-4 md:grid-cols-2"
-                      : "grid gap-3"
-                  }
-                >
-                  {sortedRepositories.map((repo, index) => (
-                    <FadeInItem key={repo.id} index={index}>
-                      <RepositoryCard
-                        repository={repo}
-                        onViewDetails={handleViewDetails}
-                        viewMode={viewMode}
-                      />
-                    </FadeInItem>
-                  ))}
-                </div>
-                {selectedGroupId === null && !isUngroupedSelected && (repositories?.length ?? 0) >= repoLimit && (
+              {selectedGroupId === null &&
+                !isUngroupedSelected &&
+                (repositories?.length ?? 0) >= repoLimit && (
                   <div className="mt-6 text-center">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
-                    >
+                    <Button variant="outline" onClick={loadMore}>
                       加载更多
                     </Button>
                   </div>
                 )}
-              </>
-            )}
-          </div>
-        </div>
+            </>
+          )}
+        </section>
       </div>
 
       <CreateGroupDialog

@@ -1,9 +1,10 @@
-﻿"use client";
+﻿'use client';
 
-import { motion } from "framer-motion";
-import type { RepositoryGroup } from "@devscope/shared";
-import { Badge } from "@/components/ui/badge";
-import { getGroupColor, getGroupIcon } from "@/lib/group-config";
+import type { RepositoryGroup } from '@devscope/shared';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { getGroupIcon } from '@/lib/group-config';
+import { cn } from '@/lib/utils';
 
 interface GroupTabsProps {
   groups: RepositoryGroup[];
@@ -28,44 +29,41 @@ export function GroupTabs({
   ungroupedRepoCount = 0,
   onSelectUngrouped,
 }: GroupTabsProps) {
-  void onCreateGroup;
-
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 pb-2">
+    <nav aria-label="仓库分组" className="flex flex-wrap items-center gap-2">
+      <GroupTab
+        name="全部仓库"
+        count={totalRepoCount}
+        isSelected={selectedGroupId === null && !isUngroupedSelected}
+        icon={null}
+        onClick={onSelectAll}
+      />
+
+      {onSelectUngrouped && (
         <GroupTab
-          name="全部仓库"
-          count={totalRepoCount}
-          isSelected={selectedGroupId === null && !isUngroupedSelected}
-          color="gray"
+          name="未分组"
+          count={ungroupedRepoCount}
+          isSelected={isUngroupedSelected}
           icon={null}
-          onClick={onSelectAll}
+          onClick={onSelectUngrouped}
         />
+      )}
 
-        {onSelectUngrouped && (
-          <GroupTab
-            name="未分组"
-            count={ungroupedRepoCount}
-            isSelected={isUngroupedSelected}
-            color="amber"
-            icon={null}
-            onClick={onSelectUngrouped}
-          />
-        )}
-
-        {groups.map((group) => (
-          <GroupTab
-            key={group.id}
-            name={group.name}
-            count={group.repoCount ?? 0}
-            isSelected={selectedGroupId === group.id}
-            color={group.color}
-            icon={group.icon}
-            onClick={() => onSelectGroup(group)}
-          />
-        ))}
-      </div>
-    </div>
+      {groups.map((group) => (
+        <GroupTab
+          key={group.id}
+          name={group.name}
+          count={group.repoCount ?? 0}
+          isSelected={selectedGroupId === group.id}
+          icon={group.icon}
+          onClick={() => onSelectGroup(group)}
+        />
+      ))}
+      <Button type="button" size="sm" variant="ghost" onClick={onCreateGroup}>
+        <Plus />
+        新建分组
+      </Button>
+    </nav>
   );
 }
 
@@ -73,59 +71,33 @@ interface GroupTabProps {
   name: string;
   count: number;
   isSelected: boolean;
-  color: string;
   icon: string | null;
   onClick: () => void;
-  showDot?: boolean;
 }
 
-function GroupTab({
-  name,
-  count,
-  isSelected,
-  color,
-  icon,
-  onClick,
-  showDot = false,
-}: GroupTabProps) {
-  const colorConfig = getGroupColor(color);
+function GroupTab({ name, count, isSelected, icon, onClick }: GroupTabProps) {
   const iconConfig = icon ? getGroupIcon(icon) : null;
   const IconComponent = iconConfig?.icon;
 
   return (
-    <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
+    <button
+      type="button"
       onClick={onClick}
-      className={`
-        inline-flex max-w-full items-center gap-2 rounded-lg border-2 px-3 py-1.5 transition-all
-        ${
-          isSelected
-            ? `${colorConfig.solidBg} ${colorConfig.solidText} border-transparent`
-            : `${colorConfig.bg} ${colorConfig.text} ${colorConfig.border} hover:${colorConfig.hoverBg}`
-        }
-      `}
+      aria-pressed={isSelected}
+      className={cn(
+        'inline-flex h-9 max-w-full items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        isSelected
+          ? 'border-primary/20 bg-primary/10 text-primary'
+          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+      )}
     >
       {IconComponent && <IconComponent className="h-4 w-4" />}
 
       <span className="max-w-[180px] truncate text-sm font-medium">{name}</span>
 
-      <Badge
-        variant="secondary"
-        className={`
-          ${
-            isSelected
-              ? "bg-white/20 text-white hover:bg-white/30"
-              : "bg-gray-200 text-gray-600"
-          }
-        `}
-      >
+      <span className="rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
         {count}
-      </Badge>
-
-      {showDot && <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />}
-    </motion.button>
+      </span>
+    </button>
   );
 }
-
-
