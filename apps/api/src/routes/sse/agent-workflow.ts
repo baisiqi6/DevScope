@@ -124,7 +124,7 @@ function createTerminalInterceptor(reply: FastifyReply) {
 /**
  * 从 Agent 结果生成结构化报告
  */
-async function generateStructuredReport(
+export async function generateStructuredReport(
   executionId: string,
   toolCalls: Array<{ tool: string; input: unknown; output: unknown }>,
   repos: string[],
@@ -158,13 +158,41 @@ async function generateStructuredReport(
     activityLevel: repoAnalyzeResults.find((a) => a.repo === r.repo)?.data?.activityLevel || "medium",
   }));
 
-  // 构建社区指标数据
-  const communityMetrics = repoAnalyzeResults.map((r) => ({
-    repo: r.repo,
-    contributorCount: r.data?.keyMetrics?.contributorDiversityScore || 0,
-    issueResolutionRate: r.data?.keyMetrics?.issueResolutionRate || 0,
-    commitFrequency: "weekly" as const, // 默认值，实际应从数据中获取
-  }));
+  // 构建社区指标数据。贡献者和提交频率来自 repo_fetch 的近期提交样本；
+  // Issue 解决率仍是 AI 估算，展示层必须明确标注来源。
+  const communityMetrics = repoAnalyzeResults.map((r) => {
+    const fetchResult = repoFetchResults.find((item) => item.repo === r.repo);
+    const commits = Array.isArray(fetchResult?.data?.commits)
+      ? fetchResult.data.commits as Array<{ author?: unknown; date?: unknown }>
+      : [];
+    const contributorCount = new Set(
+      commits
+        .map((commit) => typeof commit.author === "string" ? commit.author.trim() : "")
+        .filter(Boolean)
+    ).size;
+    const commitTimestamps = commits
+      .map((commit) => typeof commit.date === "string" ? Date.parse(commit.date) : Number.NaN)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    const spanDays = commitTimestamps.length >= 2
+      ? Math.max(1, (commitTimestamps.at(-1)! - commitTimestamps[0]) / 86_400_000)
+      : 0;
+    const commitsPerDay = spanDays > 0 ? commitTimestamps.length / spanDays : 0;
+    const commitFrequency = commitsPerDay >= 1
+      ? "daily"
+      : commitsPerDay >= 1 / 7
+        ? "weekly"
+        : commitsPerDay >= 1 / 30
+          ? "monthly"
+          : "sporadic";
+
+    return {
+      repo: r.repo,
+      contributorCount,
+      issueResolutionRate: r.data?.keyMetrics?.issueResolutionRate ?? 0,
+      commitFrequency,
+    } as const;
+  });
 
   // 计算市场定位
   const sortedByStars = [...technologyComparison].sort((a, b) => b.stars - a.stars);
@@ -203,7 +231,13 @@ async function generateStructuredReport(
   const avgSeverity = risks.length > 0
     ? risks.reduce((sum, r) => sum + r.severity, 0) / risks.length
     : 0;
-  const overallRisk = avgSeverity >= 7 ? "critical" : avgSeverity >= 5 ? "high" : avgSeverity >= 3 ? "medium" : "low";
+  const overallRisk = avgSeverity >= 75
+    ? "critical"
+    : avgSeverity >= 50
+      ? "high"
+      : avgSeverity >= 25
+        ? "medium"
+        : "low";
 
   // 构建投资建议
   const investRepos = repoAnalyzeResults.filter((r) => r.data?.recommendation === "invest").map((r) => r.repo);
@@ -214,6 +248,9 @@ async function generateStructuredReport(
   const avgHealthScore = repoAnalyzeResults.length > 0
     ? repoAnalyzeResults.reduce((sum, r) => sum + (r.data?.healthScore || 0), 0) / repoAnalyzeResults.length
     : 50;
+  const avgIssueResolutionRate = communityMetrics.length > 0
+    ? communityMetrics.reduce((sum, metric) => sum + metric.issueResolutionRate, 0) / communityMetrics.length
+    : 0;
 
   // 构建数据来源
   const dataSources: Array<{
@@ -224,11 +261,12 @@ async function generateStructuredReport(
   }> = [];
 
   for (const fetch of repoFetchResults) {
+    const sampledContributors = communityMetrics.find((metric) => metric.repo === fetch.repo)?.contributorCount ?? 0;
     dataSources.push({
       type: "github_api",
       repo: fetch.repo,
       timestamp: now,
-      details: `获取仓库基础数据: ${fetch.data?.repository?.stars || 0} stars, ${fetch.data?.repository?.forks || 0} forks`,
+      details: `获取仓库基础数据: ${fetch.data?.repository?.stars || 0} stars, ${fetch.data?.repository?.forks || 0} forks；近期提交样本包含 ${sampledContributors} 位不同作者`,
     });
   }
 
@@ -237,7 +275,7 @@ async function generateStructuredReport(
       type: "ai_analysis",
       repo: analyze.repo,
       timestamp: now,
-      details: `健康度评分: ${analyze.data?.healthScore || "N/A"}, 活跃度: ${analyze.data?.activityLevel || "N/A"}`,
+      details: `健康度评分: ${analyze.data?.healthScore || "N/A"}, 活跃度: ${analyze.data?.activityLevel || "N/A"}；Issue 解决率为 AI 估算，非完整生命周期统计`,
     });
   }
 
@@ -256,7 +294,7 @@ async function generateStructuredReport(
         `其中 ${investRepos.length} 个项目建议投资，${watchRepos.length} 个项目建议观望，${avoidRepos.length} 个项目建议规避。`,
       keyFindings: [
         `${leaders[0] || "无"} 在 Stars 数量上领先`,
-        `平均 Issue 解决率为 ${communityMetrics.reduce((s, m) => s + m.issueResolutionRate, 0) / communityMetrics.length || 0}%`,
+        `AI 估算的平均 Issue 解决率为 ${avgIssueResolutionRate}%（非完整生命周期统计）`,
         `发现 ${risks.length} 个潜在风险因素`,
       ],
       recommendation: investRepos.length > repos.length / 2 ? "invest" : avoidRepos.length > repos.length / 2 ? "avoid" : "mixed",
@@ -406,6 +444,9 @@ ${input.context ? `\n额外上下文：\n${input.context}\n` : ""}
 
 **重要提示**：
 - 所有分析内容必须使用中文输出
+- report_generate 的 analyses 必须传入 repo_analyze 返回的完整对象数组，不得只传仓库名称
+- 风险严重度及其他评分统一使用 0-100 量纲
+- 无法由工具数据直接计算的指标必须标注“AI 估算”或“数据不足”
 - 确保每个分析结论都有数据支撑，并在报告中标注数据来源`;
 
         // 流式回调

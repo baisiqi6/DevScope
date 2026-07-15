@@ -80,6 +80,9 @@ describe("workflow-reports", () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
       status: "completed",
       result: report,
+      progressPercent: 100,
+      currentNode: "completed",
+      durationMs: expect.anything(),
     }));
     expect(values).toHaveBeenCalledWith({
       reportId: "report-1",

@@ -151,8 +151,8 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
     md += `## 社区指标\n\n`;
     report.detailedAnalysis.communityMetrics.forEach(metric => {
       md += `### ${metric.repo}\n`;
-      md += `- **贡献者数量**: ${metric.contributorCount}\n`;
-      md += `- **Issue 解决率**: ${metric.issueResolutionRate}%\n`;
+      md += `- **近期提交贡献者（样本）**: ${metric.contributorCount}\n`;
+      md += `- **Issue 解决率（AI 估算）**: ${metric.issueResolutionRate}%\n`;
       md += `- **提交频率**: ${metric.commitFrequency}\n\n`;
     });
 

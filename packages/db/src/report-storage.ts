@@ -62,7 +62,7 @@ function formatDateTime(date: Date | string): string {
 /**
  * 生成 Markdown 格式的报告
  */
-function generateMarkdown(report: CompetitiveAnalysisReport): string {
+export function generateMarkdown(report: CompetitiveAnalysisReport): string {
   const lines: string[] = [];
 
   // 标题
@@ -133,7 +133,7 @@ function generateMarkdown(report: CompetitiveAnalysisReport): string {
   // 社区指标表
   lines.push("### 社区指标");
   lines.push("");
-  lines.push("| 项目 | 贡献者 | Issue 解决率 | 提交频率 |");
+  lines.push("| 项目 | 近期提交贡献者（样本） | Issue 解决率（AI 估算） | 提交频率 |");
   lines.push("|------|--------|--------------|----------|");
   for (const item of report.detailedAnalysis.communityMetrics) {
     lines.push(
@@ -156,7 +156,7 @@ function generateMarkdown(report: CompetitiveAnalysisReport): string {
     for (const risk of report.riskMatrix.risks) {
       lines.push(
         `| ${risk.repo} | ${getRiskCategoryLabel(risk.category)} | ${risk.description} | ` +
-          `${risk.severity}/10 | ${risk.mitigation || "N/A"} |`
+          `${risk.severity}/100 | ${risk.mitigation || "N/A"} |`
       );
     }
   } else {
