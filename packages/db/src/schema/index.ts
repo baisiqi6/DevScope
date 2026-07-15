@@ -281,13 +281,13 @@ export const workflowReportTypeEnum = pgEnum("workflow_report_type", [
 export const workflowExecutions = pgTable("workflow_executions", {
   /** 执行记录唯一标识 */
   id: serial("id").primaryKey(),
-  /** Langtum 平台的执行 ID（用于查询状态） */
+  /** DevScope 执行 ID（用于查询状态和关联报告） */
   executionId: text("execution_id").notNull().unique(),
   /** 用户 ID（外键关联 users 表） */
   userId: serial("user_id")
     .references(() => users.id)
     .notNull(),
-  /** 工作流 ID（对应 Langtum 的工作流名称） */
+  /** 执行器或分析流程标识 */
   workflowId: text("workflow_id").notNull(),
   /** 工作流类型（daily_health_report, quick_assessment） */
   workflowType: text("workflow_type").notNull(),

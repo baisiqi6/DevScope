@@ -35,7 +35,7 @@ pnpm dev
 
 - `DATABASE_URL`：PostgreSQL 连接串；
 - `GITHUB_TOKEN`：GitHub 数据采集令牌；
-- 一组分析模型配置：优先 `DEEPSEEK_API_KEY`，或使用 `OPENAI_COMPATIBLE_API_KEY` / `ANTHROPIC_API_KEY`。
+- 一组分析模型配置：优先 `DEEPSEEK_API_KEY`，或使用 `OPENAI_COMPATIBLE_API_KEY`。
 
 ### 语义搜索
 
@@ -44,15 +44,6 @@ pnpm dev
 - `BGE_MODEL_NAME`
 
 默认模型为 `BAAI/bge-m3`，当前数据库向量维度为 1024。切换 embedding 模型时必须同时核对输出维度和数据库 schema。
-
-### 可选实验能力
-
-- `LANGTUM_API_KEY`
-- `LANGTUM_BASE_URL`
-- `LANGTUM_DEFAULT_WORKFLOW_ID`
-- `LANGTUM_WEBHOOK_SECRET`
-
-未配置时不应影响基础仓库和分析功能。
 
 ### 端口与代理
 
@@ -132,7 +123,7 @@ docker compose logs postgres
 1. `OPENAI_COMPATIBLE_*`
 2. `DEEPSEEK_*`
 
-如果两组都未提供，系统会尝试 Anthropic。
+如果两组都未提供，AI Provider 会在初始化时返回缺少 API Key 的明确错误。
 
 ### 语义搜索失败
 

@@ -15,7 +15,6 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
 import { appRouter } from "./router";
-import { registerWebhookRoute } from "./webhook/langtum";
 import { registerDocsRoute } from "./docs";
 import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
@@ -52,22 +51,6 @@ const fastify = Fastify({
   /** 配置 body parser */
   bodyLimit: 10 * 1024 * 1024, // 10MB
 });
-
-// ============================================================================
-// Webhook 路由配置
-// ============================================================================
-
-/**
- * 注册 Langtum Webhook 路由（可选）
- * @description 接收来自 Langtum 平台的工作流状态通知
- * 仅当设置了 LANGTUM_API_KEY 时才注册此路由
- */
-if (process.env.LANGTUM_API_KEY) {
-  registerWebhookRoute(fastify, "/api/webhook/langtum");
-  console.log("[Webhook] Langtum webhook registered");
-} else {
-  console.log("[Webhook] LANGTUM_API_KEY not set, skipping Langtum webhook registration");
-}
 
 // ============================================================================
 // tRPC 路由配置（手动实现，支持批量请求）
@@ -225,7 +208,6 @@ const start = async () => {
     const hasDbUrl = !!process.env.DATABASE_URL;
     const hasDeepSeekKey = !!process.env.DEEPSEEK_API_KEY;
     const hasSiliconFlowKey = !!process.env.SILICONFLOW_API_KEY;
-    const hasLangtumKey = !!process.env.LANGTUM_API_KEY;
     const hasBgeApiUrl = !!process.env.BGE_API_URL;
     const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
 
@@ -235,7 +217,6 @@ const start = async () => {
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DEEPSEEK_API_KEY: ${hasDeepSeekKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  LANGTUM_API_KEY: ${hasLangtumKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  BGE_API_URL: ${hasBgeApiUrl ? "✅ 已配置" : "❌ 未配置"} ${hasBgeApiUrl ? `(${process.env.BGE_API_URL})` : ""}`);
     console.log(`  BGE_MODEL_NAME: ${hasBgeModelName ? "✅ 已配置" : "❌ 未配置"} ${hasBgeModelName ? `(${process.env.BGE_MODEL_NAME})` : ""}`);
     console.log("=".repeat(50));

@@ -102,20 +102,6 @@ const API_ENDPOINTS = [
     input: { repo: "string", query: "string", limit: "number", generateAnswer: "boolean" },
     output: "SemanticSearchResponse",
   },
-  {
-    path: "workflow.trigger",
-    method: "mutation",
-    description: "触发工作流执行 - 启动 Langtum 平台的工作流",
-    input: { workflowId: "string", input: "object" },
-    output: "WorkflowExecutionResponse",
-  },
-  {
-    path: "workflow.getStatus",
-    method: "query",
-    description: "获取工作流执行状态 - 查询工作流的执行进度和结果",
-    input: { executionId: "string" },
-    output: "WorkflowExecutionDetail",
-  },
 ];
 
 /**

@@ -73,7 +73,9 @@ function buildAnalysisPrompt(owner: string, repo: string, context?: string): str
 4. 风险因素
 5. 机会因素
 6. 投资建议 (invest/watch/avoid)
-7. 总结`;
+7. 总结
+
+风险类别 category 只能使用 technical、community、business、compliance 四个英文枚举之一，描述性文本使用中文。`;
 
   return prompt;
 }
@@ -93,7 +95,7 @@ export async function analyzeRepository(
     schema: repositoryAnalysisSchema,
     toolName: "repository_analysis",
     toolDescription: "生成 GitHub 仓库健康度分析报告",
-    system: `你是一个专业的开源项目分析师。请根据公开信息分析仓库的健康度，并返回结构化的分析结果。`,
+    system: `你是一个专业的开源项目分析师。请根据公开信息分析仓库的健康度，并返回结构化的分析结果。风险类别 category 只能使用 technical、community、business、compliance。`,
     temperature: 0.3,
   });
 

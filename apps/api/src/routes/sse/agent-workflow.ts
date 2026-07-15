@@ -191,7 +191,7 @@ async function generateStructuredReport(
       for (const risk of analyze.data.riskFactors) {
         risks.push({
           repo: analyze.repo,
-          category: risk.category || "technical",
+          category: risk.category,
           description: risk.description,
           severity: risk.severity,
         });

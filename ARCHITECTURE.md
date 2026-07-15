@@ -15,9 +15,7 @@ Fastify + tRPC API :3100
   ├── PostgreSQL + pgvector :5432
   ├── GitHub / OSS Insight
   ├── DeepSeek 或其他 OpenAI-compatible API
-  ├── Anthropic（可选）
   ├── BGE-M3 embedding 服务
-  └── Langtum/Langcore（实验性、可选）
 
 CLI Skills
   repo-fetch → repo-analyze → report-generate
@@ -31,7 +29,7 @@ CLI Skills
 | ----------------- | --------------------------------------------------------------- |
 | `apps/web`        | Next.js App Router 页面、组件、tRPC 客户端和 SSE 交互           |
 | `apps/api`        | Fastify 入口、tRPC 路由、Agent/Workflow SSE 路由和调度器        |
-| `packages/ai`     | Anthropic 与 OpenAI-compatible 的统一文本、流式和结构化输出接口 |
+| `packages/ai`     | OpenAI-compatible 的统一文本、流式和结构化输出接口              |
 | `packages/db`     | Drizzle schema、数据库访问、GitHub 数据采集和分析管道           |
 | `packages/shared` | Zod schema、共享 TypeScript 类型、GitHub 客户端                 |
 | `skills`          | 可独立执行或通过管道组合的命令行工具                            |
@@ -84,12 +82,8 @@ PostgreSQL 是报告的事实来源。`reports/<executionId>` 仍可生成 JSON/
 报告列表和详情查询当前都显式按服务端解析的 `userId` 过滤。现阶段该值仍来自
 单用户上下文，未来接入会话鉴权时应替换统一的当前用户解析逻辑。
 
-AI 层支持两类 provider：
-
-- `openai-compatible`：优先读取 `OPENAI_COMPATIBLE_*`，也支持 `DEEPSEEK_*`；
-- `anthropic`：读取 `ANTHROPIC_API_KEY`。
-
-环境中存在 OpenAI-compatible 或 DeepSeek 配置时会自动选择兼容模式，否则回退到 Anthropic。
+AI 层统一使用 `openai-compatible` provider：优先读取 `OPENAI_COMPATIBLE_*`，
+也支持 `DEEPSEEK_*`，当前生产默认模型为 `deepseek-chat`。未配置 API Key 时会在初始化阶段明确失败。
 
 ### 语义搜索
 
@@ -128,8 +122,9 @@ echo "vercel/next.js" \
 ### 实验能力
 
 仓库健康分析的报告入库、历史列表和详情读取已经形成可恢复的数据库链路。
-Workflow、Langtum/Langcore、调度器及其他报告类型仍包含可选配置或未完成路径，
-应继续与稳定核心解耦，不应阻塞仓库、搜索和基础分析功能。
+调度器及其他报告类型仍包含可选配置或未完成路径，应继续与稳定核心解耦，
+不应阻塞仓库、搜索和基础分析功能。未来接入自研工作流系统时，应通过独立适配层接入，
+不要把外部执行器协议写入现有报告数据模型。
 
 ### 生产边界
 

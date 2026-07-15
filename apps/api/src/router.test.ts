@@ -139,10 +139,10 @@ describe("appRouter", () => {
     it("应该返回问候消息", async () => {
       const caller = createCaller();
 
-      const result = await caller.greet({ name: "Claude" });
+      const result = await caller.greet({ name: "DevScope" });
 
       expect(result).toEqual({
-        message: "Hello, Claude!",
+        message: "Hello, DevScope!",
       });
     });
 
@@ -183,7 +183,7 @@ describe("appRouter", () => {
         },
         riskFactors: [
           {
-            category: "技术债",
+            category: "technical",
             description: "部分代码需要重构",
             severity: 5,
           },
@@ -797,12 +797,12 @@ describe("appRouter", () => {
         },
         riskFactors: [
           {
-            category: "测试",
+            category: "technical",
             description: "描述",
             severity: 1, // 最小值
           },
           {
-            category: "测试",
+            category: "community",
             description: "描述",
             severity: 10, // 最大值
           },

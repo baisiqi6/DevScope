@@ -17,7 +17,7 @@ async function main() {
 
   // 创建 Agent 实例
   const agent = createAgent({
-    model: "claude-sonnet-4-6",
+    model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
     systemPrompt: `你是一个专业的开源项目分析师助手。
 
 你可以使用以下工具来帮助用户分析 GitHub 项目：

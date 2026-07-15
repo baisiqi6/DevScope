@@ -1,14 +1,13 @@
 /**
  * @package @devscope/ai
- * @description AI 服务包 - 多提供商统一接口
+ * @description AI 服务包 - OpenAI-compatible 统一接口
  *
- * 本包封装了 Anthropic 与 OpenAI-compatible API，提供统一的 AI 服务接口。
+ * 本包封装 OpenAI-compatible API，当前生产环境使用 DeepSeek。
  * 支持文本补全、流式输出和结构化输出。
  *
  * @module index
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
 
@@ -19,13 +18,13 @@ import { z } from "zod";
 /**
  * AI 提供者类型
  */
-export type AIProviderType = "anthropic" | "openai-compatible";
+export type AIProviderType = "openai-compatible";
 
 /**
  * AI 提供者配置选项
  */
 export interface AIConfig {
-  /** AI 提供者类型（默认：anthropic） */
+  /** AI 提供者类型（固定为 openai-compatible） */
   provider?: AIProviderType;
   /** API Key（根据 provider 类型从不同环境变量读取） */
   apiKey?: string;
@@ -79,13 +78,10 @@ interface StructuredOutputOptions<T> {
 
 /**
  * AI 提供者类
- * @description 支持多种 AI 提供商的统一接口
+ * @description 提供 OpenAI-compatible 模型的统一接口
  *
  * @example
  * ```typescript
- * // 使用 Anthropic Claude
- * const ai = new AIProvider({ provider: "anthropic" });
- *
  * // 使用 DeepSeek (OpenAI 兼容)
  * const ai = new AIProvider({
  *   provider: "openai-compatible",
@@ -101,10 +97,8 @@ interface StructuredOutputOptions<T> {
 export class AIProvider {
   /** AI 提供者类型 */
   private providerType: AIProviderType;
-  /** Anthropic SDK 客户端实例 */
-  private anthropicClient: Anthropic | null;
   /** OpenAI SDK 客户端实例（用于兼容 API） */
-  private openaiClient: OpenAI | null;
+  private openaiClient: OpenAI;
   /** 默认使用的模型 */
   private defaultModel: string;
   /** 默认最大 token 数 */
@@ -115,57 +109,24 @@ export class AIProvider {
    * @param config 配置选项
    */
   constructor(config: AIConfig = {}) {
-    this.providerType = config.provider || this.detectProviderFromEnv();
+    this.providerType = config.provider || "openai-compatible";
     this.maxTokens = config.maxTokens || 4096;
 
     // 支持 model 和 defaultModel 两种属性名
     const model = config.model || config.defaultModel;
 
-    // 根据提供商类型初始化客户端
-    if (this.providerType === "anthropic") {
-      this.anthropicClient = new Anthropic({
-        apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
-        baseURL: config.baseURL,
-      });
-      this.openaiClient = null;
-      this.defaultModel = model || "claude-3-5-sonnet-20241022";
-    } else {
-      // OpenAI 兼容模式（DeepSeek、通义千问等）
-      const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
-      const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+    const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
+    const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 
-      // 调试日志（使用 stderr 避免污染 stdout）
-      console.error(`[AIProvider] openai-compatible mode:`);
-      console.error(`[AIProvider]   - config.apiKey: ${config.apiKey ? 'Yes' : 'No'}`);
-      console.error(`[AIProvider]   - process.env.OPENAI_COMPATIBLE_API_KEY: ${process.env.OPENAI_COMPATIBLE_API_KEY ? 'Yes' : 'No'}`);
-      console.error(`[AIProvider]   - process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'Yes' : 'No'}`);
-      console.error(`[AIProvider]   - final apiKey: ${apiKey ? "Yes" : "No"}`);
-      console.error(`[AIProvider]   - baseURL: ${baseURL}`);
-
-      if (!apiKey) {
-        throw new Error("API Key is required for openai-compatible provider. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
-      }
-
-      this.openaiClient = new OpenAI({
-        apiKey,
-        baseURL,
-      });
-      this.anthropicClient = null;
-      this.defaultModel = model || config.defaultModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+    if (!apiKey) {
+      throw new Error("API Key is required. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
     }
+
+    this.openaiClient = new OpenAI({ apiKey, baseURL });
+    this.defaultModel = model || process.env.DEEPSEEK_MODEL || "deepseek-chat";
 
     // 打印初始化信息（使用 stderr 避免污染 stdout）
     console.error(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);
-  }
-
-  /**
-   * 从环境变量自动检测提供商类型
-   */
-  private detectProviderFromEnv(): AIProviderType {
-    if (process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_COMPATIBLE_BASE_URL) {
-      return "openai-compatible";
-    }
-    return "anthropic";
   }
 
   // ========================================================================
@@ -189,45 +150,22 @@ export class AIProvider {
     prompt: string,
     options: CompletionOptions = {}
   ): Promise<string> {
-    if (this.providerType === "anthropic" && this.anthropicClient) {
-      // 调用 Anthropic Messages API
-      const response = await this.anthropicClient.messages.create({
-        model: options.model || this.defaultModel,
-        max_tokens: options.maxTokens || this.maxTokens,
-        system: options.system,
-        messages: [{ role: "user", content: prompt }],
-        temperature: options.temperature,
-      });
+    type Message = { role: "system" | "user" | "assistant"; content: string };
+    const messages: Message[] = [];
 
-      // 提取返回的文本内容
-      const block = response.content[0];
-      if (block.type === "text") {
-        return block.text;
-      }
-      throw new Error("Unexpected response type from Anthropic API");
-    } else if (this.providerType === "openai-compatible" && this.openaiClient) {
-      // 调用 OpenAI 兼容 API（DeepSeek、通义千问等）
-      type Message = { role: "system" | "user" | "assistant"; content: string };
-      const messages: Message[] = [];
-
-      // 如果有 system 消息，添加到开头
-      if (options.system) {
-        messages.push({ role: "system", content: options.system });
-      }
-
-      messages.push({ role: "user", content: prompt });
-
-      const response = await this.openaiClient.chat.completions.create({
-        model: options.model || this.defaultModel,
-        messages: messages as any,
-        max_tokens: options.maxTokens || this.maxTokens,
-        temperature: options.temperature,
-      });
-
-      return response.choices[0]?.message?.content || "";
+    if (options.system) {
+      messages.push({ role: "system", content: options.system });
     }
+    messages.push({ role: "user", content: prompt });
 
-    throw new Error("No AI client initialized");
+    const response = await this.openaiClient.chat.completions.create({
+      model: options.model || this.defaultModel,
+      messages: messages as any,
+      max_tokens: options.maxTokens || this.maxTokens,
+      temperature: options.temperature,
+    });
+
+    return response.choices[0]?.message?.content || "";
   }
 
   /**
@@ -250,26 +188,23 @@ export class AIProvider {
     onChunk: (text: string) => void,
     options: CompletionOptions = {}
   ): Promise<void> {
-    if (this.providerType === "anthropic" && this.anthropicClient) {
-      // 创建流式请求
-      const stream = await this.anthropicClient.messages.create({
-        model: options.model || this.defaultModel,
-        max_tokens: options.maxTokens || this.maxTokens,
-        system: options.system,
-        messages: [{ role: "user", content: prompt }],
-        temperature: options.temperature,
-        stream: true,  // 启用流式输出
-      });
+    const messages: Array<{ role: "system" | "user"; content: string }> = [];
+    if (options.system) {
+      messages.push({ role: "system", content: options.system });
+    }
+    messages.push({ role: "user", content: prompt });
 
-      // 逐块处理返回的数据
-      for await (const event of stream) {
-        // 当收到新的文本块时，调用回调函数
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          onChunk(event.delta.text);
-        }
-      }
-    } else {
-      throw new Error("Stream not yet supported for openai-compatible provider");
+    const stream = await this.openaiClient.chat.completions.create({
+      model: options.model || this.defaultModel,
+      messages,
+      max_tokens: options.maxTokens || this.maxTokens,
+      temperature: options.temperature,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content;
+      if (text) onChunk(text);
     }
   }
 
@@ -278,10 +213,7 @@ export class AIProvider {
    *
    * @param _text - 输入文本
    * @returns 向量数组
-   * @throws {Error} Anthropic 不支持嵌入 API
-   *
-   * @note Anthropic 目前不提供嵌入 API，请使用其他提供商
-   * （如 OpenAI、Cohere 或本地模型）来生成向量嵌入。
+   * @throws {Error} 通用 AIProvider 不负责嵌入，请使用 EmbeddingProvider
    */
   async embed(_text: string): Promise<number[]> {
     throw new Error("Embeddings not supported - use a different provider");
@@ -290,7 +222,7 @@ export class AIProvider {
   /**
    * 生成结构化输出
    *
-   * 使用 Claude 的工具调用功能，强制返回符合 Zod Schema 的结构化数据。
+   * 使用 OpenAI-compatible JSON 模式返回结构化数据。
    * 这确保了输出类型的安全性和一致性。
    *
    * @param prompt - 用户输入的提示词
@@ -326,66 +258,28 @@ export class AIProvider {
     // 将 Zod Schema 转换为 JSON Schema 格式
     const jsonSchema = this.zodToJsonSchema(schema) as any;
 
-    if (this.providerType === "anthropic" && this.anthropicClient) {
-      // 调用 Anthropic Messages API，使用工具调用
-      const response = await this.anthropicClient.messages.create({
-        model: completionOptions.model || this.defaultModel,
-        max_tokens: completionOptions.maxTokens || this.maxTokens,
-        system: completionOptions.system,
-        messages: [{ role: "user", content: prompt }],
-        temperature: completionOptions.temperature,
-        tools: [
-          {
-            name: toolName,
-            description: toolDescription,
-            input_schema: jsonSchema,
-          },
-        ],
-        // 强制使用工具
-        tool_choice: {
-          type: "tool",
-          name: toolName,
-        },
-      });
+    const messages: Array<{ role: string; content: string }> = [];
 
-      // 提取工具调用结果
-      const block = response.content[0];
-      if (block.type === "tool_use" && block.name === toolName) {
-        const rawData = block.input as Record<string, unknown>;
-
-        // 使用 Zod 验证返回的数据
-        const validatedData = schema.parse(rawData);
-        return validatedData;
-      }
-
-      throw new Error("Unexpected response from Anthropic API: expected tool_use");
-    } else if (this.providerType === "openai-compatible" && this.openaiClient) {
-      // 使用 JSON 模式调用 OpenAI 兼容 API
-      const messages: Array<{ role: string; content: string }> = [];
-
-      if (completionOptions.system) {
-        messages.push({ role: "system", content: completionOptions.system });
-      }
-
-      messages.push({
-        role: "user",
-        content: `${prompt}\n\n请以 JSON 格式返回结果，符合以下 schema:\n${JSON.stringify(jsonSchema)}`,
-      });
-
-      const response = await this.openaiClient.chat.completions.create({
-        model: completionOptions.model || this.defaultModel,
-        messages: messages as any,
-        max_tokens: completionOptions.maxTokens || this.maxTokens,
-        temperature: completionOptions.temperature,
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const parsed = JSON.parse(content);
-      return schema.parse(parsed);
+    if (completionOptions.system) {
+      messages.push({ role: "system", content: completionOptions.system });
     }
 
-    throw new Error("No AI client initialized");
+    messages.push({
+      role: "user",
+      content: `${prompt}\n\n任务名称：${toolName}\n任务说明：${toolDescription}\n请以 JSON 格式返回结果，符合以下 schema:\n${JSON.stringify(jsonSchema)}`,
+    });
+
+    const response = await this.openaiClient.chat.completions.create({
+      model: completionOptions.model || this.defaultModel,
+      messages: messages as any,
+      max_tokens: completionOptions.maxTokens || this.maxTokens,
+      temperature: completionOptions.temperature,
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    return schema.parse(parsed);
   }
 
   /**
@@ -489,7 +383,7 @@ export class AIProvider {
  *
  * @example
  * ```typescript
- * const ai = createAI({ defaultModel: "claude-3-opus-20240229" });
+ * const ai = createAI({ defaultModel: "deepseek-chat" });
  * ```
  */
 export function createAI(config?: AIConfig): AIProvider {
@@ -1110,29 +1004,7 @@ export function createChunker(config?: TextChunkerConfig): TextChunker {
 }
 
 // ============================================================================
-// Langtum 工作流平台导出
-// ============================================================================
-
-export {
-  LangtumClient,
-  createLangtumClient,
-  LangtumAPIError,
-  WorkflowTimeoutError,
-  WebhookSignatureError,
-  type LangtumConfig,
-  type WorkflowTriggerInput,
-  type DailyHealthReportInput,
-  type QuickAssessmentInput,
-  type WorkflowExecutionResponse,
-  type WorkflowExecutionDetail,
-  type WorkflowExecutionStatus,
-  type WebhookEventType,
-  type WebhookHeaders,
-  type WebhookRequestBody,
-} from "./langtum.js";
-
-// ============================================================================
-// Claude Agent SDK 集成
+// Agent 集成
 // ============================================================================
 
 export {
