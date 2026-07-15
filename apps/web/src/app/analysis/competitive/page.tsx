@@ -18,7 +18,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AgentThinkingView } from "@/components/agent-thinking-view";
 import { ReportView } from "@/components/report-view";
-import { Navigation } from "@/components/navigation";
 import { AnimatedBackground } from "@/components/animated-background";
 import { ExecutionTimer } from "@/components/execution-timer";
 import { useAgentWorkflow } from "@/hooks/use-agent-workflow";
@@ -32,6 +31,7 @@ import { motion } from "framer-motion";
 export default function CompetitiveAnalysisPage() {
   const [repos, setRepos] = useState<string>("");
   const [context, setContext] = useState<string>("");
+  const [inputError, setInputError] = useState<string | null>(null);
   const [analysisType, setAnalysisType] = useState<"competitive_landscape" | "single_repo">(
     "competitive_landscape"
   );
@@ -94,10 +94,11 @@ export default function CompetitiveAnalysisPage() {
       .filter((r) => r.length > 0 && r.includes("/"));
 
     if (repoList.length === 0) {
-      alert("请输入至少一个有效的仓库 (owner/repo 格式)");
+      setInputError("请至少输入一个有效仓库，格式为 owner/repo。");
       return;
     }
 
+    setInputError(null);
     startWorkflow({
       repos: repoList,
       analysisType,
@@ -112,6 +113,7 @@ export default function CompetitiveAnalysisPage() {
     reset();
     setRepos("");
     setContext("");
+    setInputError(null);
   };
 
   const isRunning = status === "running";
@@ -122,21 +124,6 @@ export default function CompetitiveAnalysisPage() {
     <main className="min-h-screen">
       {/* 动画背景 */}
       <AnimatedBackground />
-
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
       {/* 页面标题 */}
@@ -276,12 +263,22 @@ export default function CompetitiveAnalysisPage() {
               <Textarea
                 id="repos"
                 value={repos}
-                onChange={(e) => setRepos(e.target.value)}
+                onChange={(e) => {
+                  setRepos(e.target.value);
+                  if (inputError) setInputError(null);
+                }}
                 placeholder={config.placeholder}
                 rows={6}
                 disabled={isRunning}
                 className="font-mono"
+                aria-invalid={Boolean(inputError)}
+                aria-describedby={inputError ? "repos-input-error" : undefined}
               />
+              {inputError && (
+                <p id="repos-input-error" role="alert" className="mt-2 text-sm text-destructive">
+                  {inputError}
+                </p>
+              )}
             </div>
 
             {/* 额外上下文 */}

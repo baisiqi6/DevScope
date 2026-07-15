@@ -9,6 +9,7 @@
 
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppHeader } from "@/components/app-header";
 import { TRPCProvider } from "@/components/providers";
 
 /**
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
   /** 页面标题 */
   title: "DevScope",
   /** 页面描述 */
-  description: "AI-powered development workspace",
+  description: "开源生态采集、搜索与分析工作台",
   /** 图标配置 */
   icons: {
     icon: "/icon.svg",
@@ -37,9 +38,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body className="antialiased">
-        <TRPCProvider>{children}</TRPCProvider>
+        <TRPCProvider>
+          <AppHeader />
+          <div id="main-content" tabIndex={-1}>
+            {children}
+          </div>
+        </TRPCProvider>
       </body>
     </html>
   );

@@ -13,7 +13,6 @@ import { SearchBar } from "@/components/search-bar";
 import { SearchResults } from "@/components/search-results";
 import { AnswerCard } from "@/components/answer-card";
 import { AnimatedBackground } from "@/components/animated-background";
-import { Navigation } from "@/components/navigation";
 import { motion } from "framer-motion";
 
 export default function SearchPage() {
@@ -37,21 +36,6 @@ export default function SearchPage() {
     <main className="min-h-screen">
       {/* 动画背景 */}
       <AnimatedBackground />
-
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
 
       <div className="container mx-auto max-w-4xl px-4 py-8">
         <motion.div
@@ -86,9 +70,10 @@ export default function SearchPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg border border-red-200"
+            role="alert"
+            className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-destructive"
           >
-            <p className="font-medium mb-1">Error</p>
+            <p className="mb-1 font-medium">搜索失败</p>
             <p className="text-sm">{searchMutation.error.message}</p>
           </motion.div>
         )}
@@ -121,16 +106,28 @@ export default function SearchPage() {
             className="mt-8 p-6 bg-white/60 backdrop-blur-sm rounded-lg border border-slate-200/60 shadow-lg"
           >
             <h2 className="text-lg font-semibold mb-4 text-slate-800">示例查询</h2>
-            <div className="space-y-2 text-sm text-slate-600">
-              <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("vercel/next.js"); setQuery("How to deploy Next.js on Vercel?"); }}>
-                • <strong>For Next.js:</strong> “How to deploy Next.js on Vercel?”
-              </p>
-              <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("facebook/react"); setQuery("What are React hooks and how to use them?"); }}>
-                • <strong>For React:</strong> “What are React hooks and how to use them?”
-              </p>
-              <p className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer" onClick={() => { setRepo("microsoft/TypeScript"); setQuery("How to define generic types?"); }}>
-                • <strong>For TypeScript:</strong> “How to define generic types?”
-              </p>
+            <div className="grid gap-2 text-sm text-muted-foreground">
+              <button
+                type="button"
+                className="min-h-10 rounded-md p-2 text-left transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => { setRepo("vercel/next.js"); setQuery("如何将 Next.js 部署到 Vercel？"); }}
+              >
+                <strong>Next.js：</strong>如何将项目部署到 Vercel？
+              </button>
+              <button
+                type="button"
+                className="min-h-10 rounded-md p-2 text-left transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => { setRepo("facebook/react"); setQuery("React Hooks 是什么，应该如何使用？"); }}
+              >
+                <strong>React：</strong>Hooks 是什么，应该如何使用？
+              </button>
+              <button
+                type="button"
+                className="min-h-10 rounded-md p-2 text-left transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => { setRepo("microsoft/TypeScript"); setQuery("如何定义泛型类型？"); }}
+              >
+                <strong>TypeScript：</strong>如何定义泛型类型？
+              </button>
             </div>
           </motion.div>
         )}

@@ -1,51 +1,61 @@
-/**
- * @package @devscope/web
- * @description Navigation 组件
- *
- * 提供统一的导航栏，支持激活状态指示。
- */
+/** 全局主导航，桌面端横向排列，移动端纵向排列。 */
 
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { LayoutGrid, Search, TrendingUp, Activity, FolderOpen } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Activity, FolderOpen, LayoutGrid, Search, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export function Navigation() {
+const navItems = [
+  { path: "/", label: "仓库列表", icon: LayoutGrid },
+  { path: "/groups", label: "分组管理", icon: FolderOpen },
+  { path: "/search", label: "语义搜索", icon: Search },
+  { path: "/analysis/competitive", label: "竞争分析", icon: TrendingUp },
+  { path: "/analysis/health", label: "健康度报告", icon: Activity },
+];
+
+interface NavigationProps {
+  className?: string;
+  mobile?: boolean;
+}
+
+function isActivePath(pathname: string, path: string) {
+  if (path === "/") {
+    return pathname === "/" || pathname.startsWith("/repository/") || pathname === "/repo-stats";
+  }
+
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+export function Navigation({ className, mobile = false }: NavigationProps) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  const navItems = [
-    { path: "/groups", label: "分组管理", icon: FolderOpen },
-    { path: "/", label: "仓库列表", icon: LayoutGrid },
-    { path: "/search", label: "语义搜索", icon: Search },
-    { path: "/analysis/competitive", label: "竞争分析", icon: TrendingUp },
-    { path: "/analysis/health", label: "健康度报告", icon: Activity },
-  ];
 
   return (
-    <nav className="flex gap-2">
+    <nav
+      aria-label="主导航"
+      className={cn(mobile ? "grid gap-1" : "flex items-center gap-1", className)}
+    >
       {navItems.map((item) => {
-        const isActive = pathname === item.path;
+        const isActive = isActivePath(pathname, item.path);
         const Icon = item.icon;
 
         return (
-          <Button
+          <Link
             key={item.path}
-            variant={isActive ? "default" : "ghost"}
-            onClick={() => router.push(item.path)}
-            className={`relative ${
+            href={item.path}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              mobile && "w-full justify-start",
               isActive
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "hover:bg-blue-50 hover:text-blue-600"
-            } transition-colors`}
-          >
-            <Icon className="h-4 w-4" />
-            {item.label}
-            {isActive && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-accent hover:text-foreground"
             )}
-          </Button>
+          >
+            <Icon aria-hidden="true" className="h-4 w-4" />
+            {item.label}
+          </Link>
         );
       })}
     </nav>

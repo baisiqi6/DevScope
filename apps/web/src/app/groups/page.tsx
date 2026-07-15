@@ -5,33 +5,23 @@
  * 专门用于管理仓库分组的页面，包含分组创建、编辑、搜索等功能。
  */
 
-"use client";
+'use client';
 
-import { type DragEvent, useMemo, useRef, useState } from "react";
-import { skipToken } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc";
-import { Navigation } from "@/components/navigation";
-import { AnimatedBackground } from "@/components/animated-background";
-import { GroupTabs } from "@/components/group-tabs";
-import { CreateGroupDialog } from "@/components/create-group-dialog";
-import { UngroupedSidebar } from "@/components/ungrouped-sidebar-v2";
-import { RepositoryCard } from "@/components/repository-card";
-import { SortControl, sortRepositories, useSortPreferences } from "@/components/sort-control";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { motion } from "framer-motion";
-import {
-  Settings,
-  Trash2,
-  Edit,
-  FolderOpen,
-  Plus,
-  Search,
-  X
-} from "lucide-react";
-import type { CreateGroupInput, Repository, RepositoryGroup } from "@devscope/shared";
-import { getGroupIcon, getGroupColor } from "@/lib/group-config";
+import { type DragEvent, useMemo, useRef, useState } from 'react';
+import { skipToken } from '@tanstack/react-query';
+import { trpc } from '@/lib/trpc';
+import { AnimatedBackground } from '@/components/animated-background';
+import { GroupTabs } from '@/components/group-tabs';
+import { CreateGroupDialog } from '@/components/create-group-dialog';
+import { UngroupedSidebar } from '@/components/ungrouped-sidebar-v2';
+import { RepositoryCard } from '@/components/repository-card';
+import { SortControl, sortRepositories, useSortPreferences } from '@/components/sort-control';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Check, Trash2, Edit, FolderOpen, Plus, RefreshCw, Search, X } from 'lucide-react';
+import type { CreateGroupInput, Repository, RepositoryGroup } from '@devscope/shared';
+import { getGroupIcon, getGroupColor } from '@/lib/group-config';
 
 function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
   return Array.from(new Map(repos.map((repo) => [repo.id, repo])).values());
@@ -66,13 +56,10 @@ function normalizeRepository(repo: {
     language: repo.language ?? undefined,
     license: repo.license ?? undefined,
     lastFetchedAt:
-      typeof repo.lastFetchedAt === "string"
+      typeof repo.lastFetchedAt === 'string'
         ? repo.lastFetchedAt
         : repo.lastFetchedAt?.toISOString(),
-    starredAt:
-      typeof repo.starredAt === "string"
-        ? repo.starredAt
-        : repo.starredAt?.toISOString(),
+    starredAt: typeof repo.starredAt === 'string' ? repo.starredAt : repo.starredAt?.toISOString(),
     note: repo.note ?? undefined,
   };
 }
@@ -81,51 +68,56 @@ export default function GroupsManagementPage() {
   // 分组相关状态
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
+  const [editingGroupDescription, setEditingGroupDescription] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [draggingRepo, setDraggingRepo] = useState<Repository | null>(null);
   const [isDropZoneActive, setIsDropZoneActive] = useState(false);
   const [isDropZoneSuccess, setIsDropZoneSuccess] = useState(false);
   const dropEnterCounterRef = useRef(0);
-  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences("stars", "desc");
+  const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences('stars', 'desc');
 
   // 获取分组列表
-  const { data: groups = [], refetch: refetchGroups } = trpc.groups.getAll.useQuery(
-    undefined,
-    {
-      enabled: true,
-      refetchOnWindowFocus: false,
-    }
-  );
+  const {
+    data: groups = [],
+    isLoading: isGroupsLoading,
+    error: groupsError,
+    refetch: refetchGroups,
+  } = trpc.groups.getAll.useQuery(undefined, {
+    enabled: true,
+    refetchOnWindowFocus: false,
+  });
 
   // 获取未分组仓库
-  const { data: ungroupedRepos = [], refetch: refetchUngroupedRepos } = trpc.groupsQuery.getUngroupedRepos.useQuery(
-    undefined,
-    {
-      enabled: true,
-      refetchOnWindowFocus: false,
-    }
-  );
+  const {
+    data: ungroupedRepos = [],
+    error: ungroupedReposError,
+    refetch: refetchUngroupedRepos,
+  } = trpc.groupsQuery.getUngroupedRepos.useQuery(undefined, {
+    enabled: true,
+    refetchOnWindowFocus: false,
+  });
 
   // 获取所有仓库
-  const { data: allRepositories = [] } = trpc.getRepositories.useQuery(
-    undefined,
-    {
-      enabled: true,
-      refetchOnWindowFocus: false,
-    }
-  );
+  const {
+    data: allRepositories = [],
+    isLoading: isRepositoriesLoading,
+    error: repositoriesError,
+    refetch: refetchRepositories,
+  } = trpc.getRepositories.useQuery(undefined, {
+    enabled: true,
+    refetchOnWindowFocus: false,
+  });
 
   const selectedGroupQueryInput =
     selectedGroupId !== null ? { groupId: selectedGroupId } : skipToken;
 
-  const { data: selectedGroup, refetch: refetchSelectedGroup } = trpc.groups.getWithMembers.useQuery(
-    selectedGroupQueryInput,
-    {
+  const { data: selectedGroup, refetch: refetchSelectedGroup } =
+    trpc.groups.getWithMembers.useQuery(selectedGroupQueryInput, {
       refetchOnWindowFocus: false,
-    }
-  );
+    });
 
   // 创建分组 mutation
   const createGroupMutation = trpc.groups.create.useMutation({
@@ -137,19 +129,26 @@ export default function GroupsManagementPage() {
 
   // 删除分组 mutation
   const deleteGroupMutation = trpc.groups.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       refetchGroups();
-      if (selectedGroupId === editingGroupId) {
+      if (selectedGroupId === variables.groupId) {
         setSelectedGroupId(null);
       }
-      setEditingGroupId(null);
+      if (editingGroupId === variables.groupId) {
+        setEditingGroupId(null);
+      }
     },
   });
 
-  // 计算显示的仓库
-  const displayRepos = selectedGroupId !== null
-    ? [] // TODO: 获取分组内的仓库
-    : allRepositories;
+  const updateGroupMutation = trpc.groups.update.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        refetchGroups(),
+        selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+      ]);
+      setEditingGroupId(null);
+    },
+  });
 
   // 处理函数
   const addGroupMemberMutation = trpc.groupMembers.add.useMutation({
@@ -161,8 +160,6 @@ export default function GroupsManagementPage() {
       ]);
     },
   });
-
-  void displayRepos;
 
   const uniqueAllRepositories = useMemo<Repository[]>(
     () => dedupeRepositories(allRepositories.map(normalizeRepository)),
@@ -228,7 +225,7 @@ export default function GroupsManagementPage() {
     }
 
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    event.dataTransfer.dropEffect = 'move';
 
     if (!isDropZoneActive) {
       setIsDropZoneActive(true);
@@ -246,9 +243,7 @@ export default function GroupsManagementPage() {
     }
   };
 
-  const handleDropToSelectedGroup = async (
-    event: DragEvent<HTMLDivElement>
-  ) => {
+  const handleDropToSelectedGroup = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
 
     if (!draggingRepo || selectedGroupId === null || addGroupMemberMutation.isPending) {
@@ -267,7 +262,7 @@ export default function GroupsManagementPage() {
         setIsDropZoneSuccess(false);
       }, 800);
     } catch (error) {
-      console.error("Failed to add repo to group:", error);
+      console.error('Failed to add repo to group:', error);
     } finally {
       setDraggingRepo(null);
       resetDropZone();
@@ -283,7 +278,7 @@ export default function GroupsManagementPage() {
   };
 
   const handleViewDetails = (id: number) => {
-    window.open(`/repository/${id}`, '_blank');
+    window.location.href = `/repository/${id}`;
   };
 
   const handleCreateGroup = (input: CreateGroupInput) => {
@@ -297,363 +292,389 @@ export default function GroupsManagementPage() {
     deleteGroupMutation.mutate({ groupId });
   };
 
-  const handleStartEditing = (groupId: number) => {
-    setEditingGroupId(groupId);
+  const handleStartEditing = (group: RepositoryGroup) => {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
+    setEditingGroupDescription(group.description ?? '');
   };
 
   const handleCancelEditing = () => {
     setEditingGroupId(null);
+    setEditingGroupName('');
+    setEditingGroupDescription('');
+  };
+
+  const handleSaveEditing = () => {
+    if (editingGroupId === null || !editingGroupName.trim()) {
+      return;
+    }
+
+    updateGroupMutation.mutate({
+      groupId: editingGroupId,
+      name: editingGroupName.trim(),
+      description: editingGroupDescription.trim(),
+    });
+  };
+
+  const handleRetry = () => {
+    void Promise.all([
+      refetchGroups(),
+      refetchUngroupedRepos(),
+      refetchRepositories(),
+      selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+    ]);
   };
 
   // 过滤分组
   const filteredGroups = searchQuery
-    ? groups.filter((g) =>
-        g.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? groups.filter((g) => g.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : groups;
+  const pageError = groupsError ?? ungroupedReposError ?? repositoriesError;
+  const isPageLoading = isGroupsLoading || isRepositoriesLoading;
 
   return (
     <main className="min-h-screen">
-      {/* 动画背景 */}
       <AnimatedBackground />
 
-      {/* 页面内容容器 - 添加动态右边距 */}
-      <motion.div
-        animate={{
-          paddingRight: isSidebarOpen ? 380 : 0,
-        }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-      >
-
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <motion.h1
-            className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            DevScope
-          </motion.h1>
-          <Navigation />
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* 顶部工具栏 */}
-        <motion.div
-          className="mb-6 flex items-center justify-between"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          {/* 搜索框 */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="搜索分组..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {/* 创建分组按钮 */}
-          <Button
-            onClick={() => setShowCreateGroupDialog(true)}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            新建分组
-          </Button>
-        </motion.div>
-
-        {/* 统计卡片 */}
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">分组总数</p>
-                  <p className="text-2xl font-bold text-purple-700">{groups.length}</p>
-                </div>
-                <FolderOpen className="h-8 w-8 text-purple-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">已分组仓库</p>
-                  <p className="text-2xl font-bold text-blue-700">
-                    {groupedRepoCount}
-                  </p>
-                </div>
-                <FolderOpen className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-orange-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">未分组仓库</p>
-                  <p className="text-2xl font-bold text-amber-700">{ungroupedRepoCount}</p>
-                </div>
-                <FolderOpen className="h-8 w-8 text-amber-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* 分组标签栏 */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          <GroupTabs
-            groups={groups}
-            selectedGroupId={selectedGroupId}
-            totalRepoCount={totalRepoCount}
-            onSelectAll={handleSelectAll}
-            onSelectGroup={handleSelectGroup}
-            onCreateGroup={() => setShowCreateGroupDialog(true)}
-          />
-        </motion.div>
-
-        {/* 分组列表 */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{
-            opacity: 1,
-            y: 0,
-            scale: isDropZoneActive ? 1.01 : 1,
-          }}
-          transition={{ duration: 0.3, delay: 0.25 }}
-          onDragEnter={handleDropZoneDragEnter}
-          onDragOver={handleDropZoneDragOver}
-          onDragLeave={handleDropZoneDragLeave}
-          onDrop={handleDropToSelectedGroup}
-          className={`mb-8 mt-6 rounded-3xl border p-4 transition-all duration-300 ${
-            selectedGroupId !== null && isDropZoneActive
-              ? "border-amber-400 bg-amber-50/80 shadow-[0_18px_48px_rgba(251,146,60,0.18)]"
-              : selectedGroupId !== null && isDropZoneSuccess
-                ? "border-emerald-400 bg-emerald-50/80 shadow-[0_18px_48px_rgba(16,185,129,0.16)]"
-                : draggingRepo && selectedGroupId !== null
-                  ? "border-amber-200 bg-white/90 shadow-[0_12px_36px_rgba(251,146,60,0.08)]"
-                  : "border-transparent"
-          }`}
-        >
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                {selectedGroupId !== null ? selectedGroup?.name ?? "分组仓库" : "全部仓库"}
-              </h2>
-              <p className="text-sm text-slate-500">
-                当前显示 {sortedDisplayRepos.length} 个唯一仓库
+      <div className={isSidebarOpen ? 'lg:pr-[380px]' : undefined}>
+        <div className="container mx-auto max-w-7xl px-4 py-6 sm:py-8">
+          <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight">分组管理</h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                整理仓库集合，选择分组后可从右侧拖入未分组仓库。
               </p>
-              {selectedGroupId !== null && draggingRepo && (
-                <p className={`mt-2 text-sm transition-colors ${
-                  isDropZoneActive ? "text-amber-700" : "text-slate-500"
-                }`}>
-                  {isDropZoneActive
-                    ? `释放后把 ${draggingRepo.owner}/${draggingRepo.name} 加入当前分组`
-                    : `把 ${draggingRepo.owner}/${draggingRepo.name} 拖进这个区域即可加入当前分组`}
-                </p>
-              )}
-              {selectedGroupId === null && draggingRepo && (
-                <p className="mt-2 text-sm text-slate-500">
-                  先选择一个分组，再把右侧未分组仓库拖进来
-                </p>
+            </div>
+            <Button onClick={() => setShowCreateGroupDialog(true)}>
+              <Plus />
+              新建分组
+            </Button>
+          </header>
+
+          <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full max-w-md">
+              <label htmlFor="group-search" className="sr-only">
+                搜索分组
+              </label>
+              <Search
+                aria-hidden="true"
+                className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id="group-search"
+                type="search"
+                placeholder="搜索分组"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="pl-9 pr-10"
+              />
+              {searchQuery && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="清空分组搜索"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                >
+                  <X />
+                </Button>
               )}
             </div>
-            <SortControl
-              value={sortBy}
-              order={order}
-              onSortChange={setSortBy}
-              onOrderToggle={toggleOrder}
-            />
+
+            <dl className="grid grid-cols-3 overflow-hidden rounded-lg border bg-card text-sm">
+              {[
+                ['分组', groups.length],
+                ['已分组', groupedRepoCount],
+                ['未分组', ungroupedRepoCount],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 border-r px-4 py-2.5 last:border-r-0">
+                  <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+                  <dd className="mt-0.5 text-lg font-semibold tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
-          {sortedDisplayRepos.length === 0 ? (
-            <Card className="border-dashed border-slate-300 bg-white/70">
-              <CardContent className="py-10 text-center text-slate-500">
-                {selectedGroupId !== null ? "这个分组下还没有仓库" : "还没有可展示的仓库"}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {sortedDisplayRepos.map((repo) => (
-                <RepositoryCard
-                  key={repo.id}
-                  repository={repo}
-                  onViewDetails={handleViewDetails}
-                />
-              ))}
+          {pageError && (
+            <div
+              role="alert"
+              className="mt-6 flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="text-sm font-medium text-destructive">分组数据加载失败</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  请确认本地 API 与数据库已启动，然后重试。
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleRetry}>
+                <RefreshCw />
+                重新加载
+              </Button>
             </div>
           )}
-        </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          className="space-y-4"
-        >
-          {filteredGroups.length === 0 ? (
-            <Card className="bg-gray-50 border-gray-200">
-              <CardContent className="py-12 text-center">
-                <FolderOpen className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                <p className="text-gray-500 mb-2">
-                  {searchQuery ? "未找到匹配的分组" : "还没有创建任何分组"}
+          <div className="mt-6 border-b pb-4">
+            <GroupTabs
+              groups={groups}
+              selectedGroupId={selectedGroupId}
+              totalRepoCount={totalRepoCount}
+              onSelectAll={handleSelectAll}
+              onSelectGroup={handleSelectGroup}
+              onCreateGroup={() => setShowCreateGroupDialog(true)}
+            />
+          </div>
+
+          <section
+            aria-labelledby="repository-section-title"
+            onDragEnter={handleDropZoneDragEnter}
+            onDragOver={handleDropZoneDragOver}
+            onDragLeave={handleDropZoneDragLeave}
+            onDrop={handleDropToSelectedGroup}
+            className={`mt-6 rounded-lg border p-4 transition-colors duration-200 sm:p-5 ${
+              selectedGroupId !== null && isDropZoneActive
+                ? 'border-primary bg-primary/5'
+                : selectedGroupId !== null && isDropZoneSuccess
+                  ? 'border-green-600/40 bg-green-50'
+                  : draggingRepo && selectedGroupId !== null
+                    ? 'border-primary/30 bg-card'
+                    : 'border-transparent px-0 sm:px-0'
+            }`}
+          >
+            <div className="mb-4 flex flex-col items-stretch gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 id="repository-section-title" className="text-lg font-semibold">
+                  {selectedGroupId !== null ? (selectedGroup?.name ?? '分组仓库') : '全部仓库'}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  当前显示 {sortedDisplayRepos.length} 个唯一仓库
                 </p>
-                {!searchQuery && (
-                  <p className="text-sm text-gray-400">
-                    点击上方「新建分组」按钮开始创建
+                {draggingRepo && (
+                  <p className="mt-2 text-sm text-primary" aria-live="polite">
+                    {selectedGroupId === null
+                      ? '先选择一个分组，再拖入未分组仓库。'
+                      : isDropZoneActive
+                        ? `释放后把 ${draggingRepo.owner}/${draggingRepo.name} 加入当前分组。`
+                        : `把 ${draggingRepo.owner}/${draggingRepo.name} 拖入此区域。`}
                   </p>
                 )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group) => {
-                const colorConfig = getGroupColor(group.color);
-                const iconConfig = getGroupIcon(group.icon);
-                const IconComponent = iconConfig.icon;
-                const isEditing = editingGroupId === group.id;
+              </div>
+              <SortControl
+                value={sortBy}
+                order={order}
+                onSortChange={setSortBy}
+                onOrderToggle={toggleOrder}
+              />
+            </div>
 
-                return (
-                  <Card
-                    key={group.id}
-                    className={`border-2 transition-all hover:shadow-md ${selectedGroupId === group.id ? `${colorConfig.border} ${colorConfig.bg} shadow-md` : "border-gray-200 hover:border-gray-300"}`}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2 flex-1">
-                          {IconComponent && (
-                            <div className={`p-2 rounded-lg ${colorConfig.solidBg} text-white`}>
-                              <IconComponent className="h-4 w-4" />
+            {isPageLoading ? (
+              <div className="grid gap-3 md:grid-cols-2" aria-label="正在加载仓库">
+                {[0, 1].map((item) => (
+                  <div key={item} className="h-36 animate-pulse rounded-lg border bg-muted/40" />
+                ))}
+              </div>
+            ) : sortedDisplayRepos.length === 0 ? (
+              <Card className="border-dashed shadow-none">
+                <CardContent className="py-10 text-center">
+                  <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <p className="mt-3 text-sm font-medium">
+                    {selectedGroupId !== null ? '这个分组下还没有仓库' : '还没有可展示的仓库'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedGroupId !== null
+                      ? '展开右侧未分组列表，把仓库拖到这里。'
+                      : '先从仓库工作区采集仓库。'}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {sortedDisplayRepos.map((repo) => (
+                  <RepositoryCard
+                    key={repo.id}
+                    repository={repo}
+                    onViewDetails={handleViewDetails}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section aria-labelledby="group-settings-title" className="mt-10">
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <h2 id="group-settings-title" className="text-lg font-semibold">
+                  分组设置
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  修改分组名称与说明，或选择分组继续整理仓库。
+                </p>
+              </div>
+              <span className="text-sm tabular-nums text-muted-foreground">
+                {filteredGroups.length} 个
+              </span>
+            </div>
+
+            {isGroupsLoading ? (
+              <div className="h-24 animate-pulse rounded-lg border bg-muted/40" />
+            ) : filteredGroups.length === 0 ? (
+              <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+                <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="mt-3 text-sm font-medium">
+                  {searchQuery ? '未找到匹配的分组' : '还没有创建分组'}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {searchQuery ? '尝试缩短关键词。' : '创建分组后，可在这里维护名称和说明。'}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y overflow-hidden rounded-lg border bg-card">
+                {filteredGroups.map((group) => {
+                  const colorConfig = getGroupColor(group.color);
+                  const IconComponent = getGroupIcon(group.icon).icon;
+                  const isEditing = editingGroupId === group.id;
+                  const isSelected = selectedGroupId === group.id;
+
+                  return (
+                    <div
+                      key={group.id}
+                      className={`p-4 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${colorConfig.bg} ${colorConfig.text}`}
+                        >
+                          <IconComponent className="h-4 w-4" />
+                        </div>
+
+                        {isEditing ? (
+                          <div className="min-w-0 flex-1 space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <label
+                                  htmlFor={`group-name-${group.id}`}
+                                  className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                                >
+                                  分组名称
+                                </label>
+                                <Input
+                                  id={`group-name-${group.id}`}
+                                  value={editingGroupName}
+                                  onChange={(event) => setEditingGroupName(event.target.value)}
+                                  maxLength={50}
+                                  autoFocus
+                                />
+                              </div>
+                              <div>
+                                <label
+                                  htmlFor={`group-description-${group.id}`}
+                                  className="mb-1.5 block text-xs font-medium text-muted-foreground"
+                                >
+                                  分组说明
+                                </label>
+                                <Input
+                                  id={`group-description-${group.id}`}
+                                  value={editingGroupDescription}
+                                  onChange={(event) =>
+                                    setEditingGroupDescription(event.target.value)
+                                  }
+                                  placeholder="可选"
+                                />
+                              </div>
                             </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <CardTitle className="truncate">{group.name}</CardTitle>
-                            {group.description && (
-                              <p className="text-xs text-gray-500 truncate mt-1">
-                                {group.description}
+                            {updateGroupMutation.error && (
+                              <p role="alert" className="text-sm text-destructive">
+                                保存失败：{updateGroupMutation.error.message}
                               </p>
                             )}
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                onClick={handleSaveEditing}
+                                disabled={!editingGroupName.trim() || updateGroupMutation.isPending}
+                              >
+                                <Check />
+                                {updateGroupMutation.isPending ? '保存中' : '保存'}
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={handleCancelEditing}>
+                                取消
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-
-                        {/* 操作按钮 */}
-                        <div className="flex items-center gap-1">
-                          {isEditing ? (
-                            <>
+                        ) : (
+                          <>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="font-medium">{group.name}</h3>
+                                {isSelected && (
+                                  <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                    当前分组
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {group.description || '暂无说明'}
+                              </p>
+                              <p className="mt-2 text-xs tabular-nums text-muted-foreground">
+                                {group.repoCount ?? 0} 个仓库
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap items-center gap-1">
+                              {!isSelected && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleSelectGroup(group)}
+                                >
+                                  选择分组
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
-                                size="sm"
-                                onClick={handleCancelEditing}
-                                className="h-8 w-8 p-0"
+                                size="icon"
+                                onClick={() => handleStartEditing(group)}
+                                aria-label={`编辑分组 ${group.name}`}
                               >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleStartEditing(group.id)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Edit className="h-4 w-4" />
+                                <Edit />
                               </Button>
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => handleDeleteGroup(group.id, group.name)}
-                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                disabled={deleteGroupMutation.isPending}
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                aria-label={`删除分组 ${group.name}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 />
                               </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent>
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-4 text-gray-600">
-                          <div className="flex items-center gap-1">
-                            <Settings className="h-3 w-3" />
-                            <span>{group.repoCount ?? 0} 个仓库</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Badge variant="outline" className={colorConfig.text}>
-                              {group.color}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        {selectedGroupId !== group.id && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSelectGroup(group)}
-                            className="shrink-0"
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            添加仓库
-                          </Button>
+                            </div>
+                          </>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </motion.div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-        {/* 创建分组对话框 */}
-        <CreateGroupDialog
-          open={showCreateGroupDialog}
-          onOpenChange={setShowCreateGroupDialog}
-          onCreate={handleCreateGroup}
+          <CreateGroupDialog
+            open={showCreateGroupDialog}
+            onOpenChange={setShowCreateGroupDialog}
+            onCreate={handleCreateGroup}
+          />
+        </div>
+
+        <UngroupedSidebar
+          ungroupedRepos={uniqueUngroupedRepos}
+          onViewDetails={handleViewDetails}
+          isOpen={isSidebarOpen}
+          onOpenChange={setIsSidebarOpen}
+          draggingRepoId={draggingRepo?.id ?? null}
+          onRepoDragStart={handleRepoDragStart}
+          onRepoDragEnd={handleRepoDragEnd}
         />
       </div>
-
-      {/* 未分组仓库侧拉栏 */}
-      <UngroupedSidebar
-        ungroupedRepos={uniqueUngroupedRepos}
-        onViewDetails={handleViewDetails}
-        isOpen={isSidebarOpen}
-        onOpenChange={setIsSidebarOpen}
-        draggingRepoId={draggingRepo?.id ?? null}
-        onRepoDragStart={handleRepoDragStart}
-        onRepoDragEnd={handleRepoDragEnd}
-      />
-      </motion.div>
     </main>
   );
 }

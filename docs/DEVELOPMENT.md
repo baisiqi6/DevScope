@@ -31,6 +31,8 @@ pnpm dev
 
 复制 `.env.example` 后按需要填写：
 
+API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置项。`.env.local` 已被 Git 忽略，适合覆盖本机数据库端口等差异；令牌、密码和其他敏感值仍不得提交。若 shell 或部署环境已经显式设置了同名变量，文件不会覆盖该值。
+
 ### 必需配置
 
 - `DATABASE_URL`：PostgreSQL 连接串；
@@ -115,6 +117,14 @@ docker compose logs postgres
 ```
 
 确认 `.env` 中 `DATABASE_URL` 与容器端口一致。
+
+如果本机需要覆盖容器或远程数据库地址，可在根目录创建 `.env.local`：
+
+```dotenv
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/devscope
+```
+
+使用系统安装的 PostgreSQL 时，还需自行安装与当前 PostgreSQL 主版本匹配的 `pgvector`，并在目标数据库中启用 `vector` 扩展。项目默认仍推荐使用 `docker compose up -d postgres`，避免本机扩展版本不一致。
 
 ### AI 请求失败
 

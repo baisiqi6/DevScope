@@ -5,28 +5,33 @@
  * 显示单个仓库的详细信息和采集统计。
  */
 
-"use client";
+'use client';
 
-import { Suspense, use } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Suspense, use } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { trpc } from '@/lib/trpc';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { MarkdownRenderer } from '@/components/markdown-renderer';
+import { AnimatedBackground } from '@/components/animated-background';
+import { EmbeddingProgress, EmbeddingStatusBadge } from '@/components/embedding-progress';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { AnimatedBackground } from "@/components/animated-background";
-import { EmbeddingProgress, EmbeddingStatusBadge } from "@/components/embedding-progress";
-import { motion } from "framer-motion";
-import { formatDistanceToNow } from "date-fns";
-import { zhCN } from "date-fns/locale";
-import { Activity, ArrowRight, FileText } from "lucide-react";
+  Activity,
+  ArrowLeft,
+  ArrowRight,
+  CircleDot,
+  Download,
+  ExternalLink,
+  FileText,
+  GitFork,
+  Package,
+  Scale,
+  Star,
+} from 'lucide-react';
 
 interface RepositoryDetailPageProps {
   params: Promise<{
@@ -41,7 +46,11 @@ interface RepositoryDetailPageProps {
 function RepositoryDetailContent({ id }: { id: number }) {
   const router = useRouter();
 
-  const { data: repository, isLoading, error } = trpc.getRepository.useQuery(
+  const {
+    data: repository,
+    isLoading,
+    error,
+  } = trpc.getRepository.useQuery(
     { id },
     {
       retry: false,
@@ -57,357 +66,362 @@ function RepositoryDetailContent({ id }: { id: number }) {
 
   const { data: healthReports, isLoading: isLoadingHealthReports } =
     trpc.getRepositoryHealthReports.useQuery(
-      { repoFullName: repository?.fullName ?? "placeholder/repository" },
+      { repoFullName: repository?.fullName ?? 'placeholder/repository' },
       {
         enabled: Boolean(repository?.fullName),
         retry: false,
       }
     );
 
-  if (isLoading || isLoadingReleases) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-muted-foreground">加载中...</div>
-      </div>
-    );
+  if (isLoading) {
+    return <RepositoryLoadingState />;
   }
 
   if (error || !repository) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">
-            {error?.message || "仓库不存在"}
-          </h1>
-          <Button onClick={() => router.push("/")}>返回首页</Button>
+      <main className="min-h-screen">
+        <AnimatedBackground />
+        <div className="container mx-auto max-w-3xl px-4 py-16">
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-card p-6">
+            <h1 className="text-lg font-semibold">无法打开仓库详情</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {error?.message || '仓库不存在，可能已被删除或尚未采集。'}
+            </p>
+            <Button className="mt-5" onClick={() => router.push('/')}>
+              <ArrowLeft />
+              返回仓库工作区
+            </Button>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
+  const repositoryMetrics = [
+    { label: 'Stars', value: repository.stars ?? 0, icon: Star },
+    { label: 'Forks', value: repository.forks ?? 0, icon: GitFork },
+    { label: '开放 Issue', value: repository.openIssues ?? 0, icon: CircleDot },
+    { label: '许可证', value: repository.license || '未标注', icon: Scale },
+  ];
+  const chunkStats = [
+    ['总文本块', repository.chunkStats.total],
+    ['README', repository.chunkStats.readme],
+    ['Issues', repository.chunkStats.issues],
+    ['Commits', repository.chunkStats.commits],
+  ];
+
   return (
     <main className="min-h-screen">
-      {/* 动画背景 */}
       <AnimatedBackground />
 
-      {/* Header */}
-      <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/")}
-            className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-          >
-            ← 返回列表
-          </Button>
-        </div>
-      </header>
+      <div className="container mx-auto max-w-6xl px-4 py-6 sm:py-8">
+        <Button asChild variant="ghost" size="sm" className="mb-4 -ml-3">
+          <Link href="/">
+            <ArrowLeft />
+            返回仓库工作区
+          </Link>
+        </Button>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* 仓库基本信息 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
-            <CardHeader>
-              <CardTitle className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <a
-                    href={repository.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 font-semibold transition-colors"
-                  >
-                    {repository.owner}/{repository.name}
-                  </a>
-                  {repository.language && (
-                    <span className="ml-2 text-sm font-normal text-slate-600 bg-blue-50 px-2 py-1 rounded-full">
-                      {repository.language}
-                    </span>
-                  )}
-                </div>
-                <EmbeddingStatusBadge repoId={id} />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {repository.description && (
-                <p className="text-slate-600 mb-4">{repository.description}</p>
-              )}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 p-3 rounded-lg">
-                  <div className="text-amber-700 text-xs font-medium mb-1">Stars</div>
-                  <div className="text-xl font-bold text-amber-900">{(repository.stars ?? 0).toLocaleString()}</div>
-                </div>
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-3 rounded-lg">
-                  <div className="text-blue-700 text-xs font-medium mb-1">Forks</div>
-                  <div className="text-xl font-bold text-blue-900">{(repository.forks ?? 0).toLocaleString()}</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-3 rounded-lg">
-                  <div className="text-green-700 text-xs font-medium mb-1">Open Issues</div>
-                  <div className="text-xl font-bold text-green-900">{(repository.openIssues ?? 0).toLocaleString()}</div>
-                </div>
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 p-3 rounded-lg">
-                  <div className="text-purple-700 text-xs font-medium mb-1">License</div>
-                  <div className="text-xl font-bold text-purple-900">{repository.license || "N/A"}</div>
-                </div>
+        <header className="border-b pb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-start gap-2">
+                <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-tight">
+                  {repository.owner}/{repository.name}
+                </h1>
+                <a
+                  href={repository.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="在 GitHub 打开仓库"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                {repository.description || '该仓库暂无简介。'}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+              {repository.language && <Badge variant="secondary">{repository.language}</Badge>}
+              <EmbeddingStatusBadge repoId={id} />
+            </div>
+          </div>
 
-        {/* 健康分析与历史报告 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05 }}
-        >
-          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
-            <CardHeader>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex flex-col gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity />
-                    健康分析
-                  </CardTitle>
-                  <CardDescription>
-                    基于仓库数据启动 AI 健康度评估，完成后会保存到报告历史。
-                  </CardDescription>
+          <dl className="mt-6 grid grid-cols-2 overflow-hidden rounded-lg border bg-card md:grid-cols-4">
+            {repositoryMetrics.map(({ label, value, icon: Icon }, index) => (
+              <div
+                key={label}
+                className={`px-4 py-3 ${index % 2 === 0 ? 'border-r' : ''} ${index < 2 ? 'border-b md:border-b-0' : ''} md:border-r md:last:border-r-0`}
+              >
+                <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </dt>
+                <dd className="mt-1 truncate text-lg font-semibold tabular-nums">
+                  {typeof value === 'number' ? value.toLocaleString() : value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </header>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+          <div className="min-w-0 space-y-6">
+            <Card className="shadow-none">
+              <CardHeader className="border-b">
+                <h2 className="text-lg font-semibold">README</h2>
+                <CardDescription>仓库当前采集到的 README 内容。</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {repository.readme ? (
+                  <div className="max-h-[70vh] overflow-y-auto p-4 sm:p-6">
+                    <MarkdownRenderer content={repository.readme} />
+                  </div>
+                ) : (
+                  <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+                    当前没有可展示的 README 内容。
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none">
+              <CardHeader className="border-b">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">发布版本</h2>
+                    <CardDescription className="mt-1">最近采集的 5 个 Release。</CardDescription>
+                  </div>
+                  <Badge variant="secondary">{releases?.length ?? 0} 个</Badge>
                 </div>
-                <Button asChild>
+              </CardHeader>
+              <CardContent className="p-0">
+                {isLoadingReleases ? (
+                  <div className="space-y-3 p-6" aria-label="正在加载发布版本">
+                    {[0, 1].map((item) => (
+                      <div key={item} className="h-24 animate-pulse rounded-md bg-muted/50" />
+                    ))}
+                  </div>
+                ) : releases && releases.length > 0 ? (
+                  <div className="divide-y">
+                    {releases.map((release) => (
+                      <article key={release.id} className="p-4 sm:p-6">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <a
+                                href={release.htmlUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-semibold text-primary underline-offset-4 hover:underline"
+                              >
+                                {release.tagName}
+                              </a>
+                              {release.isPrerelease && <Badge variant="outline">预发布</Badge>}
+                            </div>
+                            <h3 className="mt-1 text-sm font-medium">{release.name}</h3>
+                          </div>
+                          <time className="shrink-0 text-xs text-muted-foreground">
+                            {release.publishedAt
+                              ? formatDistanceToNow(new Date(release.publishedAt), {
+                                  addSuffix: true,
+                                  locale: zhCN,
+                                })
+                              : '发布时间未知'}
+                          </time>
+                        </div>
+
+                        {release.body && (
+                          <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">
+                            {release.body.substring(0, 240)}
+                            {release.body.length > 240 && '…'}
+                          </p>
+                        )}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {release.zipUrl && (
+                            <Button asChild variant="outline" size="sm">
+                              <a href={release.zipUrl} target="_blank" rel="noopener noreferrer">
+                                <Package />
+                                ZIP 源码
+                              </a>
+                            </Button>
+                          )}
+                          {release.tarUrl && (
+                            <Button asChild variant="outline" size="sm">
+                              <a href={release.tarUrl} target="_blank" rel="noopener noreferrer">
+                                <Package />
+                                TAR 源码
+                              </a>
+                            </Button>
+                          )}
+                          {release.assets.map((asset) => (
+                            <Button key={asset.name} asChild variant="outline" size="sm">
+                              <a
+                                href={asset.browserDownloadUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`下载次数：${asset.downloadCount}`}
+                              >
+                                <Download />
+                                <span className="max-w-48 truncate">{asset.name}</span>
+                                <span className="text-muted-foreground">{asset.downloadCount}</span>
+                              </a>
+                            </Button>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-6 py-10 text-center">
+                    <Package className="mx-auto h-8 w-8 text-muted-foreground" />
+                    <p className="mt-3 text-sm font-medium">暂无发布版本</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      后续采集到 Release 后会显示在这里。
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <aside className="space-y-6">
+            <Card className="shadow-none">
+              <CardHeader>
+                <Activity className="h-5 w-5 text-primary" />
+                <h2 className="pt-2 text-lg font-semibold">健康分析</h2>
+                <CardDescription>
+                  基于已采集数据运行 AI 评估，结论会保存到报告历史。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild className="w-full">
                   <Link href={`/analysis/health?repo=${encodeURIComponent(repository.fullName)}`}>
                     开始分析
-                    <ArrowRight data-icon="inline-end" />
+                    <ArrowRight />
                   </Link>
                 </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">历史报告</h3>
-                  <Badge variant="secondary">
+
+                <div className="mt-6 flex items-center justify-between border-b pb-2">
+                  <h3 className="text-sm font-medium">历史报告</h3>
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {healthReports?.length ?? 0} 份
-                  </Badge>
+                  </span>
                 </div>
 
                 {isLoadingHealthReports ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    正在加载报告历史...
-                  </p>
+                  <div className="mt-3 h-16 animate-pulse rounded-md bg-muted/50" />
                 ) : healthReports && healthReports.length > 0 ? (
-                  <div className="flex flex-col gap-3">
+                  <div className="divide-y">
                     {healthReports.map((report) => (
-                      <div
-                        key={report.reportId}
-                        className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="flex min-w-0 items-start gap-3">
-                          <FileText className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div key={report.reportId} className="py-3">
+                        <div className="flex items-start gap-2">
+                          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
                             <p className="line-clamp-2 text-sm font-medium">
-                              {report.summary || "仓库健康度报告"}
+                              {report.summary || '仓库健康度报告'}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {new Date(report.createdAt).toLocaleString("zh-CN")}
+                              {new Date(report.createdAt).toLocaleString('zh-CN')}
                             </p>
                           </div>
                         </div>
-                        <Button asChild variant="outline" size="sm">
+                        <Button asChild variant="link" size="sm" className="mt-1 h-auto px-0">
                           <Link href={`/analysis/health/report/${report.executionId}`}>
                             打开报告
+                            <ArrowRight />
                           </Link>
                         </Button>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed py-8 text-center">
-                    <p className="text-sm font-medium">还没有健康分析报告</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      首次分析完成后，报告会显示在这里。
-                    </p>
-                  </div>
+                  <p className="py-5 text-sm text-muted-foreground">
+                    暂无报告，首次分析完成后会显示在这里。
+                  </p>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* 采集统计 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
-            <CardHeader>
-              <CardTitle>数据采集统计</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-4 rounded-lg text-center">
-                  <div className="text-indigo-700 text-sm font-medium mb-1">总文本块</div>
-                  <div className="text-2xl font-bold text-indigo-900">{repository.chunkStats.total}</div>
-                </div>
-                <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 p-4 rounded-lg text-center">
-                  <div className="text-cyan-700 text-sm font-medium mb-1">README 分块</div>
-                  <div className="text-2xl font-bold text-cyan-900">{repository.chunkStats.readme}</div>
-                </div>
-                <div className="bg-gradient-to-br from-pink-50 to-pink-100/50 p-4 rounded-lg text-center">
-                  <div className="text-pink-700 text-sm font-medium mb-1">Issues 分块</div>
-                  <div className="text-2xl font-bold text-pink-900">{repository.chunkStats.issues}</div>
-                </div>
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-4 rounded-lg text-center">
-                  <div className="text-orange-700 text-sm font-medium mb-1">Commits 分块</div>
-                  <div className="text-2xl font-bold text-orange-900">{repository.chunkStats.commits}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* 向量化进度 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.15 }}
-        >
-          <EmbeddingProgress repoId={id} />
-        </motion.div>
-
-        {/* Releases */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-        >
-          <Card className="mb-6 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
-            <CardHeader>
-              <CardTitle>发布版本</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingReleases ? (
-                <div className="text-center text-muted-foreground py-4">加载中...</div>
-              ) : releases && releases.length > 0 ? (
-                <div className="space-y-4">
-                  {releases.map((release) => (
-                    <div key={release.id} className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <a
-                              href={release.htmlUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 font-semibold transition-colors"
-                            >
-                              {release.tagName}
-                            </a>
-                            {release.isPrerelease && (
-                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                                Pre-release
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="text-sm font-medium text-slate-700">{release.name}</h4>
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {release.publishedAt && formatDistanceToNow(new Date(release.publishedAt), {
-                            addSuffix: true,
-                            locale: zhCN,
-                          })}
-                        </div>
-                      </div>
-
-                      {release.body && (
-                        <div className="text-sm text-slate-600 mb-3 line-clamp-3">
-                          {release.body.substring(0, 200)}
-                          {release.body.length > 200 && "..."}
-                        </div>
-                      )}
-
-                      {/* 下载链接 */}
-                      <div className="flex flex-wrap gap-2">
-                        {release.zipUrl && (
-                          <a
-                            href={release.zipUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
-                          >
-                            <span>📦</span> ZIP 源码
-                          </a>
-                        )}
-                        {release.tarUrl && (
-                          <a
-                            href={release.tarUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
-                          >
-                            <span>📦</span> TAR 源码
-                          </a>
-                        )}
-                        {release.assets.map((asset) => (
-                          <a
-                            key={asset.name}
-                            href={asset.browserDownloadUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
-                            title={`下载次数: ${asset.downloadCount}`}
-                          >
-                            <span>⬇️</span> {asset.name}
-                            <span className="text-xs text-slate-500">({asset.downloadCount})</span>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center text-muted-foreground py-8">
-                  <div className="text-4xl mb-2">📦</div>
-                  <p>该仓库暂无发布版本</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* README 预览 */}
-        {repository.readme && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.3 }}
-          >
-            <Card className="bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-lg shadow-slate-200/50">
-              <CardHeader className="border-b border-slate-200/60">
-                <CardTitle className="text-gray-900">README</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="max-h-[600px] overflow-y-auto p-6 bg-slate-50/50">
-                  <MarkdownRenderer content={repository.readme} />
-                </div>
               </CardContent>
             </Card>
-          </motion.div>
-        )}
+
+            <Card className="shadow-none">
+              <CardHeader>
+                <h2 className="text-lg font-semibold">采集状态</h2>
+                <CardDescription>用于搜索和分析的文本块数量。</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <dl className="divide-y border-y">
+                  {chunkStats.map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between gap-4 py-2.5 text-sm"
+                    >
+                      <dt className="text-muted-foreground">{label}</dt>
+                      <dd className="font-medium tabular-nums">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+
+            <EmbeddingProgress repoId={id} />
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function RepositoryLoadingState() {
+  return (
+    <main className="min-h-screen">
+      <AnimatedBackground />
+      <div className="container mx-auto max-w-6xl px-4 py-8" aria-label="正在加载仓库详情">
+        <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
+        <div className="mt-6 border-b pb-6">
+          <div className="h-8 w-72 max-w-full animate-pulse rounded-md bg-muted" />
+          <div className="mt-3 h-5 w-full max-w-2xl animate-pulse rounded-md bg-muted/70" />
+          <div className="mt-6 h-20 animate-pulse rounded-lg border bg-card" />
+        </div>
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+          <div className="h-96 animate-pulse rounded-lg border bg-card" />
+          <div className="h-72 animate-pulse rounded-lg border bg-card" />
+        </div>
       </div>
     </main>
   );
 }
 
 export default function RepositoryDetailPage({ params }: RepositoryDetailPageProps) {
-  // 使用 React 的 use hook 同步解析 params Promise
   const resolvedParams = use(params);
   const id = parseInt(resolvedParams.id, 10);
 
+  if (!Number.isInteger(id) || id <= 0) {
+    return (
+      <main className="min-h-screen">
+        <AnimatedBackground />
+        <div className="container mx-auto max-w-3xl px-4 py-16">
+          <div role="alert" className="rounded-lg border bg-card p-6">
+            <h1 className="text-lg font-semibold">仓库地址无效</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              请从仓库工作区重新选择要查看的仓库。
+            </p>
+            <Button asChild className="mt-5">
+              <Link href="/">
+                <ArrowLeft />
+                返回仓库工作区
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center text-muted-foreground">加载中...</div></div>}>
+    <Suspense fallback={<RepositoryLoadingState />}>
       <RepositoryDetailContent id={id} />
     </Suspense>
   );
