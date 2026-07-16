@@ -17,7 +17,13 @@ Fastify + tRPC API :3100
   ├── DeepSeek 或其他 OpenAI-compatible API
   ├── BGE-M3 embedding 服务
 
-CLI Skills
+后台执行面
+  API Scheduler → PostgreSQL jobs → Worker → GitHub Search → radar_candidates
+
+统一 Agent 调用面
+  CLI / MCP → API Client → tRPC API
+
+独立 CLI Skills
   repo-fetch → repo-analyze → report-generate
 ```
 
@@ -29,7 +35,11 @@ CLI Skills
 | ----------------- | --------------------------------------------------------------- |
 | `apps/web`        | Next.js App Router 页面、组件、tRPC 客户端和 SSE 交互           |
 | `apps/api`        | Fastify 入口、tRPC 路由、Agent/Workflow SSE 路由和调度器        |
+| `apps/worker`     | 持久任务领取、租约恢复、GitHub 发现与候选入箱                  |
+| `apps/cli`        | 可安装的 `devscope` CLI、JSON 输出和退出码                     |
+| `apps/mcp`        | MCP stdio Server 与工具注册                                    |
 | `packages/ai`     | OpenAI-compatible 的统一文本、流式和结构化输出接口              |
+| `packages/client` | tRPC transport、认证请求头、公开调用 facade 与响应校验          |
 | `packages/db`     | Drizzle schema、数据库访问、GitHub 数据采集和分析管道           |
 | `packages/shared` | Zod schema、共享 TypeScript 类型、GitHub 客户端                 |
 | `skills`          | 可独立执行或通过管道组合的命令行工具                            |
@@ -39,13 +49,16 @@ CLI Skills
 ```text
 apps/web ───────────────► packages/shared
 apps/api ───────────────► packages/ai, packages/db, packages/shared
+apps/worker ─────────────► packages/db
+apps/cli ───────────────► packages/client ───────────────► tRPC API
+apps/mcp ───────────────► packages/client ───────────────► tRPC API
 packages/db ────────────► packages/shared
 skills/repo-analyze ────► packages/ai, packages/shared
 skills/repo-fetch ──────► packages/shared
 skills/report-generate ─► packages/shared
 ```
 
-共享包不能反向依赖应用层；Web 不直接连接数据库。
+共享包不能反向依赖应用层；Web 不直接连接数据库。CLI 与 MCP 也不能直接依赖数据库或 AI 包，所有业务行为都经 API 执行。这样可以让未来应用鉴权、租户隔离、限流和审计在服务端统一生效。
 
 ## 请求与数据流
 
@@ -82,6 +95,21 @@ PostgreSQL 是报告的事实来源。`reports/<executionId>` 仍可生成 JSON/
 报告列表和详情查询当前都显式按服务端解析的 `userId` 过滤。现阶段该值仍来自
 单用户上下文，未来接入会话鉴权时应替换统一的当前用户解析逻辑。
 
+### 持续技术雷达
+
+API 内 scheduler 只按日创建带 `userId` 和 `idempotencyKey` 的
+`radar.discover.github` 任务，不直接调用外部发现源。独立 Worker 使用 PostgreSQL
+lease 与 `FOR UPDATE SKIP LOCKED` 领取任务，失败后进入 `retry_wait`，超过最大尝试
+次数后进入 `dead`；进程中断留下的过期 lease 会被重新排队。
+
+```text
+Scheduler → jobs → Worker → GitHub Search → radar_candidates
+```
+
+候选按 `(userId, fullName)` 去重，并保留查询条件、topics、创建/更新时间等发现证据。
+候选不会自动写入正式 `repositories`。当前只完成可靠发现与候选池基础；兴趣画像、
+确定性评分、研究 Agent、digest 和反馈闭环仍属于后续迭代。
+
 AI 层统一使用 `openai-compatible` provider：优先读取 `OPENAI_COMPATIBLE_*`，
 也支持 `DEEPSEEK_*`，当前生产默认模型为 `deepseek-chat`。未配置 API Key 时会在初始化阶段明确失败。
 
@@ -100,6 +128,18 @@ echo "vercel/next.js" \
 
 三个工具以 JSON/stdin 为主要衔接方式，适合单独使用，也适合脚本编排。
 
+### CLI 与 MCP
+
+`packages/client` 是面向外部调用面的稳定 facade。它通过 tRPC HTTP transport 调用 API，并使用 Zod 再次校验响应。`apps/cli` 将该 facade 映射为稳定 JSON 命令；`apps/mcp` 将同一组能力映射为七个 MCP tools。
+
+```text
+人类 / shell / Agent ──► devscope CLI ─┐
+                                      ├──► API Client ──► Fastify + tRPC API
+MCP Host / Agent ──────► MCP stdio ───┘
+```
+
+首批范围只包含健康检查、仓库列表/详情/采集、向量化状态、语义搜索和分组列表。采集仍由 API 执行业务逻辑；MCP 工具不会在本地直接调用 GitHub、数据库或模型服务。
+
 ## 类型与验证边界
 
 - TypeScript：编译期类型检查；
@@ -117,12 +157,14 @@ echo "vercel/next.js" \
 
 ### 数据库演进
 
-公开版前需要完成正式迁移基线、外键和唯一约束复核，并避免使用 `db:push` 直接修改生产 schema。
+首份 Drizzle baseline migration 已纳入版本控制，并兼容既有 `db:push` 数据库与空库初始化。
+后续 schema 变化必须继续生成和审查显式迁移；公开版前仍需复核全部外键、唯一约束和租户过滤。
 
 ### 实验能力
 
 仓库健康分析的报告入库、历史列表和详情读取已经形成可恢复的数据库链路。
-调度器及其他报告类型仍包含可选配置或未完成路径，应继续与稳定核心解耦，
+调度器和 Worker 已通过持久 jobs 解耦；Radar 当前只有 GitHub Search 发现与候选入箱，
+尚未形成完整推荐产品。其他报告类型仍包含可选配置或未完成路径，应继续与稳定核心解耦，
 不应阻塞仓库、搜索和基础分析功能。未来接入自研工作流系统时，应通过独立适配层接入，
 不要把外部执行器协议写入现有报告数据模型。
 

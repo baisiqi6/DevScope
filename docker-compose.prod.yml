@@ -47,6 +47,20 @@ services:
     networks:
       - devscope-network
 
+  # Worker 服务 - 使用 GHCR 镜像，不对外暴露端口
+  worker:
+    image: ghcr.io/baisiqi6/devscope/worker:latest
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/devscope
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - devscope-network
+
   # Web 服务 - 使用 GHCR 镜像
   web:
     image: ghcr.io/baisiqi6/devscope/web:latest

@@ -42,9 +42,15 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 2. 备份生产 `.env`、Nginx 配置和必要数据；
 3. 使用 `git pull --ff-only` 更新，不在服务器直接合并；
 4. 拉取固定版本镜像，避免不可追溯的临时构建；
-5. 只重建 DevScope 的 `web`、`api` 等目标服务；
+5. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
 6. 如有数据库迁移，单独审查、备份、执行和验证；
 7. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx。
+
+首次上线 Worker 前必须应用 `packages/db/drizzle` 中已审查的迁移。手动部署工作流的
+`apply_database_migration` 默认为 `false`；只有在确认迁移内容、备份空间和回滚窗口后才设为
+`true`。工作流会先把 PostgreSQL custom-format 备份写入
+`/home/devscope/backups/devscope/`，再显式执行 `db:migrate`。未应用迁移时，Worker schema
+检查会阻止部署继续。
 
 ## 访问控制
 
@@ -90,6 +96,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 curl --fail http://127.0.0.1:3100/trpc/health
 curl --fail http://127.0.0.1:3000/
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 worker
 ```
 
 公网侧应验证：
@@ -97,7 +104,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 - 未认证访问 DevScope 返回 `401`；
 - 使用有效凭据访问首页和 health 返回 `200`；
 - 同机其他站点状态与变更前一致；
-- API、Web、PostgreSQL 容器健康；
+- API、Web、Worker、PostgreSQL 容器健康；
 - 日志中没有持续的数据库认证、代理或 5xx 错误。
 
 ## 回滚
@@ -109,5 +116,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 3. 恢复环境文件和数据库角色密码；
 4. 恢复上一个已验证镜像或提交；
 5. 再次执行内部与公网验证。
+
+如果迁移需要回滚，先停止 Worker，再使用本次部署前生成的 custom-format 备份恢复数据库，
+然后恢复上一个 API/Worker 镜像。不得只删除 `jobs` 或 `radar_candidates` 表来代替完整回滚，
+也不得在未确认备份可读前执行恢复。
 
 回滚不能依赖未记录的手工状态。每次生产变更都应记录时间、目标提交、备份位置和验证结果，但不得记录密钥明文。

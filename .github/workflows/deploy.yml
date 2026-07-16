@@ -4,11 +4,18 @@ on:
   # 生产服务仍在运行，服务器上存在需要保护的本地配置。
   # 在 CI、迁移和配置对账全部完成前，只允许手动部署。
   workflow_dispatch:
+    inputs:
+      apply_database_migration:
+        description: '备份数据库并显式执行已审查的 Drizzle 迁移'
+        required: true
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
   # GHCR 要求全小写，github.repository 保留大小写 DevScope 会导致推送失败
   IMAGE_NAME_API: baisiqi6/devscope/api
+  IMAGE_NAME_WORKER: baisiqi6/devscope/worker
   IMAGE_NAME_WEB: baisiqi6/devscope/web
 
 jobs:
@@ -50,6 +57,15 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
 
+      - name: Extract metadata for Worker
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
       - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
@@ -69,6 +85,17 @@ jobs:
           push: true
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/worker/Dockerfile
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -100,17 +127,36 @@ jobs:
             # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
 
-            # 拉取最新镜像（只拉 API 和 Web，不动 postgres 和 nginx）
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web
+            # 拉取最新镜像（不动 postgres 和 nginx）
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web worker
+
+            if [ "${{ inputs.apply_database_migration }}" = "true" ]; then
+              backup_dir="/home/devscope/backups/devscope"
+              backup_file="$backup_dir/pre-migration-$(date +%Y%m%d-%H%M%S).dump"
+              install -d -m 700 "$backup_dir"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+                pg_dump -U postgres -d devscope --format=custom > "$backup_file"
+              chmod 600 "$backup_file"
+
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api \
+                pnpm --filter @devscope/db db:migrate
+            fi
+
+            # 未显式执行迁移时也必须先验证 Worker 所需 schema 已存在。
+            if [ "$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+              psql -U postgres -d devscope -tAc "select count(*) from pg_tables where schemaname='public' and tablename in ('jobs','radar_candidates')" | tr -d '[:space:]')" != "2" ]; then
+              echo "Worker schema is missing; rerun the manual workflow with apply_database_migration=true after review"
+              exit 1
+            fi
 
             # 只重建 DevScope 应用服务，不重启或覆盖共享 Nginx。
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate api web worker
 
             # 等待服务启动
             sleep 10
 
-            # Schema 变更必须使用经过审查且纳入版本控制的迁移，
-            # 不允许由应用部署工作流隐式执行。
+            # Schema 变更必须使用经过审查且纳入版本控制的迁移；
+            # 只有 workflow_dispatch 显式输入为 true 时才执行。
 
             # 健康检查
             if ! curl -sf http://localhost:3100/trpc/health > /dev/null 2>&1; then
@@ -122,6 +168,12 @@ jobs:
             if ! curl -sf http://localhost:3000 > /dev/null 2>&1; then
               echo "Web health check failed"
               docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 web
+              exit 1
+            fi
+
+            if [ "$(docker inspect -f '{{.State.Running}}' devscope-worker 2>/dev/null)" != "true" ]; then
+              echo "Worker is not running"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 worker
               exit 1
             fi
 

@@ -30,6 +30,9 @@ const mockRest = {
   issues: {
     listForRepo: vi.fn(),
   },
+  search: {
+    repos: vi.fn(),
+  },
 };
 
 /**
@@ -210,6 +213,49 @@ describe("GitHubCollector", () => {
       expect(result[0].sha).toBe("abc123");
       expect(result[0].message).toBe("First commit");
       expect(result[0].author).toBe("Developer");
+    });
+  });
+
+  describe("searchRepositories", () => {
+    it("应该通过 GitHub Search 返回标准化候选仓库", async () => {
+      mockRest.search.repos.mockResolvedValue({
+        data: {
+          items: [{
+            id: 123,
+            full_name: "owner/new-repo",
+            name: "new-repo",
+            owner: { login: "owner" },
+            description: "A new repository",
+            html_url: "https://github.com/owner/new-repo",
+            stargazers_count: 42,
+            forks_count: 3,
+            open_issues_count: 1,
+            language: "TypeScript",
+            topics: ["agents"],
+            created_at: "2026-07-10T00:00:00Z",
+            updated_at: "2026-07-16T00:00:00Z",
+            pushed_at: "2026-07-16T00:00:00Z",
+          }],
+        },
+      });
+
+      const result = await collector.searchRepositories(
+        "created:>=2026-07-09 stars:>=10",
+        { limit: 20 }
+      );
+
+      expect(mockRest.search.repos).toHaveBeenCalledWith({
+        q: "created:>=2026-07-09 stars:>=10",
+        per_page: 20,
+        sort: "stars",
+        order: "desc",
+      });
+      expect(result).toEqual([expect.objectContaining({
+        githubRepoId: "123",
+        fullName: "owner/new-repo",
+        topics: ["agents"],
+        stars: 42,
+      })]);
     });
   });
 
