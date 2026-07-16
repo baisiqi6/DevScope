@@ -46,10 +46,10 @@ export function Navigation({ className, mobile = false }: NavigationProps) {
             href={item.path}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "inline-flex min-h-10 items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               mobile && "w-full justify-start",
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "border-primary/20 bg-primary/10 text-primary"
                 : "hover:bg-accent hover:text-foreground"
             )}
           >

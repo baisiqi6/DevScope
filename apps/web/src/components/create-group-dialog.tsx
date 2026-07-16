@@ -105,7 +105,7 @@ export function CreateGroupDialog({
           {/* 分组名称 */}
           <div className="space-y-2">
             <Label htmlFor="group-name">
-              分组名称 <span className="text-red-500">*</span>
+              分组名称 <span className="text-destructive">*</span>
             </Label>
             <Input
               id="group-name"
@@ -114,7 +114,7 @@ export function CreateGroupDialog({
               onChange={(e) => setName(e.target.value)}
               maxLength={50}
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {name.length}/50
             </p>
           </div>
@@ -129,7 +129,9 @@ export function CreateGroupDialog({
                   type="button"
                   onClick={() => setSelectedColor(color.value as GroupColor)}
                   className={`
-                    w-10 h-10 rounded-lg border-2 transition-all
+                    flex h-10 w-10 items-center justify-center rounded-lg border-2
+                    transition-[color,background-color,border-color,box-shadow,transform] duration-150
+                    [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96]
                     ${selectedColor === color.value
                       ? `${color.solidBg} ${color.solidText} ring-2 ring-offset-2 ring-${color.value}-400`
                       : `${color.bg} ${color.border} hover:${color.hoverBg}`
@@ -155,16 +157,18 @@ export function CreateGroupDialog({
                     type="button"
                     onClick={() => setSelectedIcon(iconOption.value)}
                     className={`
-                      flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all
+                      flex flex-col items-center gap-1 rounded-lg border-2 p-2
+                      transition-[color,background-color,border-color,box-shadow,transform] duration-150
+                      [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96]
                       ${selectedIcon === iconOption.value
-                        ? "bg-blue-50 border-blue-500"
-                        : "border-gray-200 hover:bg-gray-50"
+                        ? "border-primary/60 bg-primary/10 text-primary ring-1 ring-primary/25"
+                        : "border-border text-muted-foreground hover:border-primary/30 hover:bg-accent"
                       }
                     `}
                     title={iconOption.label}
                   >
                     <IconComp className="h-4 w-4" />
-                    <span className="text-[10px] text-gray-500">
+                    <span className="text-[10px] text-current">
                       {iconOption.label.slice(0, 2)}
                     </span>
                   </button>
@@ -184,7 +188,7 @@ export function CreateGroupDialog({
               rows={2}
               maxLength={200}
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {description.length}/200
             </p>
           </div>

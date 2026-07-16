@@ -338,8 +338,9 @@ export default function GroupsManagementPage() {
 
       <div className={isSidebarOpen ? 'lg:pr-[380px]' : undefined}>
         <div className="container mx-auto max-w-7xl px-4 py-6 sm:py-8">
-          <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <header className="command-page-header flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
+              <p className="command-kicker">集合编排</p>
               <h1 className="text-2xl font-semibold tracking-tight">分组管理</h1>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                 整理仓库集合，选择分组后可从右侧拖入未分组仓库。
@@ -382,7 +383,7 @@ export default function GroupsManagementPage() {
               )}
             </div>
 
-            <dl className="grid grid-cols-3 overflow-hidden rounded-lg border bg-card text-sm">
+            <dl className="telemetry-strip grid grid-cols-3 text-sm">
               {[
                 ['分组', groups.length],
                 ['已分组', groupedRepoCount],
@@ -435,7 +436,7 @@ export default function GroupsManagementPage() {
               selectedGroupId !== null && isDropZoneActive
                 ? 'border-primary bg-primary/5'
                 : selectedGroupId !== null && isDropZoneSuccess
-                  ? 'border-green-600/40 bg-green-50'
+                  ? 'border-success/40 bg-success/10'
                   : draggingRepo && selectedGroupId !== null
                     ? 'border-primary/30 bg-card'
                     : 'border-transparent px-0 sm:px-0'
@@ -528,7 +529,7 @@ export default function GroupsManagementPage() {
                 </p>
               </div>
             ) : (
-              <div className="divide-y overflow-hidden rounded-lg border bg-card">
+              <div className="command-surface divide-y overflow-hidden">
                 {filteredGroups.map((group) => {
                   const colorConfig = getGroupColor(group.color);
                   const IconComponent = getGroupIcon(group.icon).icon;

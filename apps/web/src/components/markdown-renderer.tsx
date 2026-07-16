@@ -16,14 +16,14 @@ interface MarkdownRendererProps {
 }
 
 /**
- * 自定义 Markdown 组件样式（浅色主题）
+ * 自定义 Markdown 组件样式，使用全局语义 token 支持深浅色主题。
  */
 const components: Components = {
   // 标题样式
   h1: ({ children, node }) => {
     const align = (node as any)?.properties?.align;
     return (
-      <h1 className={`text-2xl font-bold mt-6 mb-4 pb-2 border-b border-gray-200 ${align === 'center' ? 'text-center' : ''}`}>
+      <h1 className={`mb-4 mt-6 border-b pb-2 text-2xl font-bold ${align === 'center' ? 'text-center' : ''}`}>
         {children}
       </h1>
     );
@@ -31,23 +31,23 @@ const components: Components = {
   h2: ({ children, node }) => {
     const align = (node as any)?.properties?.align;
     return (
-      <h2 className={`text-xl font-bold mt-5 mb-3 pb-1 border-b border-gray-200 ${align === 'center' ? 'text-center' : ''}`}>
+      <h2 className={`mb-3 mt-5 border-b pb-1 text-xl font-bold ${align === 'center' ? 'text-center' : ''}`}>
         {children}
       </h2>
     );
   },
   h3: ({ children }) => (
-    <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>
+    <h3 className="mb-2 mt-4 text-lg font-semibold">{children}</h3>
   ),
   h4: ({ children }) => (
-    <h4 className="text-base font-semibold mt-3 mb-2">{children}</h4>
+    <h4 className="mb-2 mt-3 text-base font-semibold">{children}</h4>
   ),
 
   // 段落样式
   p: ({ children, node }) => {
     const align = (node as any)?.properties?.align;
     return (
-      <p className={`mb-4 leading-7 text-gray-700 ${align === 'center' ? 'text-center' : ''}`}>
+      <p className={`mb-4 leading-7 text-foreground/90 ${align === 'center' ? 'text-center' : ''}`}>
         {children}
       </p>
     );
@@ -59,15 +59,15 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 hover:text-blue-800 underline"
+      className="text-primary underline underline-offset-4 hover:text-primary/80"
     >
       {children}
     </a>
   ),
 
   // 列表样式
-  ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 text-gray-700">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1 text-gray-700">{children}</ol>,
+  ul: ({ children }) => <ul className="mb-4 list-inside list-disc space-y-1 text-foreground/90">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-4 list-inside list-decimal space-y-1 text-foreground/90">{children}</ol>,
   li: ({ children }) => <li className="ml-4">{children}</li>,
 
   // 代码块样式
@@ -75,7 +75,7 @@ const components: Components = {
     // 判断是行内代码还是代码块
     const isInline = !className;
     return isInline ? (
-      <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-red-600">
+      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-primary">
         {children}
       </code>
     ) : (
@@ -83,14 +83,14 @@ const components: Components = {
     );
   },
   pre: ({ children }) => (
-    <pre className="bg-gray-50 p-4 rounded-md overflow-x-auto mb-4 text-sm font-mono border border-gray-200">
+    <pre className="mb-4 overflow-x-auto rounded-md border bg-muted/45 p-4 font-mono text-sm">
       {children}
     </pre>
   ),
 
   // 引用块样式
   blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-gray-400 pl-4 italic text-gray-600 mb-4 bg-gray-50 py-2">
+    <blockquote className="mb-4 rounded-md border bg-muted/35 px-4 py-3 italic text-muted-foreground">
       {children}
     </blockquote>
   ),
@@ -98,21 +98,21 @@ const components: Components = {
   // 表格样式（GFM 支持）
   table: ({ children }) => (
     <div className="overflow-x-auto mb-4">
-      <table className="min-w-full border border-gray-300 divide-y divide-gray-200">{children}</table>
+      <table className="min-w-full divide-y rounded-md border">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-gray-100">{children}</thead>,
-  tbody: ({ children }) => <tbody className="divide-y divide-gray-200">{children}</tbody>,
-  tr: ({ children }) => <tr className="hover:bg-gray-50">{children}</tr>,
+  thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+  tbody: ({ children }) => <tbody className="divide-y">{children}</tbody>,
+  tr: ({ children }) => <tr className="hover:bg-muted/45">{children}</tr>,
   th: ({ children }) => (
-    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">{children}</th>
+    <th className="px-4 py-2 text-left text-sm font-semibold text-foreground">{children}</th>
   ),
   td: ({ children }) => (
-    <td className="px-4 py-2 text-sm text-gray-700">{children}</td>
+    <td className="px-4 py-2 text-sm text-foreground/90">{children}</td>
   ),
 
   // 分隔线样式
-  hr: () => <hr className="my-6 border-t border-gray-200" />,
+  hr: () => <hr className="my-6 border-t" />,
 
   // 图片样式
   img: ({ src, alt }) => (
@@ -120,11 +120,11 @@ const components: Components = {
   ),
 
   // 删除线样式（GFM 支持）
-  del: ({ children }) => <del className="text-gray-400 line-through">{children}</del>,
+  del: ({ children }) => <del className="text-muted-foreground line-through">{children}</del>,
 
   // 强调样式
-  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-  em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  em: ({ children }) => <em className="italic text-foreground/90">{children}</em>,
 
   // HTML 标签样式支持
   div: ({ children, node }) => {
@@ -139,12 +139,12 @@ const components: Components = {
 
   // details/summary 样式（折叠块）
   details: ({ children }) => (
-    <details className="mb-4 bg-gray-50 border border-gray-200 rounded-md p-4">
+    <details className="mb-4 rounded-md border bg-muted/35 p-4">
       {children}
     </details>
   ),
   summary: ({ children }) => (
-    <summary className="cursor-pointer font-semibold text-gray-900 hover:text-gray-700 select-none">
+    <summary className="cursor-pointer select-none font-semibold text-foreground hover:text-primary">
       {children}
     </summary>
   ),

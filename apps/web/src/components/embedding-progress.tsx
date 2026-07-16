@@ -75,19 +75,22 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
   }
 
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-3">
+    <Card
+      className="hologram-panel p-4"
+      data-live={status.status === 'processing' ? 'true' : 'false'}
+    >
+      <div className="relative z-20 flex items-center gap-3">
         {status.status === 'processing' && (
-          <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin text-signal motion-reduce:animate-none" />
         )}
         {status.status === 'completed' && (
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
+          <CheckCircle2 className="h-5 w-5 text-success" />
         )}
         {status.status === 'failed' && (
-          <AlertCircle className="h-5 w-5 text-red-500" />
+          <AlertCircle className="h-5 w-5 text-destructive" />
         )}
         {status.status === 'pending' && (
-          <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
         )}
 
         <div className="flex-1">
@@ -104,7 +107,7 @@ export function EmbeddingProgress({ repoId, onComplete }: EmbeddingProgressProps
           </div>
           <Progress value={status.progress} className="h-2" />
           {status.error && (
-            <p className="text-xs text-red-500 mt-2">{status.error}</p>
+            <p className="mt-2 text-xs text-destructive">{status.error}</p>
           )}
           {status.status === 'processing' && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -138,9 +141,9 @@ export function EmbeddingStatusBadge({ repoId }: { repoId: number }) {
 
   if (data.status === 'completed') {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-        <span className="text-sm text-green-700 dark:text-green-300">
+      <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-1.5">
+        <CheckCircle2 className="h-4 w-4 text-success" />
+        <span className="text-sm text-success">
           向量化完成，可使用语义搜索
         </span>
       </div>
@@ -149,9 +152,9 @@ export function EmbeddingStatusBadge({ repoId }: { repoId: number }) {
 
   if (data.status === 'processing') {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-        <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
-        <span className="text-sm text-blue-700 dark:text-blue-300">
+      <div className="flex items-center gap-2 rounded-lg border border-signal/30 bg-signal/10 px-3 py-1.5">
+        <Loader2 className="h-4 w-4 animate-spin text-signal motion-reduce:animate-none" />
+        <span className="text-sm text-signal">
           向量化中 {data.progress}%
         </span>
       </div>
@@ -160,9 +163,9 @@ export function EmbeddingStatusBadge({ repoId }: { repoId: number }) {
 
   if (data.status === 'failed') {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-        <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-        <span className="text-sm text-red-700 dark:text-red-300">
+      <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5">
+        <AlertCircle className="h-4 w-4 text-destructive" />
+        <span className="text-sm text-destructive">
           向量化失败{data.error ? `: ${data.error}` : ''}
         </span>
       </div>

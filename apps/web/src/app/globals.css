@@ -4,48 +4,62 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 47.4% 11.2%;
-    --card: 210 40% 99%;
-    --card-foreground: 222.2 47.4% 11.2%;
-    --popover: 210 40% 99%;
-    --popover-foreground: 222.2 47.4% 11.2%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    color-scheme: light;
+    --background: 0.975 0.009 222;
+    --foreground: 0.22 0.025 232;
+    --card: 0.995 0.006 220;
+    --card-foreground: 0.22 0.025 232;
+    --popover: 0.995 0.006 220;
+    --popover-foreground: 0.22 0.025 232;
+    --primary: 0.52 0.145 220;
+    --primary-foreground: 0.985 0.008 220;
+    --secondary: 0.94 0.018 220;
+    --secondary-foreground: 0.25 0.03 232;
+    --muted: 0.945 0.014 220;
+    --muted-foreground: 0.48 0.03 228;
+    --accent: 0.91 0.028 218;
+    --accent-foreground: 0.24 0.035 230;
+    --destructive: 0.57 0.2 25;
+    --destructive-foreground: 0.985 0.008 220;
+    --border: 0.86 0.024 222;
+    --input: 0.82 0.027 222;
+    --ring: 0.63 0.15 215;
+    --success: 0.52 0.12 156;
+    --success-foreground: 0.985 0.008 156;
+    --warning: 0.62 0.14 70;
+    --warning-foreground: 0.2 0.035 70;
+    --signal: 0.58 0.16 205;
+    --signal-foreground: 0.985 0.008 205;
+    --radius: 0.375rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    color-scheme: dark;
+    --background: 0.135 0.024 236;
+    --foreground: 0.92 0.018 218;
+    --card: 0.175 0.028 232;
+    --card-foreground: 0.92 0.018 218;
+    --popover: 0.195 0.03 232;
+    --popover-foreground: 0.92 0.018 218;
+    --primary: 0.75 0.13 205;
+    --primary-foreground: 0.14 0.025 232;
+    --secondary: 0.215 0.034 232;
+    --secondary-foreground: 0.9 0.02 218;
+    --muted: 0.205 0.03 232;
+    --muted-foreground: 0.7 0.03 220;
+    --accent: 0.25 0.045 226;
+    --accent-foreground: 0.92 0.018 218;
+    --destructive: 0.66 0.18 25;
+    --destructive-foreground: 0.985 0.008 220;
+    --border: 0.31 0.048 228;
+    --input: 0.34 0.05 226;
+    --ring: 0.77 0.14 203;
+    --success: 0.72 0.12 155;
+    --success-foreground: 0.14 0.025 155;
+    --warning: 0.78 0.14 78;
+    --warning-foreground: 0.16 0.035 78;
+    --signal: 0.77 0.145 203;
+    --signal-foreground: 0.14 0.025 232;
   }
 }
 
@@ -55,6 +69,12 @@
   }
   body {
     @apply min-h-screen bg-background text-foreground;
+    font-feature-settings: "kern" 1, "tnum" 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    @apply bg-primary/25 text-foreground;
   }
 
   :focus-visible {
@@ -70,5 +90,81 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+@layer components {
+  .command-page-header {
+    @apply relative border-b border-border/80 pb-6;
+  }
+
+  .command-kicker {
+    @apply mb-2 inline-flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-primary;
+  }
+
+  .command-kicker::before {
+    content: "";
+    @apply h-1.5 w-1.5 rounded-full bg-signal;
+    box-shadow: 0 0 12px oklch(var(--signal) / 0.65);
+  }
+
+  .command-surface {
+    @apply rounded-lg border border-border/80 bg-card/90 text-card-foreground shadow-none;
+  }
+
+  .command-toolbar {
+    @apply border-y border-border/80 bg-card/45 py-3;
+  }
+
+  .telemetry-strip {
+    @apply overflow-hidden rounded-lg border border-border/80 bg-card/85;
+    background-image: linear-gradient(
+      to bottom,
+      oklch(var(--primary) / 0.035),
+      transparent 65%
+    );
+  }
+
+  .hologram-panel {
+    @apply relative overflow-hidden border-primary/35 bg-card;
+    background-image:
+      linear-gradient(to right, oklch(var(--primary) / 0.075) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(var(--primary) / 0.075) 1px, transparent 1px);
+    background-size: 28px 28px;
+    box-shadow:
+      inset 0 0 0 1px oklch(var(--primary) / 0.08),
+      0 0 28px oklch(var(--signal) / 0.06);
+  }
+
+  .hologram-panel::after {
+    content: "";
+    @apply pointer-events-none absolute inset-1 rounded-[calc(var(--radius)-2px)] border border-primary/10;
+  }
+
+  .hologram-panel[data-live="true"]::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 z-10 h-20 opacity-60;
+    background: linear-gradient(to bottom, transparent, oklch(var(--signal) / 0.16), transparent);
+    animation: hologram-scan 3.2s linear infinite;
+  }
+
+  .status-chip {
+    @apply inline-flex items-center gap-2 rounded-md border border-border/80 bg-background/75 px-2.5 py-1 text-xs font-medium text-muted-foreground;
+  }
+}
+
+@keyframes hologram-scan {
+  from {
+    transform: translateY(-125%);
+  }
+  to {
+    transform: translateY(520%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hologram-panel[data-live="true"]::before {
+    animation: none;
+    opacity: 0;
   }
 }
