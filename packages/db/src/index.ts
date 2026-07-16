@@ -112,3 +112,13 @@ export * from "./report-storage";
  * 工作流报告数据库存储
  */
 export * from "./workflow-reports";
+
+/**
+ * 持久任务队列
+ */
+export * from "./jobs";
+
+/**
+ * 技术雷达候选池
+ */
+export * from "./radar";

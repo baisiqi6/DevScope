@@ -1,0 +1,12 @@
+.git
+.planning
+.env
+.env.*
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+apps/api/reports
+*.log
+.DS_Store

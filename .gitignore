@@ -42,9 +42,6 @@ lerna-debug.log*
 # Local agent planning
 .planning/
 
-# Drizzle
-drizzle/
-
 # Database
 *.db
 *.db-journal

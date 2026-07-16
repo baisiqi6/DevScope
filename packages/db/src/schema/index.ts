@@ -24,6 +24,30 @@ export const embeddingStatusEnum = pgEnum("embedding_status", [
   "failed",      // 失败
 ]);
 
+/**
+ * 持久任务状态枚举
+ */
+export const jobStatusEnum = pgEnum("job_status", [
+  "queued",
+  "running",
+  "succeeded",
+  "retry_wait",
+  "dead",
+  "cancelled",
+]);
+
+/**
+ * 技术雷达候选状态枚举
+ */
+export const radarCandidateStatusEnum = pgEnum("radar_candidate_status", [
+  "discovered",
+  "shortlisted",
+  "researching",
+  "recommended",
+  "dismissed",
+  "watching",
+]);
+
 // ============================================================================
 // 数据表定义
 // ============================================================================
@@ -44,6 +68,122 @@ export const users = pgTable("users", {
   /** 最后更新时间 */
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * 持久任务表
+ * @description 为独立 Worker 提供幂等入队、租约、重试和失败归档能力
+ */
+export const jobs = pgTable("jobs", {
+  /** 任务唯一标识 */
+  id: serial("id").primaryKey(),
+  /** 所属用户 ID；所有用户级任务必须显式隔离 */
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  /** 任务类型，例如 radar.discover.github */
+  type: text("type").notNull(),
+  /** 同一用户内的幂等键 */
+  idempotencyKey: text("idempotency_key").notNull(),
+  /** 任务载荷 */
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  /** 任务结果摘要 */
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  /** 当前状态 */
+  status: jobStatusEnum("status").default("queued").notNull(),
+  /** 优先级，数值越大越先执行 */
+  priority: integer("priority").default(0).notNull(),
+  /** 已领取次数 */
+  attempt: integer("attempt").default(0).notNull(),
+  /** 最大领取次数 */
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  /** 最早可领取时间 */
+  availableAt: timestamp("available_at").defaultNow().notNull(),
+  /** 当前 Worker 标识 */
+  leaseOwner: text("lease_owner"),
+  /** 租约过期时间 */
+  leaseExpiresAt: timestamp("lease_expires_at"),
+  /** 最后一次错误 */
+  lastError: text("last_error"),
+  /** 首次开始时间 */
+  startedAt: timestamp("started_at"),
+  /** 最终完成时间 */
+  completedAt: timestamp("completed_at"),
+  /** 创建时间 */
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** 最后更新时间 */
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserIdempotencyKey: uniqueIndex("jobs_user_idempotency_key_unique").on(
+    table.userId,
+    table.idempotencyKey
+  ),
+  claimIdx: index("jobs_claim_idx").on(table.status, table.availableAt, table.priority),
+  leaseExpiresAtIdx: index("jobs_lease_expires_at_idx").on(table.leaseExpiresAt),
+  userTypeIdx: index("jobs_user_type_idx").on(table.userId, table.type),
+}));
+
+/**
+ * 技术雷达候选表
+ * @description 保存发现信号，只有用户明确关注后才进入正式 repositories
+ */
+export const radarCandidates = pgTable("radar_candidates", {
+  /** 候选唯一标识 */
+  id: serial("id").primaryKey(),
+  /** 所属用户 ID */
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  /** GitHub repository ID；数据源未提供时允许为空 */
+  githubRepoId: text("github_repo_id"),
+  /** 标准化仓库全名 owner/repo */
+  fullName: text("full_name").notNull(),
+  /** 仓库名 */
+  name: text("name").notNull(),
+  /** 仓库所有者 */
+  owner: text("owner").notNull(),
+  /** GitHub URL */
+  url: text("url").notNull(),
+  /** 仓库描述 */
+  description: text("description"),
+  /** 主要语言 */
+  language: text("language"),
+  /** Stars 数量 */
+  stars: integer("stars").default(0).notNull(),
+  /** Forks 数量 */
+  forks: integer("forks").default(0).notNull(),
+  /** 开放 Issues 数量 */
+  openIssues: integer("open_issues").default(0).notNull(),
+  /** 当前生命周期状态 */
+  status: radarCandidateStatusEnum("status").default("discovered").notNull(),
+  /** 最近发现来源 */
+  source: text("source").notNull(),
+  /** 最近一次来源证据 */
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull(),
+  /** 确定性评分，后续评分阶段写入 */
+  deterministicScore: integer("deterministic_score"),
+  /** 评分拆分，保留可解释依据 */
+  scoreBreakdown: jsonb("score_breakdown").$type<Record<string, number>>(),
+  /** 首次发现时间 */
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  /** 最近发现时间 */
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  /** 创建时间 */
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** 最后更新时间 */
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserRepo: uniqueIndex("radar_candidates_user_repo_unique").on(
+    table.userId,
+    table.fullName
+  ),
+  userStatusScoreIdx: index("radar_candidates_user_status_score_idx").on(
+    table.userId,
+    table.status,
+    table.deterministicScore
+  ),
+  lastSeenAtIdx: index("radar_candidates_last_seen_at_idx").on(table.lastSeenAt),
+  githubRepoIdIdx: index("radar_candidates_github_repo_id_idx").on(table.githubRepoId),
+}));
 
 /**
  * GitHub 仓库表
@@ -250,6 +390,26 @@ export type Document = typeof documents.$inferSelect;
  * 新文档类型（用于插入数据库）
  */
 export type NewDocument = typeof documents.$inferInsert;
+
+/**
+ * 持久任务数据类型
+ */
+export type Job = typeof jobs.$inferSelect;
+
+/**
+ * 新持久任务类型
+ */
+export type NewJob = typeof jobs.$inferInsert;
+
+/**
+ * 技术雷达候选数据类型
+ */
+export type RadarCandidate = typeof radarCandidates.$inferSelect;
+
+/**
+ * 新技术雷达候选类型
+ */
+export type NewRadarCandidate = typeof radarCandidates.$inferInsert;
 
 // ============================================================================
 // 工作流相关表定义

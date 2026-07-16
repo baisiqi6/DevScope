@@ -171,6 +171,26 @@ export interface GitHubFollowingRepo {
 }
 
 /**
+ * GitHub Search 返回的候选仓库
+ */
+export interface GitHubSearchRepo {
+  githubRepoId: string;
+  fullName: string;
+  name: string;
+  owner: string;
+  description: string | null;
+  url: string;
+  stars: number;
+  forks: number;
+  openIssues: number;
+  language: string | null;
+  topics: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  pushedAt: Date;
+}
+
+/**
  * 仓库详细统计数据
  */
 export interface GitHubRepoStats {
@@ -390,6 +410,43 @@ export class GitHubCollector {
     }
 
     return repos;
+  }
+
+  /**
+   * 使用 GitHub 官方 Search API 发现候选仓库。
+   */
+  async searchRepositories(
+    query: string,
+    options: {
+      limit?: number;
+      sort?: "stars" | "forks" | "help-wanted-issues" | "updated";
+      order?: "asc" | "desc";
+    } = {}
+  ): Promise<GitHubSearchRepo[]> {
+    const { limit = 20, sort = "stars", order = "desc" } = options;
+    const { data } = await this.octokit.rest.search.repos({
+      q: query,
+      per_page: Math.min(limit, 100),
+      sort,
+      order,
+    });
+
+    return data.items.slice(0, limit).map((repo) => ({
+      githubRepoId: String(repo.id),
+      fullName: repo.full_name,
+      name: repo.name,
+      owner: repo.owner?.login || repo.full_name.split("/")[0],
+      description: repo.description,
+      url: repo.html_url,
+      stars: repo.stargazers_count,
+      forks: repo.forks_count,
+      openIssues: repo.open_issues_count,
+      language: repo.language,
+      topics: repo.topics ?? [],
+      createdAt: new Date(repo.created_at),
+      updatedAt: new Date(repo.updated_at),
+      pushedAt: new Date(repo.pushed_at),
+    }));
   }
 
   /**
