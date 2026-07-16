@@ -122,9 +122,10 @@ function RepositoryDetailContent({ id }: { id: number }) {
           </Link>
         </Button>
 
-        <header className="border-b pb-6">
+        <header className="command-page-header">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
+              <p className="command-kicker">仓库档案</p>
               <div className="flex min-w-0 items-start gap-2">
                 <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-tight">
                   {repository.owner}/{repository.name}
@@ -149,7 +150,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
             </div>
           </div>
 
-          <dl className="mt-6 grid grid-cols-2 overflow-hidden rounded-lg border bg-card md:grid-cols-4">
+          <dl className="telemetry-strip mt-6 grid grid-cols-2 md:grid-cols-4">
             {repositoryMetrics.map(({ label, value, icon: Icon }, index) => (
               <div
                 key={label}
@@ -169,7 +170,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
           <div className="min-w-0 space-y-6">
-            <Card className="shadow-none">
+            <Card className="command-surface">
               <CardHeader className="border-b">
                 <h2 className="text-lg font-semibold">README</h2>
                 <CardDescription>仓库当前采集到的 README 内容。</CardDescription>
@@ -187,7 +188,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
               </CardContent>
             </Card>
 
-            <Card className="shadow-none">
+            <Card className="command-surface">
               <CardHeader className="border-b">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -289,15 +290,22 @@ function RepositoryDetailContent({ id }: { id: number }) {
           </div>
 
           <aside className="space-y-6">
-            <Card className="shadow-none">
-              <CardHeader>
-                <Activity className="h-5 w-5 text-primary" />
+            <Card className="hologram-panel">
+              <CardHeader className="relative z-20">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="command-kicker mb-0">分析视口</p>
+                  <span className="status-chip">
+                    <span className="h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_8px_oklch(var(--signal)/0.65)]" />
+                    待命
+                  </span>
+                </div>
+                <Activity className="mt-3 h-5 w-5 text-primary" />
                 <h2 className="pt-2 text-lg font-semibold">健康分析</h2>
                 <CardDescription>
                   基于已采集数据运行 AI 评估，结论会保存到报告历史。
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="relative z-20">
                 <Button asChild className="w-full">
                   <Link href={`/analysis/health?repo=${encodeURIComponent(repository.fullName)}`}>
                     开始分析
@@ -346,7 +354,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
               </CardContent>
             </Card>
 
-            <Card className="shadow-none">
+            <Card className="telemetry-strip">
               <CardHeader>
                 <h2 className="text-lg font-semibold">采集状态</h2>
                 <CardDescription>用于搜索和分析的文本块数量。</CardDescription>

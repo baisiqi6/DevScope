@@ -12,6 +12,20 @@ import "./globals.css";
 import { AppHeader } from "@/components/app-header";
 import { TRPCProvider } from "@/components/providers";
 
+const themeScript = `
+  try {
+    const storedTheme = localStorage.getItem("devscope-theme");
+    const theme = storedTheme === "light" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  } catch {
+    document.documentElement.classList.add("dark");
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.style.colorScheme = "dark";
+  }
+`;
+
 /**
  * 页面元数据配置
  */
@@ -38,7 +52,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="antialiased">
         <TRPCProvider>
           <AppHeader />

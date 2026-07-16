@@ -11,13 +11,15 @@ export function AnimatedBackground() {
       className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-background"
     >
       <div
-        className="absolute inset-0 opacity-[0.025]"
+        className="absolute inset-0"
         style={{
           backgroundImage: `
-            linear-gradient(to right, hsl(var(--foreground)) 1px, transparent 1px),
-            linear-gradient(to bottom, hsl(var(--foreground)) 1px, transparent 1px)
+            linear-gradient(to right, oklch(var(--border) / 0.1) 1px, transparent 1px),
+            linear-gradient(to bottom, oklch(var(--border) / 0.1) 1px, transparent 1px),
+            linear-gradient(to right, oklch(var(--primary) / 0.025) 1px, transparent 1px),
+            linear-gradient(to bottom, oklch(var(--primary) / 0.025) 1px, transparent 1px)
           `,
-          backgroundSize: "48px 48px",
+          backgroundSize: "32px 32px, 32px 32px, 128px 128px, 128px 128px",
         }}
       />
     </div>

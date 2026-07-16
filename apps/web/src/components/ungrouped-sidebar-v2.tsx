@@ -84,30 +84,30 @@ export function UngroupedSidebar({
           onClick={() => setOpen(!isOpen)}
           className="
             relative my-auto w-[60px] shrink-0 cursor-pointer overflow-hidden
-            rounded-l-lg border-b border-l border-t border-primary/70
-            bg-primary py-4 shadow-sm focus-visible:outline-none focus-visible:ring-2
+            rounded-l-lg border-b border-l border-t border-primary/45
+            bg-card py-4 text-primary shadow-sm focus-visible:outline-none focus-visible:ring-2
             focus-visible:ring-ring focus-visible:ring-offset-2
           "
         >
           <div className="flex flex-col items-center justify-center gap-3">
-            <FolderOpen className="h-6 w-6 shrink-0 text-white" />
+            <FolderOpen className="h-6 w-6 shrink-0 text-primary" />
 
             <span
-              className="text-sm font-medium text-white"
+              className="text-sm font-medium text-foreground"
               style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
             >
               未分组
             </span>
 
             <span
-              className={`rounded px-1.5 py-0.5 text-xs font-semibold text-primary ${hasUngrouped ? 'bg-primary-foreground' : 'bg-primary-foreground/80'}`}
+              className={`rounded px-1.5 py-0.5 text-xs font-semibold text-primary ${hasUngrouped ? 'bg-primary/15' : 'bg-muted'}`}
             >
               {ungroupedRepos.length}
             </span>
 
             {!isOpen && hasUngrouped && (
               <span>
-                <ChevronRight className="h-4 w-4 rotate-180 text-white/80" />
+                <ChevronRight className="h-4 w-4 rotate-180 text-muted-foreground" />
               </span>
             )}
           </div>

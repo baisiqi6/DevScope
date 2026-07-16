@@ -222,8 +222,9 @@ export default function HomePage() {
       <AnimatedBackground />
 
       <div className="container mx-auto max-w-7xl px-4 py-6 sm:py-8">
-        <header className="mb-6 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <header className="command-page-header mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
+            <p className="command-kicker">仓库控制台</p>
             <h1 className="text-2xl font-semibold tracking-tight">仓库工作区</h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               浏览已采集仓库，按分组筛选并进入详情或分析。
@@ -258,7 +259,7 @@ export default function HomePage() {
           <section
             id="home-action-panel"
             aria-label={activePanel === 'collect' ? '采集仓库' : '我的关注'}
-            className="relative mb-8 rounded-lg border bg-card p-4 sm:p-6"
+            className="command-surface relative mb-8 p-4 sm:p-6"
           >
             <Button
               type="button"
@@ -291,7 +292,7 @@ export default function HomePage() {
             onCreateGroup={() => setShowCreateGroupDialog(true)}
           />
 
-          <div className="my-4 flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="command-toolbar my-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 id="repository-list-heading" className="text-lg font-semibold">
                 {currentGroupName}
@@ -322,7 +323,7 @@ export default function HomePage() {
           {pageError && (
             <div
               role="alert"
-              className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center"
+              className="command-surface border-destructive/30 bg-destructive/5 px-4 py-6 text-center"
             >
               <p className="font-medium text-destructive">仓库列表加载失败</p>
               <p className="mt-1 text-sm text-muted-foreground">请检查 API 与数据库连接后重试。</p>
@@ -338,7 +339,7 @@ export default function HomePage() {
           )}
 
           {!isListLoading && !pageError && sortedRepositories.length === 0 && (
-            <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+            <div className="command-surface border-dashed px-4 py-10 text-center">
               <p className="font-medium">当前范围内还没有仓库</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 采集一个 GitHub 仓库，或切换到其他分组查看。
