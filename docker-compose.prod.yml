@@ -36,6 +36,7 @@ services:
       BGE_API_URL: ${BGE_API_URL:-https://api.siliconflow.cn/v1}
       BGE_MODEL_NAME: ${BGE_MODEL_NAME:-BAAI/bge-m3}
       ENABLE_SCHEDULER: 'true'
+      SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-Asia/Shanghai}
       NODE_ENV: production
       PORT: 3100
     ports:

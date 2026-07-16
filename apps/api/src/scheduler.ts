@@ -22,6 +22,7 @@ import { getOrCreateCurrentUserId } from "./current-user";
 // ============================================================================
 
 let db: ReturnType<typeof createDb>;
+const schedulerTimezone = process.env.SCHEDULER_TIMEZONE || "Asia/Shanghai";
 
 function getDb() {
   if (!db) {
@@ -217,20 +218,38 @@ export function startScheduler() {
   console.log("[Scheduler] 🚀 调度器启动");
 
   // 每天凌晨 2:00 刷新过期仓库
-  cron.schedule("0 2 * * *", () => {
-    refreshStaleRepositories();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 刷新过期仓库 (每天 02:00)");
+  cron.schedule(
+    "0 2 * * *",
+    () => {
+      refreshStaleRepositories();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 刷新过期仓库 (每天 02:00 ${schedulerTimezone})`
+  );
 
   // 每天早上 6:00 发现趋势项目
-  cron.schedule("0 6 * * *", () => {
-    void enqueueGithubDiscovery();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 创建趋势发现任务 (每天 06:00)");
+  cron.schedule(
+    "0 6 * * *",
+    () => {
+      void enqueueGithubDiscovery();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 创建趋势发现任务 (每天 06:00 ${schedulerTimezone})`
+  );
 
   // 每 30 分钟处理待向量化数据
-  cron.schedule("*/30 * * * *", () => {
-    processPendingEmbeddings();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 处理待向量化数据 (每 30 分钟)");
+  cron.schedule(
+    "*/30 * * * *",
+    () => {
+      processPendingEmbeddings();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 处理待向量化数据 (每 30 分钟, ${schedulerTimezone})`
+  );
 }

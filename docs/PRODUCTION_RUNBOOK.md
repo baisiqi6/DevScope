@@ -46,6 +46,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 6. 如有数据库迁移，单独审查、备份、执行和验证；
 7. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx。
 
+生产 API 容器默认使用 `SCHEDULER_TIMEZONE=Asia/Shanghai` 解释 cron 时间，不依赖容器自身的 UTC 时区。
+
 首次上线 Worker 前必须应用 `packages/db/drizzle` 中已审查的迁移。手动部署工作流的
 `apply_database_migration` 默认为 `false`；只有在确认迁移内容、备份空间和回滚窗口后才设为
 `true`。工作流会先把 PostgreSQL custom-format 备份写入

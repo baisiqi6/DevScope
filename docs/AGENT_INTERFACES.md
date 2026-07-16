@@ -7,6 +7,7 @@ DevScope 提供统一 API Client、`devscope` CLI 和 MCP stdio Server。CLI 与
 - 当前仍是单用户私有版；tRPC 路由中的 `publicProcedure` 不代表适合公开匿名访问。
 - 本地开发默认直接访问 `http://localhost:3100`。
 - 生产环境仍由 Nginx Basic Auth 保护；CLI/MCP 只是转发对应请求头，不是应用内账号系统。
+- Basic Auth 只允许发送到 `https://` 或本机回环地址；公网 `http://` 会被 Client 拒绝，避免密码明文经过网络。
 - 不支持 `--password` 参数，避免密码出现在 shell history 或进程列表。
 - 技术雷达发现任务使用 PostgreSQL 持久队列与独立 Worker；现有仓库采集和向量化路径仍由 API 调度，不应把二者混为同一可靠性等级。
 
@@ -18,7 +19,7 @@ DevScope 提供统一 API Client、`devscope` CLI 和 MCP stdio Server。CLI 与
 | `DEVSCOPE_USERNAME` | 成对   | Nginx Basic Auth 用户名                            |
 | `DEVSCOPE_PASSWORD` | 成对   | Nginx Basic Auth 密码                              |
 
-用户名和密码必须同时设置。它们从调用进程环境读取，不会自动从项目 `.env` 加载。
+用户名和密码必须同时设置。它们从调用进程环境读取，不会自动从项目 `.env` 加载。远程访问必须使用 HTTPS；尚未配置 HTTPS 时，应先通过 SSH tunnel 映射到本机回环地址。
 
 本地示例：
 
@@ -80,15 +81,15 @@ devscope group list
 
 ### 工具列表
 
-| 工具名称                         | 行为      | 说明                         |
-| -------------------------------- | --------- | ---------------------------- |
-| `devscope_health`                | 只读      | 检查 API 状态                |
-| `devscope_list_repositories`     | 只读      | 列出已采集仓库               |
-| `devscope_get_repository`        | 只读      | 读取仓库详情                 |
-| `devscope_collect_repository`    | 写入/外部 | 采集 GitHub 数据并写入数据库 |
-| `devscope_get_embedding_status`  | 只读      | 查询向量化进度               |
-| `devscope_semantic_search`       | 只读      | 搜索仓库内容，可生成 AI 回答 |
-| `devscope_list_groups`           | 只读      | 列出当前用户的仓库分组       |
+| 工具名称                        | 行为      | 说明                         |
+| ------------------------------- | --------- | ---------------------------- |
+| `devscope_health`               | 只读      | 检查 API 状态                |
+| `devscope_list_repositories`    | 只读      | 列出已采集仓库               |
+| `devscope_get_repository`       | 只读      | 读取仓库详情                 |
+| `devscope_collect_repository`   | 写入/外部 | 采集 GitHub 数据并写入数据库 |
+| `devscope_get_embedding_status` | 只读      | 查询向量化进度               |
+| `devscope_semantic_search`      | 只读      | 搜索仓库内容，可生成 AI 回答 |
+| `devscope_list_groups`          | 只读      | 列出当前用户的仓库分组       |
 
 ### 本地 MCP 配置
 

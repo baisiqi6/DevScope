@@ -2,9 +2,9 @@ import {
   createDevScopeClientFromEnv,
   type DevScopeClient,
   type EmbeddingStatus,
-} from "@devscope/client";
+} from '@devscope/client';
 
-export const CLI_VERSION = "0.0.1";
+export const CLI_VERSION = '0.0.1';
 
 const HELP_TEXT = `DevScope CLI
 
@@ -22,8 +22,8 @@ const HELP_TEXT = `DevScope CLI
 
 环境变量:
   DEVSCOPE_BASE_URL   API 地址，默认 http://localhost:3100
-  DEVSCOPE_USERNAME   Basic Auth 用户名（与密码同时设置）
-  DEVSCOPE_PASSWORD   Basic Auth 密码（与用户名同时设置）`;
+  DEVSCOPE_USERNAME   Basic Auth 用户名（与密码同时设置，仅 HTTPS/本机回环）
+  DEVSCOPE_PASSWORD   Basic Auth 密码（与用户名同时设置，仅 HTTPS/本机回环）`;
 
 class CliUsageError extends Error {}
 
@@ -47,7 +47,7 @@ interface ParsedOptions {
 function parseOptions(
   args: string[],
   valueOptions: ReadonlySet<string>,
-  flagOptions: ReadonlySet<string>,
+  flagOptions: ReadonlySet<string>
 ): ParsedOptions {
   const positionals: string[] = [];
   const values = new Map<string, string>();
@@ -55,7 +55,7 @@ function parseOptions(
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (!argument.startsWith("--")) {
+    if (!argument.startsWith('--')) {
       positionals.push(argument);
       continue;
     }
@@ -67,7 +67,7 @@ function parseOptions(
 
     if (valueOptions.has(argument)) {
       const value = args[index + 1];
-      if (!value || value.startsWith("--")) {
+      if (!value || value.startsWith('--')) {
         throw new CliUsageError(`${argument} 缺少参数值`);
       }
       values.set(argument, value);
@@ -86,7 +86,7 @@ function parseInteger(
   name: string,
   defaultValue?: number,
   minimum = 0,
-  maximum = Number.MAX_SAFE_INTEGER,
+  maximum = Number.MAX_SAFE_INTEGER
 ): number {
   if (value === undefined && defaultValue !== undefined) {
     return defaultValue;
@@ -101,11 +101,7 @@ function parseInteger(
   return parsed;
 }
 
-function expectPositionals(
-  positionals: string[],
-  count: number,
-  usage: string,
-): void {
+function expectPositionals(positionals: string[], count: number, usage: string): void {
   if (positionals.length !== count) {
     throw new CliUsageError(`用法: ${usage}`);
   }
@@ -124,17 +120,17 @@ async function waitForEmbedding(
   repoId: number,
   pollIntervalMs: number,
   timeoutMs: number,
-  sleep: (milliseconds: number) => Promise<void>,
+  sleep: (milliseconds: number) => Promise<void>
 ): Promise<EmbeddingStatus> {
   const deadline = Date.now() + timeoutMs;
 
   while (true) {
     const status = await client.getEmbeddingStatus(repoId);
-    if (status.status === "completed") {
+    if (status.status === 'completed') {
       return status;
     }
-    if (status.status === "failed") {
-      throw new Error(status.error ?? "仓库向量化失败");
+    if (status.status === 'failed') {
+      throw new Error(status.error ?? '仓库向量化失败');
     }
     if (Date.now() >= deadline) {
       throw new Error(`等待向量化超时（${timeoutMs}ms）`);
@@ -146,47 +142,43 @@ async function waitForEmbedding(
 async function runRepoCommand(
   args: string[],
   client: DevScopeClient,
-  sleep: (milliseconds: number) => Promise<void>,
+  sleep: (milliseconds: number) => Promise<void>
 ): Promise<unknown> {
   const [command, ...rest] = args;
 
-  if (command === "list") {
-    const parsed = parseOptions(
-      rest,
-      new Set(["--limit", "--offset"]),
-      new Set(),
-    );
-    expectPositionals(parsed.positionals, 0, "devscope repo list [--limit <1-100>] [--offset <n>]");
+  if (command === 'list') {
+    const parsed = parseOptions(rest, new Set(['--limit', '--offset']), new Set());
+    expectPositionals(parsed.positionals, 0, 'devscope repo list [--limit <1-100>] [--offset <n>]');
     return client.listRepositories({
-      limit: parseInteger(parsed.values.get("--limit"), "--limit", 50, 1, 100),
-      offset: parseInteger(parsed.values.get("--offset"), "--offset", 0),
+      limit: parseInteger(parsed.values.get('--limit'), '--limit', 50, 1, 100),
+      offset: parseInteger(parsed.values.get('--offset'), '--offset', 0),
     });
   }
 
-  if (command === "get") {
+  if (command === 'get') {
     const parsed = parseOptions(rest, new Set(), new Set());
-    expectPositionals(parsed.positionals, 1, "devscope repo get <repo-id>");
-    return client.getRepository(parseInteger(parsed.positionals[0], "repo-id", undefined, 1));
+    expectPositionals(parsed.positionals, 1, 'devscope repo get <repo-id>');
+    return client.getRepository(parseInteger(parsed.positionals[0], 'repo-id', undefined, 1));
   }
 
-  if (command === "embedding-status") {
+  if (command === 'embedding-status') {
     const parsed = parseOptions(rest, new Set(), new Set());
-    expectPositionals(parsed.positionals, 1, "devscope repo embedding-status <repo-id>");
-    return client.getEmbeddingStatus(parseInteger(parsed.positionals[0], "repo-id", undefined, 1));
+    expectPositionals(parsed.positionals, 1, 'devscope repo embedding-status <repo-id>');
+    return client.getEmbeddingStatus(parseInteger(parsed.positionals[0], 'repo-id', undefined, 1));
   }
 
-  if (command === "collect") {
+  if (command === 'collect') {
     const parsed = parseOptions(
       rest,
-      new Set(["--poll-interval-ms", "--timeout-ms"]),
-      new Set(["--skip-embeddings", "--wait"]),
+      new Set(['--poll-interval-ms', '--timeout-ms']),
+      new Set(['--skip-embeddings', '--wait'])
     );
-    expectPositionals(parsed.positionals, 1, "devscope repo collect <owner/repo> [options]");
+    expectPositionals(parsed.positionals, 1, 'devscope repo collect <owner/repo> [options]');
 
-    const skipEmbeddings = parsed.flags.has("--skip-embeddings");
-    const shouldWait = parsed.flags.has("--wait");
+    const skipEmbeddings = parsed.flags.has('--skip-embeddings');
+    const shouldWait = parsed.flags.has('--wait');
     if (skipEmbeddings && shouldWait) {
-      throw new CliUsageError("--skip-embeddings 与 --wait 不能同时使用");
+      throw new CliUsageError('--skip-embeddings 与 --wait 不能同时使用');
     }
 
     const collection = await client.collectRepository({
@@ -199,72 +191,65 @@ async function runRepoCommand(
 
     const repoId = collection.repository?.id;
     if (!repoId) {
-      throw new Error("采集结果缺少仓库 ID，无法等待向量化");
+      throw new Error('采集结果缺少仓库 ID，无法等待向量化');
     }
 
     const embeddingStatus = await waitForEmbedding(
       client,
       repoId,
-      parseInteger(parsed.values.get("--poll-interval-ms"), "--poll-interval-ms", 1000, 1),
-      parseInteger(parsed.values.get("--timeout-ms"), "--timeout-ms", 300_000, 1),
-      sleep,
+      parseInteger(parsed.values.get('--poll-interval-ms'), '--poll-interval-ms', 1000, 1),
+      parseInteger(parsed.values.get('--timeout-ms'), '--timeout-ms', 300_000, 1),
+      sleep
     );
     return { collection, embeddingStatus };
   }
 
-  throw new CliUsageError("用法: devscope repo <list|get|collect|embedding-status> ...");
+  throw new CliUsageError('用法: devscope repo <list|get|collect|embedding-status> ...');
 }
 
 async function dispatch(
   argv: string[],
   client: DevScopeClient,
-  sleep: (milliseconds: number) => Promise<void>,
+  sleep: (milliseconds: number) => Promise<void>
 ): Promise<unknown> {
   const [scope, ...rest] = argv;
 
-  if (scope === "health") {
-    expectPositionals(rest, 0, "devscope health");
+  if (scope === 'health') {
+    expectPositionals(rest, 0, 'devscope health');
     return client.health();
   }
 
-  if (scope === "repo") {
+  if (scope === 'repo') {
     return runRepoCommand(rest, client, sleep);
   }
 
-  if (scope === "search") {
-    const parsed = parseOptions(
-      rest,
-      new Set(["--limit"]),
-      new Set(["--no-answer"]),
-    );
-    expectPositionals(parsed.positionals, 2, "devscope search <owner/repo> <query> [options]");
+  if (scope === 'search') {
+    const parsed = parseOptions(rest, new Set(['--limit']), new Set(['--no-answer']));
+    expectPositionals(parsed.positionals, 2, 'devscope search <owner/repo> <query> [options]');
     return client.semanticSearch({
       repo: parsed.positionals[0],
       query: parsed.positionals[1],
-      limit: parseInteger(parsed.values.get("--limit"), "--limit", 5, 1, 20),
-      generateAnswer: !parsed.flags.has("--no-answer"),
+      limit: parseInteger(parsed.values.get('--limit'), '--limit', 5, 1, 20),
+      generateAnswer: !parsed.flags.has('--no-answer'),
     });
   }
 
-  if (scope === "group" && rest[0] === "list" && rest.length === 1) {
+  if (scope === 'group' && rest[0] === 'list' && rest.length === 1) {
     return client.listGroups();
   }
 
-  throw new CliUsageError("未知命令，请运行 devscope --help 查看用法");
+  throw new CliUsageError('未知命令，请运行 devscope --help 查看用法');
 }
 
-export async function runCli(
-  argv: string[],
-  dependencies: CliDependencies = {},
-): Promise<number> {
+export async function runCli(argv: string[], dependencies: CliDependencies = {}): Promise<number> {
   const stdout = dependencies.stdout ?? process.stdout;
   const stderr = dependencies.stderr ?? process.stderr;
 
-  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     stdout.write(`${HELP_TEXT}\n`);
     return 0;
   }
-  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v")) {
+  if (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')) {
     stdout.write(`${CLI_VERSION}\n`);
     return 0;
   }
@@ -274,7 +259,8 @@ export async function runCli(
     const result = await dispatch(
       argv,
       client,
-      dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+      dependencies.sleep ??
+        ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)))
     );
     writeJson(stdout, result);
     return 0;
@@ -282,7 +268,7 @@ export async function runCli(
     const usageError = error instanceof CliUsageError;
     writeJson(stderr, {
       error: {
-        code: usageError ? "INVALID_ARGUMENT" : "COMMAND_FAILED",
+        code: usageError ? 'INVALID_ARGUMENT' : 'COMMAND_FAILED',
         message: errorMessage(error),
       },
     });
