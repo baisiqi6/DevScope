@@ -13,8 +13,8 @@ echo "=========================================="
 
 # 检查 .env 文件
 if [ ! -f .env ]; then
-  echo "❌ 缺少 .env 文件，请从 .env.production 复制并填入实际值："
-  echo "   cp .env.production .env"
+  echo "❌ 缺少 .env 文件，请从 .env.example 复制并填入实际值："
+  echo "   cp .env.example .env"
   exit 1
 fi
 
