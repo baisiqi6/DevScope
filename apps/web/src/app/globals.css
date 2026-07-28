@@ -180,9 +180,30 @@
   }
 }
 
+/* 统一脉冲曲线：2s ease-in-out，opacity 0.4 ↔ 0.7（DESIGN.md 动效规范） */
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@layer utilities {
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hologram-panel[data-live="true"]::before {
     animation: none;
     opacity: 0;
+  }
+
+  .animate-pulse-soft {
+    animation: none;
   }
 }

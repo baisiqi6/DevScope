@@ -202,7 +202,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
                 {isLoadingReleases ? (
                   <div className="space-y-3 p-6" aria-label="正在加载发布版本">
                     {[0, 1].map((item) => (
-                      <div key={item} className="h-24 animate-pulse rounded-md bg-muted/50" />
+                      <div key={item} className="h-24 animate-pulse-soft rounded-md bg-muted/50" />
                     ))}
                   </div>
                 ) : releases && releases.length > 0 ? (
@@ -321,7 +321,7 @@ function RepositoryDetailContent({ id }: { id: number }) {
                 </div>
 
                 {isLoadingHealthReports ? (
-                  <div className="mt-3 h-16 animate-pulse rounded-md bg-muted/50" />
+                  <div className="mt-3 h-16 animate-pulse-soft rounded-md bg-muted/50" />
                 ) : healthReports && healthReports.length > 0 ? (
                   <div className="divide-y">
                     {healthReports.map((report) => (
@@ -387,15 +387,15 @@ function RepositoryLoadingState() {
     <main className="min-h-screen">
       <AnimatedBackground />
       <div className="container mx-auto max-w-6xl px-4 py-8" aria-label="正在加载仓库详情">
-        <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
+        <div className="h-9 w-36 animate-pulse-soft rounded-md bg-muted" />
         <div className="mt-6 border-b pb-6">
-          <div className="h-8 w-72 max-w-full animate-pulse rounded-md bg-muted" />
-          <div className="mt-3 h-5 w-full max-w-2xl animate-pulse rounded-md bg-muted/70" />
-          <div className="mt-6 h-20 animate-pulse rounded-lg border bg-card" />
+          <div className="h-8 w-72 max-w-full animate-pulse-soft rounded-md bg-muted" />
+          <div className="mt-3 h-5 w-full max-w-2xl animate-pulse-soft rounded-md bg-muted/70" />
+          <div className="mt-6 h-20 animate-pulse-soft rounded-lg border bg-card" />
         </div>
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
-          <div className="h-96 animate-pulse rounded-lg border bg-card" />
-          <div className="h-72 animate-pulse rounded-lg border bg-card" />
+          <div className="h-96 animate-pulse-soft rounded-lg border bg-card" />
+          <div className="h-72 animate-pulse-soft rounded-lg border bg-card" />
         </div>
       </div>
     </main>

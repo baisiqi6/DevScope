@@ -84,11 +84,10 @@ export function ExecutionTimer({
     };
   }, [isRunning, startTime]);
 
-  // 根据执行时间显示不同的颜色
+  // 根据执行时间显示不同的颜色（语义 token）
   const getTimeColor = () => {
-    if (elapsed < 30) return "text-blue-600";
-    if (elapsed < 60) return "text-yellow-600";
-    return "text-orange-600";
+    if (elapsed < 30) return "text-signal";
+    return "text-warning";
   };
 
   // 根据执行时间显示提示
@@ -100,12 +99,12 @@ export function ExecutionTimer({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <Clock className={`h-4 w-4 ${isRunning ? "animate-pulse" : ""} ${getTimeColor()}`} />
+      <Clock className={`h-4 w-4 ${isRunning ? "animate-pulse-soft" : ""} ${getTimeColor()}`} />
       <span className={`font-mono font-medium ${getTimeColor()}`}>
         {formatTime(elapsed)}
       </span>
       {isRunning && getTimeHint() && (
-        <span className="text-sm text-gray-500">{getTimeHint()}</span>
+        <span className="text-sm text-muted-foreground">{getTimeHint()}</span>
       )}
     </div>
   );

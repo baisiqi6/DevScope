@@ -315,7 +315,7 @@ export default function HomePage() {
           {isListLoading && (
             <div aria-busy="true" aria-label="正在加载仓库" className="space-y-2">
               {[0, 1, 2].map((item) => (
-                <div key={item} className="h-28 animate-pulse rounded-lg border bg-muted/50" />
+                <div key={item} className="h-28 animate-pulse-soft rounded-lg border bg-muted/50" />
               ))}
             </div>
           )}

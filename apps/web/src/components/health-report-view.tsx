@@ -192,6 +192,15 @@ function parseDimensionsFromText(aiAnalysis: string | null | undefined): Dimensi
   return dimensions;
 }
 
+/** 分数 → 语义状态色（仅表达真实状态语义）。 */
+function getScoreTextClass(score: number | null): string {
+  if (score === null) return "text-muted-foreground";
+  if (score >= 80) return "text-success";
+  if (score >= 60) return "text-signal";
+  if (score >= 40) return "text-warning";
+  return "text-destructive";
+}
+
 // ============================================================================
 // 主组件
 // ============================================================================
@@ -283,10 +292,10 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
   // 加载状态
   if (loading) {
     return (
-      <Card className="w-full">
-        <CardContent className="py-12 flex flex-col items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-          <p className="text-gray-500">加载报告中...</p>
+      <Card className="command-surface w-full">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
+          <p className="text-muted-foreground">加载报告中...</p>
         </CardContent>
       </Card>
     );
@@ -295,11 +304,11 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
   // 错误状态
   if (error) {
     return (
-      <Card className="w-full border-red-200 bg-red-50 dark:bg-red-900/20">
+      <Card className="w-full border-destructive/30 bg-destructive/5">
         <CardContent className="py-8 text-center">
-          <AlertTriangle className="h-12 w-12 mx-auto mb-3 text-red-500" />
-          <p className="text-red-600 font-medium">报告加载失败</p>
-          <p className="text-sm text-red-500 mt-1">{error}</p>
+          <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-destructive" />
+          <p className="font-medium text-destructive">报告加载失败</p>
+          <p className="mt-1 text-sm text-destructive/80">{error}</p>
         </CardContent>
       </Card>
     );
@@ -307,8 +316,8 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
 
   if (!report) {
     return (
-      <Card className="w-full">
-        <CardContent className="py-8 text-center text-gray-500">
+      <Card className="command-surface w-full">
+        <CardContent className="py-8 text-center text-muted-foreground">
           <p>报告不存在</p>
         </CardContent>
       </Card>
@@ -400,35 +409,45 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
 
   const healthScores = parseHealthScores();
 
-  // 获取健康等级
+  // 获取健康等级（语义 token）
   const getHealthLevel = (score: number | null) => {
-    if (score === null) return { label: "未知", color: "gray", icon: Minus };
-    if (score >= 80) return { label: "优秀", color: "green", icon: CheckCircle2 };
-    if (score >= 60) return { label: "良好", color: "blue", icon: CheckCircle2 };
-    if (score >= 40) return { label: "一般", color: "yellow", icon: AlertTriangle };
-    if (score >= 20) return { label: "需关注", color: "orange", icon: AlertTriangle };
-    return { label: "危急", color: "red", icon: XCircle };
+    if (score === null) {
+      return { label: "未知", wrap: "bg-muted text-muted-foreground", badge: "bg-muted text-muted-foreground", icon: Minus };
+    }
+    if (score >= 80) {
+      return { label: "优秀", wrap: "bg-success/15 text-success", badge: "bg-success text-success-foreground", icon: CheckCircle2 };
+    }
+    if (score >= 60) {
+      return { label: "良好", wrap: "bg-signal/15 text-signal", badge: "bg-signal text-signal-foreground", icon: CheckCircle2 };
+    }
+    if (score >= 40) {
+      return { label: "一般", wrap: "bg-warning/15 text-warning", badge: "bg-warning text-warning-foreground", icon: AlertTriangle };
+    }
+    if (score >= 20) {
+      return { label: "需关注", wrap: "bg-warning/15 text-warning", badge: "bg-warning text-warning-foreground", icon: AlertTriangle };
+    }
+    return { label: "危急", wrap: "bg-destructive/15 text-destructive", badge: "bg-destructive text-destructive-foreground", icon: XCircle };
   };
 
   const healthLevel = healthScores && healthScores.totalScore !== null
     ? getHealthLevel(healthScores.totalScore)
-    : { label: "未知", color: "gray", icon: Minus };
+    : getHealthLevel(null);
 
   const HealthIcon = healthLevel.icon;
 
   return (
     <div className="space-y-6">
       {/* 报告头部 */}
-      <Card className="border-2 shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+      <Card className="command-surface">
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-md">
+              <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 text-primary">
                 <Activity className="h-6 w-6" />
               </div>
               <div>
                 <CardTitle className="text-2xl">仓库健康度评估报告</CardTitle>
-                <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
                   <span>生成时间: {new Date(report.generatedAt).toLocaleString("zh-CN")}</span>
                   <span>•</span>
                   <span className="font-mono text-xs">ID: {report.reportId.substring(0, 8)}</span>
@@ -437,7 +456,7 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-1" />
+                <Download className="mr-1 h-4 w-4" />
                 下载
               </Button>
             </div>
@@ -446,37 +465,35 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
       </Card>
 
       {/* 健康度总览 */}
-      <Card>
+      <Card className="command-surface">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-green-600" />
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Target className="h-5 w-5 text-primary" />
             健康度总览
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-6 mb-6">
+          <div className="mb-6 flex items-center gap-6">
             {/* 总分 */}
             <div className="flex items-center gap-4">
-              <div className={`p-4 rounded-full bg-${healthLevel.color}-100 text-${healthLevel.color}-600`}>
+              <div className={`rounded-full p-4 ${healthLevel.wrap}`}>
                 <HealthIcon className="h-8 w-8" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">健康度评分</p>
+                <p className="text-sm text-muted-foreground">健康度评分</p>
                 <p className="text-3xl font-bold">
                   {healthScores && healthScores.totalScore !== null ? healthScores.totalScore : "N/A"}
-                  <span className="text-lg text-gray-400">/100</span>
+                  <span className="text-lg text-muted-foreground">/100</span>
                 </p>
-                <Badge className={`mt-1 bg-${healthLevel.color}-600 text-white`}>
-                  {healthLevel.label}
-                </Badge>
+                <Badge className={`mt-1 ${healthLevel.badge}`}>{healthLevel.label}</Badge>
               </div>
             </div>
 
             {/* 活跃度等级 */}
             {healthScores?.activityLevel && (
               <div className="flex-1">
-                <p className="text-sm text-gray-500 mb-1">活跃度等级</p>
-                <Badge variant="outline" className="text-lg py-1 px-3">
+                <p className="mb-1 text-sm text-muted-foreground">活跃度等级</p>
+                <Badge variant="outline" className="px-3 py-1 text-lg">
                   {healthScores.activityLevel.toUpperCase()}
                 </Badge>
               </div>
@@ -484,18 +501,18 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
           </div>
 
           {/* 执行摘要 */}
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-            <p className="text-gray-700 dark:text-gray-300">{report.executiveSummary.overview}</p>
+          <div className="rounded-lg bg-muted/50 p-4">
+            <p className="text-foreground">{report.executiveSummary.overview}</p>
           </div>
         </CardContent>
       </Card>
 
       {/* AI 详细分析 */}
       {report.aiAnalysis && (
-        <Card>
+        <Card className="command-surface">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-purple-600" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Zap className="h-5 w-5 text-primary" />
               AI 详细分析
             </CardTitle>
           </CardHeader>
@@ -508,28 +525,27 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
                 if (dimensions.length === 0) return null;
 
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
                     {dimensions.map((dim, index) => {
                       const scorePercent = dim.score || 0;
-                      const scoreColor = scorePercent >= 80 ? "green" : scorePercent >= 60 ? "blue" : scorePercent >= 40 ? "yellow" : "red";
 
                       return (
-                        <div key={index} className="border rounded-lg p-3 bg-white dark:bg-gray-800">
-                          <div className="flex items-center gap-2 mb-2">
-                            <dim.icon className="h-4 w-4" />
+                        <div key={index} className="rounded-lg border border-border/80 bg-card p-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <dim.icon className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">{dim.name}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Progress
                               value={scorePercent}
                               max={100}
-                              className="flex-1 h-2"
+                              className="h-2 flex-1"
                             />
-                            <span className={`text-sm font-bold text-${scoreColor}-600`}>
+                            <span className={`text-sm font-bold ${getScoreTextClass(dim.score)}`}>
                               {dim.score !== null ? dim.score : "N/A"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {dim.weight && `权重 ${dim.weight} • `}
                             {dim.status}
                           </p>
@@ -544,66 +560,66 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
             {/* 完整的 Markdown 报告 */}
             <div className="border-t pt-4">
               <details className="group">
-                <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-2">
+                <summary className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground">
                   <span>查看完整分析报告</span>
-                  <span className="transform group-open:rotate-180 transition-transform">▼</span>
+                  <span className="transform transition-transform group-open:rotate-180">▼</span>
                 </summary>
                 <div className="mt-4">
-                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-bold prose-headings:text-xl prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-h1:text-green-600 prose-h2:text-green-600 prose-h3:text-green-600 prose-strong:text-gray-900 prose-table:text-sm prose-pre:bg-gray-50 dark:prose-pre:bg-gray-800 prose-code:text-pink-600">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-bold prose-headings:text-xl prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-foreground prose-table:text-sm prose-pre:bg-muted prose-code:text-primary">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
                         table: ({ node, ...props }) => (
-                          <div className="overflow-x-auto my-4">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props} />
+                          <div className="my-4 overflow-x-auto">
+                            <table className="min-w-full divide-y divide-border" {...props} />
                           </div>
                         ),
                         thead: ({ node, ...props }) => (
-                          <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
+                          <thead className="bg-muted/60" {...props} />
                         ),
                         th: ({ node, ...props }) => (
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {...props} />
+                          <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground" {...props} />
                         ),
                         td: ({ node, ...props }) => (
-                          <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap" {...props} />
+                          <td className="whitespace-nowrap px-4 py-2 text-sm text-foreground" {...props} />
                         ),
                         code: ({ node, className, ...props }) => {
                           const isInline = className?.includes("language-") || false;
                           return isInline ? (
-                            <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-pink-600 font-mono text-sm" {...props} />
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-primary" {...props} />
                           ) : (
-                            <code className="block p-3 rounded-lg bg-gray-50 dark:bg-gray-800 text-pink-600 font-mono text-sm overflow-x-auto" {...props} />
+                            <code className="block overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm text-primary" {...props} />
                           );
                         },
                         h1: ({ node, ...props }) => (
-                          <h1 className="text-2xl font-bold text-green-600 mt-6 mb-4 first:mt-0" {...props} />
+                          <h1 className="mb-4 mt-6 text-2xl font-bold text-foreground first:mt-0" {...props} />
                         ),
                         h2: ({ node, ...props }) => (
-                          <h2 className="text-xl font-bold text-green-600 mt-5 mb-3 first:mt-0" {...props} />
+                          <h2 className="mb-3 mt-5 text-xl font-bold text-foreground first:mt-0" {...props} />
                         ),
                         h3: ({ node, ...props }) => (
-                          <h3 className="text-lg font-semibold text-green-600 mt-4 mb-2" {...props} />
+                          <h3 className="mb-2 mt-4 text-lg font-semibold text-foreground" {...props} />
                         ),
                         ul: ({ node, ...props }) => (
-                          <ul className="space-y-2 my-4 ml-4 list-disc" {...props} />
+                          <ul className="my-4 ml-4 list-disc space-y-2" {...props} />
                         ),
                         ol: ({ node, ...props }) => (
-                          <ol className="space-y-2 my-4 ml-4 list-decimal" {...props} />
+                          <ol className="my-4 ml-4 list-decimal space-y-2" {...props} />
                         ),
                         li: ({ node, ...props }) => (
-                          <li className="text-gray-700 dark:text-gray-300" {...props} />
+                          <li className="text-foreground" {...props} />
                         ),
                         blockquote: ({ node, ...props }) => (
-                          <blockquote className="border-l-4 border-green-500 pl-4 py-2 my-4 bg-green-50 dark:bg-green-900/20 italic text-gray-700 dark:text-gray-300" {...props} />
+                          <blockquote className="my-4 border-l-4 border-primary/40 bg-primary/5 py-2 pl-4 italic text-foreground" {...props} />
                         ),
                         a: ({ node, ...props }) => (
-                          <a className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...props} />
+                          <a className="text-primary underline underline-offset-4 hover:text-primary/80" target="_blank" rel="noopener noreferrer" {...props} />
                         ),
                         strong: ({ node, ...props }) => (
-                          <strong className="font-semibold text-gray-900 dark:text-gray-100" {...props} />
+                          <strong className="font-semibold text-foreground" {...props} />
                         ),
                         hr: ({ node, ...props }) => (
-                          <hr className="my-6 border-gray-300 dark:border-gray-700" {...props} />
+                          <hr className="my-6 border-border" {...props} />
                         ),
                       }}
                     >
@@ -619,10 +635,10 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
 
       {/* 风险评估矩阵 */}
       {report.riskMatrix?.risks && report.riskMatrix.risks.length > 0 && (
-        <Card>
+        <Card className="command-surface">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <AlertTriangle className="h-5 w-5 text-warning" />
               风险评估矩阵
             </CardTitle>
           </CardHeader>
@@ -630,24 +646,26 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
             <div className="space-y-3">
               {report.riskMatrix.risks.map((risk, index) => {
                 const severity = risk.severity || 0;
-                const severityLevel = severity >= 70 ? "high" : severity >= 40 ? "medium" : "low";
-                const severityColor = severityLevel === "high" ? "red" : severityLevel === "medium" ? "yellow" : "green";
+                const severityBadge =
+                  severity >= 70
+                    ? "bg-destructive/15 text-destructive"
+                    : severity >= 40
+                      ? "bg-warning/15 text-warning"
+                      : "bg-success/15 text-success";
 
                 return (
-                  <div key={index} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
+                  <div key={index} className="rounded-lg border border-border/80 p-4">
+                    <div className="mb-2 flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <Badge className={`bg-${severityColor}-100 text-${severityColor}-700`}>
-                          {risk.category}
-                        </Badge>
+                        <Badge className={severityBadge}>{risk.category}</Badge>
                       </div>
                       <Badge variant="outline">{severity}/100</Badge>
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                    <p className="mb-2 text-sm text-foreground">
                       {risk.description}
                     </p>
                     {risk.mitigation && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         <strong>缓解措施：</strong>{risk.mitigation}
                       </div>
                     )}
@@ -658,15 +676,18 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
 
             {/* 整体风险等级 */}
             {report.riskMatrix.overallRisk && (
-              <div className="mt-4 pt-4 border-t">
+              <div className="mt-4 border-t pt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">整体风险等级</span>
-                  <Badge className={`${
-                    report.riskMatrix.overallRisk === "critical" ? "bg-red-600" :
-                    report.riskMatrix.overallRisk === "high" ? "bg-orange-600" :
-                    report.riskMatrix.overallRisk === "medium" ? "bg-yellow-600" :
-                    "bg-green-600"
-                  } text-white`}>
+                  <Badge
+                    className={
+                      report.riskMatrix.overallRisk === "critical" || report.riskMatrix.overallRisk === "high"
+                        ? "bg-destructive text-destructive-foreground"
+                        : report.riskMatrix.overallRisk === "medium"
+                          ? "bg-warning text-warning-foreground"
+                          : "bg-success text-success-foreground"
+                    }
+                  >
                     {report.riskMatrix.overallRisk.toUpperCase()}
                   </Badge>
                 </div>
@@ -677,15 +698,15 @@ export function HealthReportView({ reportId, executionId }: HealthReportViewProp
       )}
 
       {/* 数据来源 */}
-      <Card>
+      <Card className="command-surface">
         <CardHeader>
           <CardTitle className="text-lg">数据来源</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm">
             {report.dataSources?.map((source, index) => (
-              <div key={index} className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <div key={index} className="flex items-center gap-2 text-muted-foreground">
+                <CheckCircle2 className="h-4 w-4 text-success" />
                 <span>
                   <strong>{source.type}:</strong> {source.details}
                 </span>

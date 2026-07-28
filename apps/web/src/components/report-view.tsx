@@ -120,7 +120,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
     md += `### 细分市场\n\n`;
     if (marketPos.niche && marketPos.niche.length > 0) {
       marketPos.niche.forEach(item => {
-        md += `- **${item}**\n`;
+        md += `- ${item}\n`;
       });
     } else {
       md += `无\n`;
@@ -129,7 +129,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
     md += `### 新兴项目\n\n`;
     if (marketPos.emerging && marketPos.emerging.length > 0) {
       marketPos.emerging.forEach(item => {
-        md += `- **${item}**\n`;
+        md += `- ${item}\n`;
       });
     } else {
       md += `无\n`;
@@ -261,10 +261,10 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
   if (loading) {
     return (
-      <Card className="w-full">
+      <Card className="command-surface w-full">
         <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-2 text-gray-500">加载报告中...</span>
+          <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
+          <span className="ml-2 text-muted-foreground">加载报告中...</span>
         </CardContent>
       </Card>
     );
@@ -272,9 +272,9 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
   if (error) {
     return (
-      <Card className="w-full border-red-200 bg-red-50">
-        <CardContent className="py-8 text-center text-red-600">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
+      <Card className="w-full border-destructive/30 bg-destructive/5">
+        <CardContent className="py-8 text-center text-destructive">
+          <AlertTriangle className="mx-auto mb-2 h-8 w-8" />
           <p>{error}</p>
         </CardContent>
       </Card>
@@ -283,8 +283,8 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
   if (!report) {
     return (
-      <Card className="w-full">
-        <CardContent className="py-8 text-center text-gray-500">
+      <Card className="command-surface w-full">
+        <CardContent className="py-8 text-center text-muted-foreground">
           <p>报告加载中或不存在</p>
         </CardContent>
       </Card>
@@ -298,29 +298,21 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
         return {
           title: "竞争格局分析报告",
           icon: <TrendingUp className="h-6 w-6" />,
-          color: "blue",
-          gradient: "from-blue-500 to-indigo-600",
         };
       case "health_report":
         return {
           title: "健康度报告",
           icon: <Activity className="h-6 w-6" />,
-          color: "green",
-          gradient: "from-green-500 to-emerald-600",
         };
       case "single_repo":
         return {
           title: "单仓库分析报告",
           icon: <GitCompare className="h-6 w-6" />,
-          color: "purple",
-          gradient: "from-purple-500 to-violet-600",
         };
       default:
         return {
           title: "分析报告",
           icon: <FileText className="h-6 w-6" />,
-          color: "slate",
-          gradient: "from-slate-500 to-gray-600",
         };
     }
   };
@@ -330,16 +322,16 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
   return (
     <div className="space-y-6">
       {/* 报告头部 */}
-      <Card className="border-2 shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
+      <Card className="command-surface">
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl bg-gradient-to-br ${config.gradient} text-white shadow-md`}>
+              <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 text-primary">
                 {config.icon}
               </div>
               <div>
                 <CardTitle className="text-2xl">{config.title}</CardTitle>
-                <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
                     生成时间: {new Date(report.generatedAt).toLocaleString("zh-CN")}
                   </span>
@@ -352,7 +344,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-1" />
+                <Download className="mr-1 h-4 w-4" />
                 下载
               </Button>
             </div>
@@ -361,20 +353,20 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
       </Card>
 
       {/* 执行摘要 */}
-      <Card>
+      <Card className="command-surface">
         <CardHeader>
           <CardTitle className="text-lg">执行摘要</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-gray-700 dark:text-gray-300">{report.executiveSummary.overview}</p>
+          <p className="text-foreground">{report.executiveSummary.overview}</p>
 
           {/* 关键发现 */}
           <div>
-            <h4 className="font-medium mb-2">关键发现</h4>
+            <h4 className="mb-2 font-medium">关键发现</h4>
             <ul className="space-y-1">
               {report.executiveSummary.keyFindings.map((finding, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-success" />
                   {finding}
                 </li>
               ))}
@@ -384,11 +376,11 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
           {/* 总体建议 */}
           <div className="flex items-center gap-4">
             <div>
-              <span className="text-sm text-gray-500">投资建议: </span>
+              <span className="text-sm text-muted-foreground">投资建议: </span>
               <RecommendationBadge recommendation={report.executiveSummary.recommendation} />
             </div>
             <div>
-              <span className="text-sm text-gray-500">置信度: </span>
+              <span className="text-sm text-muted-foreground">置信度: </span>
               <ConfidenceBadge level={report.executiveSummary.confidenceLevel} />
             </div>
           </div>
@@ -406,28 +398,24 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
         {/* 市场定位 */}
         <TabsContent value="market">
-          <Card>
+          <Card className="command-surface">
             <CardContent className="pt-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <MarketPositionCard
                   title="领导者"
                   repos={report.detailedAnalysis.marketPosition.leaders}
-                  color="green"
                 />
                 <MarketPositionCard
                   title="挑战者"
                   repos={report.detailedAnalysis.marketPosition.challengers}
-                  color="blue"
                 />
                 <MarketPositionCard
                   title="细分市场"
                   repos={report.detailedAnalysis.marketPosition.niche}
-                  color="yellow"
                 />
                 <MarketPositionCard
                   title="新兴项目"
                   repos={report.detailedAnalysis.marketPosition.emerging}
-                  color="purple"
                 />
               </div>
             </CardContent>
@@ -439,9 +427,9 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">技术栈对比</h3>
-              <span className="text-sm text-gray-500">共 {report.detailedAnalysis.technologyComparison.length} 个项目</span>
+              <span className="text-sm text-muted-foreground">共 {report.detailedAnalysis.technologyComparison.length} 个项目</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {report.detailedAnalysis.technologyComparison.map((item, index) => {
                 // 计算相对最大值的百分比
                 const maxStars = Math.max(...report.detailedAnalysis.technologyComparison.map(t => t.stars));
@@ -449,22 +437,22 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                 const starsPercent = (item.stars / maxStars) * 100;
                 const forksPercent = (item.forks / maxForks) * 100;
 
-                // 活跃度颜色
-                const activityColors = {
-                  high: "bg-green-500",
-                  medium: "bg-blue-500",
-                  low: "bg-yellow-500",
-                  dead: "bg-gray-400",
+                // 活跃度状态点（语义色）
+                const activityDots = {
+                  high: "bg-success",
+                  medium: "bg-signal",
+                  low: "bg-warning",
+                  dead: "bg-muted-foreground/50",
                 };
-                const activityColor = activityColors[item.activityLevel as keyof typeof activityColors] || "bg-gray-400";
+                const activityDot = activityDots[item.activityLevel as keyof typeof activityDots] || "bg-muted-foreground/50";
 
                 return (
-                  <Card key={index} className="hover:shadow-md transition-shadow">
+                  <Card key={index} className="transition-colors duration-150 hover:border-border-hover hover:bg-card-hover">
                     <CardContent className="p-4">
                       {/* 项目名称 */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <Code className="h-4 w-4 text-gray-500" />
-                        <span className="font-medium text-sm truncate flex-1">{item.repo}</span>
+                      <div className="mb-3 flex items-center gap-2">
+                        <Code className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex-1 truncate text-sm font-medium">{item.repo}</span>
                       </div>
 
                       {/* 语言标签 */}
@@ -474,7 +462,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                             {item.language}
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-xs text-gray-400">
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
                             N/A
                           </Badge>
                         )}
@@ -483,7 +471,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                       {/* Stars 进度条 */}
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1 text-gray-600">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Star className="h-3 w-3" />
                             <span>Stars</span>
                           </div>
@@ -493,9 +481,9 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                       </div>
 
                       {/* Forks 进度条 */}
-                      <div className="space-y-1 mt-2">
+                      <div className="mt-2 space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1 text-gray-600">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <GitFork className="h-3 w-3" />
                             <span>Forks</span>
                           </div>
@@ -505,13 +493,13 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                       </div>
 
                       {/* 活跃度 */}
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <div className="mt-3 flex items-center justify-between border-t pt-3">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Zap className="h-3 w-3" />
                           <span>活跃度</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <div className={`h-2 w-2 rounded-full ${activityColor}`} />
+                          <div className={`h-2 w-2 rounded-full ${activityDot}`} />
                           <ActivityBadge level={item.activityLevel} />
                         </div>
                       </div>
@@ -528,35 +516,35 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">社区健康度对比</h3>
-              <span className="text-sm text-gray-500">共 {report.detailedAnalysis.communityMetrics.length} 个项目</span>
+              <span className="text-sm text-muted-foreground">共 {report.detailedAnalysis.communityMetrics.length} 个项目</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {report.detailedAnalysis.communityMetrics.map((item, index) => {
                 // 计算相对最大值的百分比
                 const maxContributors = Math.max(...report.detailedAnalysis.communityMetrics.map(m => m.contributorCount));
                 const contributorsPercent = (item.contributorCount / maxContributors) * 100;
 
-                // Issue 解决率颜色
+                // Issue 解决率颜色（AI 估算，语义状态色）
                 const getResolutionColor = (rate: number) => {
-                  if (rate >= 80) return "text-green-600";
-                  if (rate >= 60) return "text-blue-600";
-                  if (rate >= 40) return "text-yellow-600";
-                  return "text-red-600";
+                  if (rate >= 80) return "text-success";
+                  if (rate >= 60) return "text-signal";
+                  if (rate >= 40) return "text-warning";
+                  return "text-destructive";
                 };
 
                 return (
-                  <Card key={index} className="hover:shadow-md transition-shadow">
+                  <Card key={index} className="transition-colors duration-150 hover:border-border-hover hover:bg-card-hover">
                     <CardContent className="p-4">
                       {/* 项目名称 */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <Users className="h-4 w-4 text-gray-500" />
-                        <span className="font-medium text-sm truncate flex-1">{item.repo}</span>
+                      <div className="mb-3 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex-1 truncate text-sm font-medium">{item.repo}</span>
                       </div>
 
                       {/* 贡献者多样性 */}
-                      <div className="space-y-1 mb-3">
+                      <div className="mb-3 space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1 text-gray-600">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Users className="h-3 w-3" />
                             <span>贡献者多样性</span>
                           </div>
@@ -566,9 +554,9 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                       </div>
 
                       {/* Issue 解决率 */}
-                      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <div className="mb-3 rounded-lg bg-muted/50 p-3">
+                        <div className="mb-1 flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <MessageSquare className="h-3 w-3" />
                             <span>Issue 解决率</span>
                           </div>
@@ -580,8 +568,8 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                       </div>
 
                       {/* 提交频率 */}
-                      <div className="flex items-center justify-between pt-2 border-t">
-                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <div className="flex items-center justify-between border-t pt-2">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Activity className="h-3 w-3" />
                           <span>提交频率</span>
                         </div>
@@ -596,10 +584,10 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
             </div>
 
             {/* 社区指标汇总 */}
-            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200">
+            <Card className="telemetry-strip">
               <CardContent className="p-4">
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                <h4 className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <TrendingUp className="h-4 w-4 text-primary" />
                   社区健康度排名
                 </h4>
                 <div className="space-y-2">
@@ -609,10 +597,10 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                     .map((item, index) => (
                       <div key={index} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
-                          <span className={`font-bold ${index === 0 ? "text-yellow-600" : index === 1 ? "text-gray-500" : "text-orange-600"}`}>
+                          <span className={`font-bold ${index === 0 ? "text-foreground" : "text-muted-foreground"}`}>
                             #{index + 1}
                           </span>
-                          <span className="text-gray-700">{item.repo}</span>
+                          <span className="text-foreground">{item.repo}</span>
                         </div>
                         <span className="font-medium">{item.issueResolutionRate}%</span>
                       </div>
@@ -625,10 +613,10 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
         {/* 风险矩阵 */}
         <TabsContent value="risk">
-          <Card>
-            <CardContent className="pt-6 space-y-4">
+          <Card className="command-surface">
+            <CardContent className="space-y-4 pt-6">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">总体风险等级:</span>
+                <span className="text-sm text-muted-foreground">总体风险等级:</span>
                 <RiskLevelBadge level={report.riskMatrix.overallRisk} />
               </div>
 
@@ -664,7 +652,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="text-center text-gray-500 py-4">暂无风险项</p>
+                <p className="py-4 text-center text-muted-foreground">暂无风险项</p>
               )}
             </CardContent>
           </Card>
@@ -672,22 +660,22 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
       </Tabs>
 
       {/* 投资建议 */}
-      <Card>
+      <Card className="command-surface">
         <CardHeader>
           <CardTitle className="text-lg">投资建议</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">首选项目</h4>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">首选项目</h4>
               {report.investmentRecommendations.topPick ? (
-                <Badge className="bg-green-500">{report.investmentRecommendations.topPick}</Badge>
+                <Badge className="bg-success text-success-foreground">{report.investmentRecommendations.topPick}</Badge>
               ) : (
-                <span className="text-gray-400">无明确推荐</span>
+                <span className="text-muted-foreground">无明确推荐</span>
               )}
             </div>
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">关注列表</h4>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">关注列表</h4>
               <div className="flex flex-wrap gap-1">
                 {report.investmentRecommendations.watchList.length > 0 ? (
                   report.investmentRecommendations.watchList.map((repo) => (
@@ -696,12 +684,12 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-gray-400">无</span>
+                  <span className="text-muted-foreground">无</span>
                 )}
               </div>
             </div>
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">规避列表</h4>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">规避列表</h4>
               <div className="flex flex-wrap gap-1">
                 {report.investmentRecommendations.avoidList.length > 0 ? (
                   report.investmentRecommendations.avoidList.map((repo) => (
@@ -710,14 +698,14 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-gray-400">无</span>
+                  <span className="text-muted-foreground">无</span>
                 )}
               </div>
             </div>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-gray-500 mb-2">理由</h4>
-            <p className="text-gray-700 dark:text-gray-300">
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">理由</h4>
+            <p className="text-foreground">
               {report.investmentRecommendations.rationale}
             </p>
           </div>
@@ -725,7 +713,7 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
       </Card>
 
       {/* 数据来源 */}
-      <Card>
+      <Card className="command-surface">
         <CardHeader>
           <CardTitle className="text-lg">数据来源</CardTitle>
           <CardDescription>本报告的数据来源，确保分析结论可追溯、可验证</CardDescription>
@@ -735,9 +723,9 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
             {report.dataSources.map((source, index) => (
               <div key={index} className="flex items-center gap-2 text-sm">
                 <DataSourceBadge type={source.type} />
-                <span className="text-gray-600 dark:text-gray-400">{source.repo}</span>
-                <span className="text-gray-400">-</span>
-                <span className="text-gray-500">{source.details}</span>
+                <span className="text-foreground">{source.repo}</span>
+                <span className="text-muted-foreground">-</span>
+                <span className="text-muted-foreground">{source.details}</span>
               </div>
             ))}
           </div>
@@ -753,10 +741,10 @@ export function ReportView({ reportId, executionId }: ReportViewProps) {
 
 function RecommendationBadge({ recommendation }: { recommendation: string }) {
   const config: Record<string, { label: string; className: string }> = {
-    invest: { label: "建议投资", className: "bg-green-500" },
-    watch: { label: "建议观望", className: "bg-yellow-500" },
-    avoid: { label: "建议规避", className: "bg-red-500" },
-    mixed: { label: "混合建议", className: "bg-blue-500" },
+    invest: { label: "建议投资", className: "bg-success text-success-foreground" },
+    watch: { label: "建议观望", className: "bg-warning text-warning-foreground" },
+    avoid: { label: "建议规避", className: "bg-destructive text-destructive-foreground" },
+    mixed: { label: "混合建议", className: "bg-signal text-signal-foreground" },
   };
   const { label, className } = config[recommendation] || { label: recommendation, className: "" };
   return <Badge className={className}>{label}</Badge>;
@@ -774,21 +762,21 @@ function ConfidenceBadge({ level }: { level: string }) {
 
 function ActivityBadge({ level }: { level: string }) {
   const config: Record<string, { label: string; className: string }> = {
-    high: { label: "🟢 高", className: "text-green-600" },
-    medium: { label: "🟡 中", className: "text-yellow-600" },
-    low: { label: "🟠 低", className: "text-orange-600" },
-    dead: { label: "🔴 停滞", className: "text-red-600" },
+    high: { label: "高", className: "text-success" },
+    medium: { label: "中", className: "text-signal" },
+    low: { label: "低", className: "text-warning" },
+    dead: { label: "停滞", className: "text-destructive" },
   };
   const { label, className } = config[level] || { label: level, className: "" };
-  return <span className={className}>{label}</span>;
+  return <span className={`text-xs font-medium ${className}`}>{label}</span>;
 }
 
 function RiskLevelBadge({ level }: { level: string }) {
   const config: Record<string, { label: string; className: string }> = {
-    low: { label: "🟢 低风险", className: "bg-green-100 text-green-700" },
-    medium: { label: "🟡 中等风险", className: "bg-yellow-100 text-yellow-700" },
-    high: { label: "🟠 高风险", className: "bg-orange-100 text-orange-700" },
-    critical: { label: "🔴 严重风险", className: "bg-red-100 text-red-700" },
+    low: { label: "低风险", className: "bg-success/15 text-success" },
+    medium: { label: "中等风险", className: "bg-warning/15 text-warning" },
+    high: { label: "高风险", className: "bg-destructive/15 text-destructive" },
+    critical: { label: "严重风险", className: "bg-destructive/15 text-destructive" },
   };
   const { label, className } = config[level] || { label: level, className: "" };
   return <Badge className={className}>{label}</Badge>;
@@ -796,10 +784,10 @@ function RiskLevelBadge({ level }: { level: string }) {
 
 function SeverityBadge({ severity }: { severity: number }) {
   const color =
-    severity >= 8 ? "bg-red-500" : severity >= 5 ? "bg-orange-500" : "bg-yellow-500";
+    severity >= 8 ? "bg-destructive" : severity >= 5 ? "bg-warning" : "bg-success";
   return (
-    <div className="flex items-center gap-1">
-      <div className={`w-2 h-2 rounded-full ${color}`} />
+    <div className="flex items-center justify-center gap-1">
+      <div className={`h-2 w-2 rounded-full ${color}`} />
       <span>{severity}/10</span>
     </div>
   );
@@ -818,31 +806,22 @@ function DataSourceBadge({ type }: { type: string }) {
 function MarketPositionCard({
   title,
   repos,
-  color,
 }: {
   title: string;
   repos: string[];
-  color: "green" | "blue" | "yellow" | "purple";
 }) {
-  const colorClasses: Record<string, string> = {
-    green: "border-green-200 bg-green-50 dark:bg-green-950",
-    blue: "border-blue-200 bg-blue-50 dark:bg-blue-950",
-    yellow: "border-yellow-200 bg-yellow-50 dark:bg-yellow-950",
-    purple: "border-purple-200 bg-purple-50 dark:bg-purple-950",
-  };
-
   return (
-    <div className={`p-4 rounded-lg border ${colorClasses[color]}`}>
-      <h4 className="font-medium mb-2">{title}</h4>
+    <div className="rounded-lg border border-border/80 bg-card p-4">
+      <h4 className="mb-2 font-medium">{title}</h4>
       <div className="space-y-1">
         {repos.length > 0 ? (
           repos.map((repo) => (
-            <div key={repo} className="text-sm text-gray-600 dark:text-gray-400">
+            <div key={repo} className="text-sm text-muted-foreground">
               {repo}
             </div>
           ))
         ) : (
-          <div className="text-sm text-gray-400">无</div>
+          <div className="text-sm text-muted-foreground/70">无</div>
         )}
       </div>
     </div>

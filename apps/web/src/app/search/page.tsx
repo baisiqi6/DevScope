@@ -13,7 +13,6 @@ import { SearchBar } from "@/components/search-bar";
 import { SearchResults } from "@/components/search-results";
 import { AnswerCard } from "@/components/answer-card";
 import { AnimatedBackground } from "@/components/animated-background";
-import { motion } from "framer-motion";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -34,28 +33,18 @@ export default function SearchPage() {
 
   return (
     <main className="min-h-screen">
-      {/* 动画背景 */}
       <AnimatedBackground />
 
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="mb-8"
-        >
-          <h1 className="text-3xl font-bold mb-2 text-slate-800">语义搜索</h1>
-          <p className="text-slate-600">
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-8">
+        <header className="command-page-header mb-6">
+          <p className="command-kicker">语义检索</p>
+          <h1 className="text-2xl font-semibold tracking-tight">语义搜索</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             使用 AI 驱动的语义搜索技术，在仓库文档中快速找到你需要的内容。
           </p>
-        </motion.div>
+        </header>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="mb-6"
-        >
+        <div className="mb-6">
           <SearchBar
             query={query}
             setQuery={setQuery}
@@ -64,27 +53,20 @@ export default function SearchPage() {
             onSearch={handleSearch}
             isLoading={searchMutation.isPending}
           />
-        </motion.div>
+        </div>
 
         {searchMutation.error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+          <div
             role="alert"
             className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-destructive"
           >
             <p className="mb-1 font-medium">搜索失败</p>
             <p className="text-sm">{searchMutation.error.message}</p>
-          </motion.div>
+          </div>
         )}
 
         {searchMutation.data && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="space-y-6"
-          >
+          <div className="space-y-6">
             {searchMutation.data.answer && (
               <AnswerCard answer={searchMutation.data.answer} />
             )}
@@ -94,18 +76,13 @@ export default function SearchPage() {
               repository={searchMutation.data.repository}
               duration={searchMutation.data.duration}
             />
-          </motion.div>
+          </div>
         )}
 
         {/* 示例查询 */}
         {!searchMutation.data && !searchMutation.error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-            className="mt-8 p-6 bg-white/60 backdrop-blur-sm rounded-lg border border-slate-200/60 shadow-lg"
-          >
-            <h2 className="text-lg font-semibold mb-4 text-slate-800">示例查询</h2>
+          <section aria-label="示例查询" className="command-surface mt-8 p-4 sm:p-6">
+            <h2 className="mb-4 text-lg font-semibold">示例查询</h2>
             <div className="grid gap-2 text-sm text-muted-foreground">
               <button
                 type="button"
@@ -129,7 +106,7 @@ export default function SearchPage() {
                 <strong>TypeScript：</strong>如何定义泛型类型？
               </button>
             </div>
-          </motion.div>
+          </section>
         )}
       </div>
     </main>

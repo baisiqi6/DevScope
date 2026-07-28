@@ -112,7 +112,7 @@ export function FollowingList({ onSelectRepo }: FollowingListProps) {
         {isLoading && (
           <div aria-busy="true" className="space-y-2" aria-label="正在加载关注列表">
             {[0, 1, 2].map((item) => (
-              <div key={item} className="h-24 animate-pulse rounded-md bg-muted/60" />
+              <div key={item} className="h-24 animate-pulse-soft rounded-md bg-muted/60" />
             ))}
           </div>
         )}
