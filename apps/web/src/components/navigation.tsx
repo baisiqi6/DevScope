@@ -5,13 +5,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { Activity, FolderOpen, LayoutGrid, Search, TrendingUp } from "lucide-react";
+import { Activity, FolderOpen, LayoutGrid, Network, Search, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { path: "/", label: "仓库列表", icon: LayoutGrid },
   { path: "/groups", label: "分组管理", icon: FolderOpen },
   { path: "/search", label: "语义搜索", icon: Search },
+  { path: "/graph", label: "关系图谱", icon: Network },
   { path: "/analysis/competitive", label: "竞争分析", icon: TrendingUp },
   { path: "/analysis/health", label: "健康度报告", icon: Activity },
 ];
