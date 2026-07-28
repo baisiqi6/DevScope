@@ -35,6 +35,7 @@ import {
   type CollectionResult,
 } from "@devscope/shared";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
+import { graphRouter } from "./router/graph";
 import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
 import { v4 as uuidv4 } from "uuid";
 import { runAgentWorkflow } from "./services/agent-workflow";
@@ -77,6 +78,9 @@ export const appRouter = router({
   groups: groupsRouter,
   groupMembers: groupMembersRouter,
   groupsQuery: groupsQueryRouter,
+
+  // 仓库关系图谱
+  graph: graphRouter,
 
   /**
    * 获取用户关注的仓库列表

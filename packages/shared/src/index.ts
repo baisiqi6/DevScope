@@ -1174,6 +1174,65 @@ export const reorderGroupsSchema = z.object({
 export type ReorderGroupsInput = z.infer<typeof reorderGroupsSchema>;
 
 // ============================================================================
+// 仓库关系图谱类型 (Repo Graph Types)
+// ============================================================================
+
+export const similarityEvidenceSchema = z.object({
+  kind: z.literal("similarity"),
+  score: z.number(),
+  pooledChunks: z.number(),
+  chunkTypes: z.array(z.string()),
+});
+
+export const dependencyEvidenceSchema = z.object({
+  kind: z.literal("dependency"),
+  system: z.literal("npm"),
+  packageName: z.string(),
+  packageVersion: z.string(),
+  resolvedBy: z.literal("deps.dev"),
+});
+
+export const repoRelationshipEvidenceSchema = z.discriminatedUnion("kind", [
+  similarityEvidenceSchema,
+  dependencyEvidenceSchema,
+]);
+
+export type RepoRelationshipEvidence = z.infer<typeof repoRelationshipEvidenceSchema>;
+
+export const repoGraphNodeSchema = z.object({
+  id: z.number(),
+  fullName: z.string(),
+  name: z.string(),
+  language: z.string().nullable(),
+  stars: z.number().nullable(),
+  description: z.string().nullable(),
+});
+
+export const repoGraphEdgeSchema = z.object({
+  source: z.number(),
+  target: z.number(),
+  type: z.enum(["similarity", "dependency"]),
+  score: z.number().nullable(),
+});
+
+export const repoGraphSchema = z.object({
+  nodes: z.array(repoGraphNodeSchema),
+  edges: z.array(repoGraphEdgeSchema),
+});
+
+export type RepoGraphNode = z.infer<typeof repoGraphNodeSchema>;
+export type RepoGraphEdge = z.infer<typeof repoGraphEdgeSchema>;
+export type RepoGraph = z.infer<typeof repoGraphSchema>;
+
+export const rebuildRepoGraphResultSchema = z.object({
+  similarityEdges: z.number(),
+  dependencyEdges: z.number(),
+  pooledRepos: z.number(),
+});
+
+export type RebuildRepoGraphResult = z.infer<typeof rebuildRepoGraphResultSchema>;
+
+// ============================================================================
 // GitHub Client (GitHub API 客户端)
 // ============================================================================
 

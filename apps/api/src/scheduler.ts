@@ -13,6 +13,8 @@ import {
   enqueueJob,
   repositories,
   repoChunks,
+  poolRepoEmbedding,
+  scheduleSimilarityRecompute,
 } from "@devscope/db";
 import { lt, eq, or, isNull } from "drizzle-orm";
 import { getOrCreateCurrentUserId } from "./current-user";
@@ -192,6 +194,9 @@ async function processPendingEmbeddings() {
         })), undefined, repoRecord.updatedAt);
         success++;
         console.log(`[Scheduler] ✅ 向量化完成: ${repo.fullName}`);
+
+        await poolRepoEmbedding(database, repo.id);
+        scheduleSimilarityRecompute(database);
       } catch (err: any) {
         failed++;
         console.error(`[Scheduler] ❌ 向量化失败: ${repo.fullName} - ${err.message}`);

@@ -8,7 +8,7 @@
  * @module schema
  */
 
-import { pgTable, serial, text, timestamp, vector, integer, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, vector, integer, real, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
 
 // ============================================================================
 // 枚举定义
@@ -46,6 +46,14 @@ export const radarCandidateStatusEnum = pgEnum("radar_candidate_status", [
   "recommended",
   "dismissed",
   "watching",
+]);
+
+/**
+ * 仓库关系边类型枚举
+ */
+export const repoRelationshipTypeEnum = pgEnum("repo_relationship_type", [
+  "similarity",
+  "dependency",
 ]);
 
 // ============================================================================
@@ -226,6 +234,12 @@ export const repositories = pgTable("repositories", {
   starredAt: timestamp("starred_at"),
   /** 用户自定义备注 */
   note: text("note"),
+  /**
+   * SBOM 依赖包列表（采集时缓存）
+   * @description GitHub dependency graph SBOM 解析出的 { name, version } 列表，
+   * 供依赖边重建使用；versionInfo 为精确版本。
+   */
+  sbomPackages: jsonb("sbom_packages").$type<Array<{ name: string; version: string }>>(),
   /** 向量化状态 */
   embeddingStatus: embeddingStatusEnum("embedding_status").default("pending"),
   /** 向量化进度百分比 (0-100) */
@@ -240,6 +254,8 @@ export const repositories = pgTable("repositories", {
   embeddingCompletedAt: timestamp("embedding_completed_at"),
   /** 向量化错误信息 */
   embeddingError: text("embedding_error"),
+  /** 仓库级聚合向量（readme+description mean pooling） */
+  embedding: vector("embedding", { dimensions: 1024 }),
 }, (table) => ({
   ownerIdx: index("repositories_owner_idx").on(table.owner),
   starsIdx: index("repositories_stars_idx").on(table.stars),
@@ -730,3 +746,57 @@ export type GroupMember = typeof groupMembers.$inferSelect;
  * 新分组成员类型
  */
 export type NewGroupMember = typeof groupMembers.$inferInsert;
+
+// ============================================================================
+// 仓库关系图谱相关表定义
+// ============================================================================
+
+/**
+ * 仓库关系边表
+ * @description 存储仓库间的相似度和依赖关系
+ */
+export const repoRelationships = pgTable("repo_relationships", {
+  id: serial("id").primaryKey(),
+  sourceRepoId: integer("source_repo_id")
+    .references(() => repositories.id, { onDelete: "cascade" })
+    .notNull(),
+  targetRepoId: integer("target_repo_id")
+    .references(() => repositories.id, { onDelete: "cascade" })
+    .notNull(),
+  edgeType: repoRelationshipTypeEnum("edge_type").notNull(),
+  score: real("score"),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueEdge: uniqueIndex("repo_relationships_source_target_type_unique").on(
+    table.sourceRepoId,
+    table.targetRepoId,
+    table.edgeType
+  ),
+  targetRepoIdIdx: index("repo_relationships_target_repo_id_idx").on(table.targetRepoId),
+}));
+
+/**
+ * 包-仓库映射缓存表
+ * @description 缓存 deps.dev 的包到源码仓库映射结果
+ */
+export const packageRepoMappings = pgTable("package_repo_mappings", {
+  id: serial("id").primaryKey(),
+  system: text("system").notNull(),
+  packageName: text("package_name").notNull(),
+  packageVersion: text("package_version").notNull(),
+  sourceRepo: text("source_repo"),
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePackageVersion: uniqueIndex("package_repo_mappings_system_name_version_unique").on(
+    table.system,
+    table.packageName,
+    table.packageVersion
+  ),
+}));
+
+export type RepoRelationship = typeof repoRelationships.$inferSelect;
+export type NewRepoRelationship = typeof repoRelationships.$inferInsert;
+export type PackageRepoMapping = typeof packageRepoMappings.$inferSelect;
+export type NewPackageRepoMapping = typeof packageRepoMappings.$inferInsert;

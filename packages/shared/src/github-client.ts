@@ -3,6 +3,8 @@
  * @description 统一的 GitHub API 客户端，供 Agent SDK 和 Skills 使用
  */
 
+import { setTimeout as delay } from "node:timers/promises";
+
 // ============================================================================
 // 类型定义
 // ============================================================================
@@ -199,5 +201,52 @@ export class GitHubClient {
       author: commit.commit.author.name,
       date: commit.commit.author.date,
     }));
+  }
+
+  /**
+   * 获取仓库 SBOM（Software Bill of Materials）
+   * 404 表示仓库未启用 dependency graph，返回 null；
+   * 5xx 多为 GitHub 按需生成 SBOM 的暂态失败，重试一次（fetch 默认跟随重命名重定向）
+   */
+  async getSbom(fullName: string): Promise<Record<string, unknown> | null> {
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+    };
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      try {
+        const response = await fetch(
+          `${this.baseUrl}/repos/${fullName}/dependency-graph/sbom`,
+          { headers, signal: controller.signal, redirect: "follow" }
+        );
+        clearTimeout(timeoutId);
+
+        if (response.status === 404) {
+          return null;
+        }
+        if (!response.ok) {
+          // 5xx：GitHub 正在后台生成 SBOM，等待后重试一次
+          if (response.status >= 500 && attempt === 0) {
+            await delay(5000);
+            continue;
+          }
+          throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json() as Promise<Record<string, unknown>>;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`GitHub SBOM request timed out for ${fullName}`);
+        }
+        throw error;
+      }
+    }
+    return null;
   }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "repositories" ADD COLUMN "sbom_packages" jsonb;

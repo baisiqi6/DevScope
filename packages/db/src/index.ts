@@ -117,3 +117,8 @@ export * from "./jobs";
  * 技术雷达候选池
  */
 export * from "./radar";
+
+/**
+ * 仓库关系图谱
+ */
+export * from "./repo-graph";
