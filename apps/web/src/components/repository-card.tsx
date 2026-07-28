@@ -59,7 +59,7 @@ export function RepositoryCard({
   };
 
   return (
-    <Card className="command-surface group h-full transition-colors duration-150 hover:border-primary/35 hover:bg-card/95">
+    <Card className="command-surface group h-full transition-[transform,border-color,background-color] duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:bg-card-hover">
       <CardContent className="p-4">
         <div
           className={cn(

@@ -8,6 +8,8 @@
  */
 
 import type { Metadata } from "next";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "./globals.css";
 import { AppHeader } from "@/components/app-header";
 import { TRPCProvider } from "@/components/providers";
