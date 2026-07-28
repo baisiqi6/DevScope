@@ -10,6 +10,8 @@
 import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, deleteReleasesByRepoId, insertReleases, repositories } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
+import { GitHubClient } from "@devscope/shared";
+import { parseSbomPackages, type SbomPackage } from "./repo-graph";
 import type { Db } from "./index";
 import { eq } from "drizzle-orm";
 
@@ -58,6 +60,8 @@ interface CollectionResult {
   duration: number;
   /** 向量化是否在后台进行 */
   embeddingInBackground?: boolean;
+  /** SBOM 中解析出的 npm 包列表 */
+  sbomPackages?: SbomPackage[];
 }
 
 /**
@@ -103,6 +107,8 @@ export interface PipelineConfig {
   hnLimit?: number;
   /** 是否跳过 Embedding 生成（当 embedding 服务不可用时） */
   skipEmbeddings?: boolean;
+  /** 是否采集 SBOM（默认开启） */
+  includeSbom?: boolean;
 }
 
 /**
@@ -148,6 +154,7 @@ export class DataCollectionPipeline {
       includeHackernews: config.includeHackernews ?? true,
       hnLimit: config.hnLimit || 20,
       skipEmbeddings: config.skipEmbeddings ?? false,
+      includeSbom: config.includeSbom ?? true,
     };
 
     // 初始化组件
@@ -472,6 +479,7 @@ export class DataCollectionPipeline {
     let chunksCollected = 0;
     let embeddingsGenerated = 0;
     let hnItemsCollected = 0;
+    let sbomPackages: SbomPackage[] | undefined;
 
     try {
       console.log("[Pipeline] Step 1: Collecting GitHub data...");
@@ -657,6 +665,27 @@ export class DataCollectionPipeline {
         // Releases 不是关键数据，继续执行
       }
 
+      // 8. 采集 SBOM 数据
+      if (effectiveConfig.includeSbom && savedRepo.id) {
+        console.log("[Pipeline] Step 7: Fetching SBOM...");
+        try {
+          const ghClient = new GitHubClient(effectiveConfig.githubToken || undefined);
+          const sbomRaw = await ghClient.getSbom(`${owner}/${repo}`);
+          if (sbomRaw) {
+            sbomPackages = parseSbomPackages(sbomRaw);
+            await this.db
+              .update(repositories)
+              .set({ sbomPackages })
+              .where(eq(repositories.id, savedRepo.id));
+            console.log("[Pipeline] SBOM packages parsed and stored:", sbomPackages.length);
+          } else {
+            console.log("[Pipeline] No SBOM available for this repository");
+          }
+        } catch (err) {
+          console.warn("[Pipeline] Failed to fetch SBOM:", err);
+        }
+      }
+
       status = "completed";
       console.log("[Pipeline] ======= PIPELINE COMPLETED SUCCESSFULLY =======");
     } catch (err) {
@@ -691,6 +720,7 @@ export class DataCollectionPipeline {
       error,
       warning,
       duration,
+      sbomPackages,
     };
   }
 
