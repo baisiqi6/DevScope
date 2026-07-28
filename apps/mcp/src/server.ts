@@ -140,5 +140,138 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
     () => runTool(() => client.listGroups()),
   );
 
+  server.registerTool(
+    "devscope_update_repo_note",
+    {
+      title: "更新仓库备注",
+      description: "写入：为指定仓库设置自定义备注文本。",
+      inputSchema: z.object({
+        repoId: z.number().int().positive(),
+        note: z.string(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ repoId, note }) => runTool(() => client.updateRepoNote(repoId, note)),
+  );
+
+  server.registerTool(
+    "devscope_get_group_members",
+    {
+      title: "读取分组成员",
+      description: "只读：获取指定分组的成员列表及关联仓库信息。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ groupId }) => runTool(() => client.getGroupWithMembers(groupId)),
+  );
+
+  server.registerTool(
+    "devscope_create_group",
+    {
+      title: "创建仓库分组",
+      description: "写入：创建一个新的仓库分组。",
+      inputSchema: z.object({
+        name: z.string().min(1).max(50),
+        description: z.string().optional(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    ({ name, description }) => runTool(() => client.createGroup({ name, description })),
+  );
+
+  server.registerTool(
+    "devscope_add_repo_to_group",
+    {
+      title: "添加仓库到分组",
+      description: "写入：将仓库添加到指定分组。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+        repoId: z.number().int().positive(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, repoId }) => runTool(() => client.addRepoToGroup(groupId, repoId)),
+  );
+
+  server.registerTool(
+    "devscope_remove_repo_from_group",
+    {
+      title: "从分组移除仓库",
+      description: "写入：将仓库从指定分组中移除。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+        repoId: z.number().int().positive(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, repoId }) => runTool(() => client.removeRepoFromGroup(groupId, repoId)),
+  );
+
+  server.registerTool(
+    "devscope_start_health_analysis",
+    {
+      title: "启动健康度分析",
+      description: "写入：为指定仓库启动后台 Agent 健康度分析，立即返回 executionId。",
+      inputSchema: z.object({
+        repoFullName: z.string().trim().min(1).describe("GitHub 仓库，格式为 owner/repo"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    ({ repoFullName }) => runTool(() => client.startHealthAnalysis(repoFullName)),
+  );
+
+  server.registerTool(
+    "devscope_get_analysis_status",
+    {
+      title: "查询分析状态",
+      description: "只读：查询指定执行记录的当前状态和进度。",
+      inputSchema: z.object({
+        executionId: z.string().min(1),
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ executionId }) => runTool(() => client.getAnalysisStatus(executionId)),
+  );
+
+  server.registerTool(
+    "devscope_get_health_report",
+    {
+      title: "获取健康度报告",
+      description: "只读：获取指定执行记录对应的健康度报告。",
+      inputSchema: z.object({
+        executionId: z.string().min(1),
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ executionId }) => runTool(() => client.getHealthReport(executionId)),
+  );
+
   return server;
 }

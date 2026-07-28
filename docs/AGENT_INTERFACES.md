@@ -64,9 +64,18 @@ devscope repo collect vercel/next.js
 devscope repo collect vercel/next.js --wait --timeout-ms 300000
 devscope repo collect vercel/next.js --skip-embeddings
 devscope repo embedding-status 1
+devscope repo note 1 "重要项目"
 devscope search vercel/next.js "如何部署" --limit 5
 devscope search vercel/next.js "如何部署" --no-answer
 devscope group list
+devscope group create "前端框架" --description "前端相关仓库"
+devscope group members 1
+devscope group add 1 5
+devscope group remove 1 5
+devscope analyze start vercel/next.js
+devscope analyze status <execution-id>
+devscope analyze report <execution-id>
+devscope analyze report <execution-id> --wait --timeout-ms 300000
 ```
 
 正常结果以 JSON 写入 stdout。错误以 JSON 写入 stderr：
@@ -77,19 +86,29 @@ devscope group list
 
 `repo collect --wait` 会轮询向量化状态，默认间隔 `1000ms`、超时 `300000ms`。`--skip-embeddings` 与 `--wait` 不能同时使用。
 
+`analyze report --wait` 会轮询分析执行状态直到完成或失败，默认间隔 `1000ms`、超时 `300000ms`。
+
 ## MCP Server
 
 ### 工具列表
 
-| 工具名称                        | 行为      | 说明                         |
-| ------------------------------- | --------- | ---------------------------- |
-| `devscope_health`               | 只读      | 检查 API 状态                |
-| `devscope_list_repositories`    | 只读      | 列出已采集仓库               |
-| `devscope_get_repository`       | 只读      | 读取仓库详情                 |
-| `devscope_collect_repository`   | 写入/外部 | 采集 GitHub 数据并写入数据库 |
-| `devscope_get_embedding_status` | 只读      | 查询向量化进度               |
-| `devscope_semantic_search`      | 只读      | 搜索仓库内容，可生成 AI 回答 |
-| `devscope_list_groups`          | 只读      | 列出当前用户的仓库分组       |
+| 工具名称                          | 行为      | 说明                             |
+| --------------------------------- | --------- | -------------------------------- |
+| `devscope_health`                 | 只读      | 检查 API 状态                    |
+| `devscope_list_repositories`      | 只读      | 列出已采集仓库                   |
+| `devscope_get_repository`         | 只读      | 读取仓库详情                     |
+| `devscope_collect_repository`     | 写入/外部 | 采集 GitHub 数据并写入数据库     |
+| `devscope_get_embedding_status`   | 只读      | 查询向量化进度                   |
+| `devscope_semantic_search`        | 只读      | 搜索仓库内容，可生成 AI 回答     |
+| `devscope_list_groups`            | 只读      | 列出当前用户的仓库分组           |
+| `devscope_update_repo_note`       | 写入      | 更新仓库备注                     |
+| `devscope_get_group_members`      | 只读      | 读取分组成员及关联仓库           |
+| `devscope_create_group`           | 写入      | 创建仓库分组                     |
+| `devscope_add_repo_to_group`      | 写入      | 添加仓库到分组                   |
+| `devscope_remove_repo_from_group` | 写入      | 从分组移除仓库                   |
+| `devscope_start_health_analysis`  | 写入/外部 | 启动后台 Agent 健康度分析        |
+| `devscope_get_analysis_status`    | 只读      | 查询分析执行状态                 |
+| `devscope_get_health_report`      | 只读      | 获取健康度报告                   |
 
 ### 本地 MCP 配置
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateStructuredReport } from "./agent-workflow";
+import { generateStructuredReport } from "../../services/agent-workflow";
 
 const repo = "owner/repo";
 
