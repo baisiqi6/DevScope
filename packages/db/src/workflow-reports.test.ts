@@ -5,6 +5,7 @@ import {
   getWorkflowReportByExecutionId,
   listWorkflowReportsByRepository,
   ownsWorkflowExecution,
+  reconcileStaleExecutions,
 } from "./workflow-reports";
 
 const report: CompetitiveAnalysisReport = {
@@ -163,3 +164,37 @@ function createSelectDb(rows: unknown[]) {
     })),
   };
 }
+
+describe("reconcileStaleExecutions", () => {
+  it("将僵尸 execution 标记为 failed 并返回数量", async () => {
+    const returning = vi.fn().mockResolvedValue([
+      { executionId: "stale-1" },
+      { executionId: "stale-2" },
+    ]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    const db = { update };
+
+    const count = await reconcileStaleExecutions(db as any, { staleMinutes: 30 });
+
+    expect(count).toBe(2);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      error: "marked failed by startup reconciliation (process restart)",
+    }));
+  });
+
+  it("无僵尸记录时返回 0", async () => {
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    const db = { update };
+
+    const count = await reconcileStaleExecutions(db as any);
+
+    expect(count).toBe(0);
+  });
+});

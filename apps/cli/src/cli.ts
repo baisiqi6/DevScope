@@ -15,8 +15,17 @@ const HELP_TEXT = `DevScope CLI
   devscope repo collect <owner/repo> [--skip-embeddings] [--wait]
                         [--poll-interval-ms <ms>] [--timeout-ms <ms>]
   devscope repo embedding-status <repo-id>
+  devscope repo note <repo-id> <text>
   devscope search <owner/repo> <query> [--limit <1-20>] [--no-answer]
   devscope group list
+  devscope group create <name> [--description <text>]
+  devscope group members <group-id>
+  devscope group add <group-id> <repo-id>
+  devscope group remove <group-id> <repo-id>
+  devscope analyze start <owner/repo>
+  devscope analyze status <execution-id>
+  devscope analyze report <execution-id> [--wait]
+                          [--poll-interval-ms <ms>] [--timeout-ms <ms>]
   devscope --help
   devscope --version
 
@@ -139,6 +148,121 @@ async function waitForEmbedding(
   }
 }
 
+async function waitForAnalysis(
+  client: DevScopeClient,
+  executionId: string,
+  pollIntervalMs: number,
+  timeoutMs: number,
+  sleep: (milliseconds: number) => Promise<void>
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const status = await client.getAnalysisStatus(executionId);
+    if (status.status === 'completed') {
+      return;
+    }
+    if (status.status === 'failed' || status.status === 'cancelled') {
+      throw new Error(status.error ?? '分析执行失败');
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`等待分析完成超时（${timeoutMs}ms）`);
+    }
+    await sleep(pollIntervalMs);
+  }
+}
+
+async function runGroupCommand(
+  args: string[],
+  client: DevScopeClient,
+): Promise<unknown> {
+  const [command, ...rest] = args;
+
+  if (command === 'list') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 0, 'devscope group list');
+    return client.listGroups();
+  }
+
+  if (command === 'create') {
+    const parsed = parseOptions(rest, new Set(['--description']), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope group create <name> [--description <text>]');
+    return client.createGroup({
+      name: parsed.positionals[0],
+      description: parsed.values.get('--description'),
+    });
+  }
+
+  if (command === 'members') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope group members <group-id>');
+    const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
+    return client.getGroupWithMembers(groupId);
+  }
+
+  if (command === 'add') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope group add <group-id> <repo-id>');
+    const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
+    const repoId = parseInteger(parsed.positionals[1], 'repo-id', undefined, 1);
+    return client.addRepoToGroup(groupId, repoId);
+  }
+
+  if (command === 'remove') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope group remove <group-id> <repo-id>');
+    const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
+    const repoId = parseInteger(parsed.positionals[1], 'repo-id', undefined, 1);
+    return client.removeRepoFromGroup(groupId, repoId);
+  }
+
+  throw new CliUsageError('用法: devscope group <list|create|members|add|remove> ...');
+}
+
+async function runAnalyzeCommand(
+  args: string[],
+  client: DevScopeClient,
+  sleep: (milliseconds: number) => Promise<void>,
+): Promise<unknown> {
+  const [command, ...rest] = args;
+
+  if (command === 'start') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope analyze start <owner/repo>');
+    return client.startHealthAnalysis(parsed.positionals[0]);
+  }
+
+  if (command === 'status') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope analyze status <execution-id>');
+    return client.getAnalysisStatus(parsed.positionals[0]);
+  }
+
+  if (command === 'report') {
+    const parsed = parseOptions(
+      rest,
+      new Set(['--poll-interval-ms', '--timeout-ms']),
+      new Set(['--wait']),
+    );
+    expectPositionals(parsed.positionals, 1, 'devscope analyze report <execution-id> [options]');
+    const executionId = parsed.positionals[0];
+
+    if (parsed.flags.has('--wait')) {
+      await waitForAnalysis(
+        client,
+        executionId,
+        parseInteger(parsed.values.get('--poll-interval-ms'), '--poll-interval-ms', 1000, 1),
+        parseInteger(parsed.values.get('--timeout-ms'), '--timeout-ms', 300_000, 1),
+        sleep,
+      );
+    }
+
+    return client.getHealthReport(executionId);
+  }
+
+  throw new CliUsageError('用法: devscope analyze <start|status|report> ...');
+}
+
 async function runRepoCommand(
   args: string[],
   client: DevScopeClient,
@@ -204,7 +328,14 @@ async function runRepoCommand(
     return { collection, embeddingStatus };
   }
 
-  throw new CliUsageError('用法: devscope repo <list|get|collect|embedding-status> ...');
+  if (command === 'note') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope repo note <repo-id> <text>');
+    const repoId = parseInteger(parsed.positionals[0], 'repo-id', undefined, 1);
+    return client.updateRepoNote(repoId, parsed.positionals[1]);
+  }
+
+  throw new CliUsageError('用法: devscope repo <list|get|collect|embedding-status|note> ...');
 }
 
 async function dispatch(
@@ -234,8 +365,12 @@ async function dispatch(
     });
   }
 
-  if (scope === 'group' && rest[0] === 'list' && rest.length === 1) {
-    return client.listGroups();
+  if (scope === 'group') {
+    return runGroupCommand(rest, client);
+  }
+
+  if (scope === 'analyze') {
+    return runAnalyzeCommand(rest, client, sleep);
   }
 
   throw new CliUsageError('未知命令，请运行 devscope --help 查看用法');

@@ -21,8 +21,10 @@ import {
   createGitHubCollector,
   getReleasesByRepoId,
   listWorkflowReportsByRepository,
+  workflowExecutions,
+  workflowReports,
 } from "@devscope/db";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, and, inArray } from "drizzle-orm";
 import {
   repositoryAnalysisRequestSchema,
   repositoryAnalysisSchema,
@@ -33,7 +35,9 @@ import {
   type CollectionResult,
 } from "@devscope/shared";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
-import { findCurrentUserId } from "./current-user";
+import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
+import { v4 as uuidv4 } from "uuid";
+import { runAgentWorkflow } from "./services/agent-workflow";
 
 const activeRepositoryCollections = new Set<string>();
 
@@ -231,6 +235,7 @@ export const appRouter = router({
         name: repo.name,
         owner: repo.owner,
         description: repo.description,
+        note: repo.note,
         url: repo.url,
         stars: repo.stars,
         forks: repo.forks,
@@ -410,6 +415,161 @@ export const appRouter = router({
         .set({ note: input.note || null })
         .where(eq(repositories.id, input.repoId));
       return { success: true };
+    }),
+
+  /**
+   * 启动健康度分析（fire-and-forget）
+   * @description 创建 execution 并后台执行 Agent 工作流，立即返回 executionId
+   */
+  startHealthAnalysis: publicProcedure
+    .input(z.object({
+      repoFullName: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo"),
+    }))
+    .output(z.object({
+      executionId: z.string(),
+      deduplicated: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+
+      // 在途去重：同仓库存在 pending/running 且 updatedAt 在 30 分钟内的 execution
+      const cutoff = new Date(Date.now() - 30 * 60_000);
+      const [existing] = await db
+        .select({ executionId: workflowExecutions.executionId })
+        .from(workflowExecutions)
+        .where(
+          and(
+            eq(workflowExecutions.userId, userId),
+            inArray(workflowExecutions.status, ["pending", "running"]),
+            sql`${workflowExecutions.updatedAt} > ${cutoff}`,
+            sql`${workflowExecutions.input}->>'repos' LIKE ${`%${input.repoFullName}%`}`,
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        return { executionId: existing.executionId, deduplicated: true };
+      }
+
+      const executionId = uuidv4();
+
+      // fire-and-forget 后台执行；execution 记录由 service 以传入的 executionId 统一创建，
+      // 调用方不得重复 insert（execution_id 有唯一约束）
+      runAgentWorkflow(db, userId, {
+        repos: [input.repoFullName],
+        analysisType: "health_report",
+      }, {}, executionId).catch((err) => {
+        console.error("[startHealthAnalysis] Background workflow failed:", err);
+      });
+
+      return { executionId, deduplicated: false };
+    }),
+
+  /**
+   * 查询分析执行状态
+   */
+  getAnalysisStatus: publicProcedure
+    .input(z.object({
+      executionId: z.string().min(1),
+    }))
+    .output(z.object({
+      executionId: z.string(),
+      status: z.enum(["pending", "running", "completed", "failed", "cancelled"]),
+      progressPercent: z.number().nullable(),
+      currentNode: z.string().nullable(),
+      error: z.string().nullable(),
+      startedAt: z.string().nullable(),
+      completedAt: z.string().nullable(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const userId = await findCurrentUserId(ctx.db);
+      if (userId === null) {
+        throw new Error("执行记录不存在");
+      }
+
+      const [row] = await ctx.db
+        .select({
+          executionId: workflowExecutions.executionId,
+          status: workflowExecutions.status,
+          progressPercent: workflowExecutions.progressPercent,
+          currentNode: workflowExecutions.currentNode,
+          error: workflowExecutions.error,
+          startedAt: workflowExecutions.startedAt,
+          completedAt: workflowExecutions.completedAt,
+        })
+        .from(workflowExecutions)
+        .where(
+          and(
+            eq(workflowExecutions.executionId, input.executionId),
+            eq(workflowExecutions.userId, userId),
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        throw new Error("执行记录不存在");
+      }
+
+      return {
+        executionId: row.executionId,
+        status: row.status,
+        progressPercent: row.progressPercent,
+        currentNode: row.currentNode,
+        error: row.error,
+        startedAt: row.startedAt?.toISOString() ?? null,
+        completedAt: row.completedAt?.toISOString() ?? null,
+      };
+    }),
+
+  /**
+   * 获取健康度报告
+   */
+  getHealthReport: publicProcedure
+    .input(z.object({
+      executionId: z.string().min(1),
+    }))
+    .output(z.object({
+      reportId: z.string(),
+      reportType: z.string(),
+      reportData: z.unknown(),
+      summary: z.string().nullable(),
+      createdAt: z.string(),
+    }).nullable())
+    .query(async ({ ctx, input }) => {
+      const userId = await findCurrentUserId(ctx.db);
+      if (userId === null) {
+        return null;
+      }
+
+      const [row] = await ctx.db
+        .select({
+          reportId: workflowReports.reportId,
+          reportType: workflowReports.reportType,
+          reportData: workflowReports.reportData,
+          summary: workflowReports.summary,
+          createdAt: workflowReports.createdAt,
+        })
+        .from(workflowReports)
+        .where(
+          and(
+            eq(workflowReports.executionId, input.executionId),
+            eq(workflowReports.userId, userId),
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return null;
+      }
+
+      return {
+        reportId: row.reportId,
+        reportType: row.reportType,
+        reportData: row.reportData,
+        summary: row.summary,
+        createdAt: row.createdAt.toISOString(),
+      };
     }),
 
   /**

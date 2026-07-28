@@ -14,6 +14,14 @@ function createStubClient(): DevScopeClient {
     getEmbeddingStatus: vi.fn(),
     semanticSearch: vi.fn(),
     listGroups: vi.fn().mockResolvedValue([]),
+    updateRepoNote: vi.fn().mockResolvedValue({ success: true }),
+    getGroupWithMembers: vi.fn(),
+    createGroup: vi.fn(),
+    addRepoToGroup: vi.fn(),
+    removeRepoFromGroup: vi.fn().mockResolvedValue({ success: true }),
+    startHealthAnalysis: vi.fn(),
+    getAnalysisStatus: vi.fn(),
+    getHealthReport: vi.fn(),
   };
 }
 
@@ -42,7 +50,7 @@ afterEach(async () => {
 });
 
 describe("DevScope MCP Server", () => {
-  it("注册首批七个工具", async () => {
+  it("注册全部十五个工具", async () => {
     const client = await createConnectedPair(createStubClient());
     const result = await client.listTools();
 
@@ -54,6 +62,14 @@ describe("DevScope MCP Server", () => {
       "devscope_get_embedding_status",
       "devscope_semantic_search",
       "devscope_list_groups",
+      "devscope_update_repo_note",
+      "devscope_get_group_members",
+      "devscope_create_group",
+      "devscope_add_repo_to_group",
+      "devscope_remove_repo_from_group",
+      "devscope_start_health_analysis",
+      "devscope_get_analysis_status",
+      "devscope_get_health_report",
     ]);
   });
 
@@ -93,5 +109,37 @@ describe("DevScope MCP Server", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([{ type: "text", text: "仓库不存在" }]);
+  });
+
+  it("通过 MCP 调用 startHealthAnalysis", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.startHealthAnalysis).mockResolvedValue({
+      executionId: "exec-mcp-1",
+      deduplicated: false,
+    });
+    const client = await createConnectedPair(devScopeClient);
+    const result = await client.callTool(
+      { name: "devscope_start_health_analysis", arguments: { repoFullName: "owner/repo" } },
+      CallToolResultSchema,
+    );
+
+    expect(devScopeClient.startHealthAnalysis).toHaveBeenCalledWith("owner/repo");
+    expect(result.isError).not.toBe(true);
+    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual({
+      executionId: "exec-mcp-1",
+      deduplicated: false,
+    });
+  });
+
+  it("通过 MCP 调用 updateRepoNote", async () => {
+    const devScopeClient = createStubClient();
+    const client = await createConnectedPair(devScopeClient);
+    const result = await client.callTool(
+      { name: "devscope_update_repo_note", arguments: { repoId: 1, note: "测试" } },
+      CallToolResultSchema,
+    );
+
+    expect(devScopeClient.updateRepoNote).toHaveBeenCalledWith(1, "测试");
+    expect(result.isError).not.toBe(true);
   });
 });

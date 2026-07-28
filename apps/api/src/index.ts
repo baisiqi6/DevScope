@@ -18,7 +18,7 @@ import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
-import { closeDb } from "@devscope/db";
+import { closeDb, createDb, reconcileStaleExecutions } from "@devscope/db";
 import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
 
 // ============================================================================
@@ -204,6 +204,18 @@ const start = async () => {
     console.log(`  BGE_API_URL: ${hasBgeApiUrl ? "✅ 已配置" : "❌ 未配置"} ${hasBgeApiUrl ? `(${process.env.BGE_API_URL})` : ""}`);
     console.log(`  BGE_MODEL_NAME: ${hasBgeModelName ? "✅ 已配置" : "❌ 未配置"} ${hasBgeModelName ? `(${process.env.BGE_MODEL_NAME})` : ""}`);
     console.log("=".repeat(50));
+
+    // 启动前清理僵尸 execution（不阻断启动）
+    try {
+      const staleMinutes = Number(process.env.WORKFLOW_STALE_MINUTES) || 30;
+      const db = createDb();
+      const count = await reconcileStaleExecutions(db, { staleMinutes });
+      if (count > 0) {
+        console.log(`[Reconciliation] 标记 ${count} 条僵尸执行为 failed`);
+      }
+    } catch (e) {
+      console.warn("[Reconciliation] 启动清理失败，不阻断启动:", e);
+    }
 
     /** 从环境变量读取端口，默认 3100 */
     const port = Number(process.env.PORT || process.env.API_PORT) || 3100;

@@ -139,3 +139,36 @@ export async function ownsWorkflowExecution(
 
   return rows.length === 1;
 }
+
+export interface ReconcileStaleOptions {
+  staleMinutes?: number;
+}
+
+/**
+ * 将长时间处于 pending/running 的僵尸 execution 标记为 failed。
+ * 用于 API 启动时一次性清理因进程重启而中断的执行记录。
+ */
+export async function reconcileStaleExecutions(
+  db: Db,
+  options: ReconcileStaleOptions = {}
+): Promise<number> {
+  const staleMinutes = options.staleMinutes ?? 30;
+  const cutoff = new Date(Date.now() - staleMinutes * 60_000);
+
+  const updated = await db
+    .update(workflowExecutions)
+    .set({
+      status: "failed",
+      error: "marked failed by startup reconciliation (process restart)",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        sql`${workflowExecutions.status} IN ('pending', 'running')`,
+        sql`${workflowExecutions.updatedAt} < ${cutoff}`
+      )
+    )
+    .returning({ executionId: workflowExecutions.executionId });
+
+  return updated.length;
+}

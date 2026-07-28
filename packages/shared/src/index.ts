@@ -518,6 +518,8 @@ export const repositoryDetailSchema = z.object({
   owner: z.string(),
   /** 仓库描述 */
   description: z.string().nullable().optional(),
+  /** 用户自定义备注 */
+  note: z.string().nullable().optional(),
   /** GitHub URL */
   url: z.string(),
   /** Stars 数量（可为 null） */

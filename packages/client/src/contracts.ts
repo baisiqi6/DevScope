@@ -62,6 +62,102 @@ export type EmbeddingStatus = z.infer<typeof embeddingStatusSchema>;
 
 export const repositoryGroupListSchema = z.array(repositoryGroupSchema);
 
+export const updateRepoNoteResultSchema = z.object({
+  success: z.boolean(),
+});
+
+export type UpdateRepoNoteResult = z.infer<typeof updateRepoNoteResultSchema>;
+
+export const groupWithMembersSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  name: z.string(),
+  color: z.string(),
+  icon: z.string(),
+  description: z.string().nullable(),
+  orderIndex: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  repoCount: z.number(),
+  members: z.array(z.object({
+    id: z.number(),
+    groupId: z.number(),
+    repoId: z.number(),
+    orderIndex: z.number(),
+    createdAt: z.string(),
+    repository: z.unknown().nullable(),
+  })),
+});
+
+export type GroupWithMembers = z.infer<typeof groupWithMembersSchema>;
+
+export const createGroupInputSchema = z.object({
+  name: z.string().min(1).max(50),
+  description: z.string().optional(),
+});
+
+export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
+
+export const createGroupResultSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  name: z.string(),
+  color: z.string(),
+  icon: z.string(),
+  description: z.string().nullable(),
+  orderIndex: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  repoCount: z.number(),
+});
+
+export type CreateGroupResult = z.infer<typeof createGroupResultSchema>;
+
+export const groupMemberResultSchema = z.object({
+  id: z.number(),
+  groupId: z.number(),
+  repoId: z.number(),
+  orderIndex: z.number(),
+  createdAt: z.string(),
+});
+
+export type GroupMemberResult = z.infer<typeof groupMemberResultSchema>;
+
+export const removeRepoFromGroupResultSchema = z.object({
+  success: z.boolean(),
+});
+
+export type RemoveRepoFromGroupResult = z.infer<typeof removeRepoFromGroupResultSchema>;
+
+export const startHealthAnalysisResultSchema = z.object({
+  executionId: z.string(),
+  deduplicated: z.boolean(),
+});
+
+export type StartHealthAnalysisResult = z.infer<typeof startHealthAnalysisResultSchema>;
+
+export const analysisStatusSchema = z.object({
+  executionId: z.string(),
+  status: z.enum(["pending", "running", "completed", "failed", "cancelled"]),
+  progressPercent: z.number().nullable(),
+  currentNode: z.string().nullable(),
+  error: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+export type AnalysisStatus = z.infer<typeof analysisStatusSchema>;
+
+export const healthReportSchema = z.object({
+  reportId: z.string(),
+  reportType: z.string(),
+  reportData: z.unknown(),
+  summary: z.string().nullable(),
+  createdAt: z.string(),
+}).nullable();
+
+export type HealthReport = z.infer<typeof healthReportSchema>;
+
 export {
   collectionResultSchema,
   repositoryDetailSchema,
