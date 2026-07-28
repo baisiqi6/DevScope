@@ -13,20 +13,22 @@ colors:
   danger: "oklch(0.66 0.18 25)"
 typography:
   title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
+    fontFamily: '"Geist Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.25
   body:
-    fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
+    fontFamily: '"Geist Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
+    fontFamily: '"Geist Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "0.875rem"
     fontWeight: 500
     lineHeight: 1.25
+  mono:
+    fontFamily: '"Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace'
 rounded:
   sm: "4px"
   md: "6px"
@@ -103,7 +105,9 @@ DevScope 是一个需要长时间使用的产品界面。视觉系统以深色�
 
 ## 3. Typography
 
-使用系统无衬线字体栈，保证 macOS、Windows 与 Linux 上的产品可读性。标题通过字重与固定字号建立层级，禁止在产品界面使用流式超大标题、展示字体或渐变文字。
+正文使用 Geist Variable（经 fontsource 本地打包，构建期不联网），中文回退 PingFang SC / Hiragino Sans GB / Microsoft YaHei，保证 macOS、Windows 与 Linux 上的产品可读性。数字、代码与 ID 场景使用 Geist Mono Variable（`ui-monospace` 回退）。标题通过字重与固定字号建立层级，禁止在产品界面使用流式超大标题、展示字体或渐变文字。
+
+`letter-spacing`（tracking）不应用于中文密集串；现有 `command-kicker` 的 `tracking-[0.12em]` 仅服务拉丁短标签。`tabular-nums` 只允许出现在数字滚动组件（NumberTicker）内部，不做全局开启。
 
 **The Dense Clarity Rule.** 数据区域可以紧凑，解释性正文保持约 65–75ch 行宽；不得通过缩小到难读字号换取密度。
 
@@ -151,7 +155,41 @@ DevScope 是一个需要长时间使用的产品界面。视觉系统以深色�
 - 全息视口不能替换标准按钮、表格、标题和错误反馈。
 - 减少动效模式下删除空间移动，保留颜色和文字状态。
 
-## 6. Do's and Don'ts
+## 6. Motion
+
+动效按用途分三类入账，任何新增动效必须先归入其中一类，回答不了"它属于哪类、表达什么状态"就不加。
+
+| 类别 | 内容 | 预算 |
+|---|---|---|
+| 环境层 | spotlight、静态网格 | 同屏最多 1 类 |
+| 运行态指示 | hologram-scan、呼吸、进度脉冲 | 只给真实运行态 |
+| 交互 | spring 回弹、焦点环、hover | 即时反馈，不循环 |
+
+### 统一曲线
+
+- **环境层：** 循环型环境动画（呼吸、脉冲）统一 `2s ease-in-out`，opacity 范围 `0.4 ↔ 0.7`。
+- **交互层：** spring 两档——snappy `stiffness 300 / damping 30`（导航指示器、卡片抬升），soft `stiffness 180 / damping 20`（数字滚动）。
+- 交互动效一律即时反馈，不允许循环播放；hover 微交互统一 `150ms` 过渡曲线。
+
+### 环境层 spotlight
+
+- 全局背景保留静态细网格，叠加鼠标跟随 spotlight：CSS 变量 `--spotlight-x / --spotlight-y` 驱动 `translate3d`，RAF 节流，仅合成器层工作，不触碰布局。
+- 强度三档 `off / subtle / full`：`subtle` 默认 opacity ~0.35，数据密集路由（首页列表 `/`、搜索页 `/search`）降亮到 ~0.12；`full` 对应 ~0.55 / ~0.2。
+- 偏好持久化在 localStorage（key `devscope-ambient`），开关位于共享 Header，与主题切换并列；SSR 使用默认值渲染，读取在客户端 effect 内完成。
+
+### 运行态指示
+
+- `hologram-panel[data-live="true"]` 的扫描线为 `3.2s linear infinite`（`hologram-scan` keyframes），只在真实运行状态挂载；静态面板不得播放。
+- 运行态指示只表达真实状态（采集、分析、进度），不做装饰性常驻动画。
+
+### 降级矩阵
+
+| 条件 | 降级行为 |
+|---|---|
+| `prefers-reduced-motion: reduce` | 全静态：spotlight 不渲染，扫描线关闭，spring/滚动动画直接呈现终值 |
+| 触摸设备（`pointer: coarse`） | spotlight 退化为中心固定渐变，不跟随指针 |
+
+## 7. Do's and Don'ts
 
 ### Do:
 

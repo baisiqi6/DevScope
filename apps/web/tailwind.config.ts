@@ -10,8 +10,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: "var(--font-sans)",
+        mono: "var(--font-mono)",
+      },
       colors: {
-        border: "oklch(var(--border) / <alpha-value>)",
+        border: {
+          DEFAULT: "oklch(var(--border) / <alpha-value>)",
+          hover: "oklch(var(--border-hover) / <alpha-value>)",
+        },
         input: "oklch(var(--input) / <alpha-value>)",
         ring: "oklch(var(--ring) / <alpha-value>)",
         background: "oklch(var(--background) / <alpha-value>)",
@@ -43,6 +50,8 @@ const config: Config = {
         card: {
           DEFAULT: "oklch(var(--card) / <alpha-value>)",
           foreground: "oklch(var(--card-foreground) / <alpha-value>)",
+          hover: "oklch(var(--card-hover) / <alpha-value>)",
+          active: "oklch(var(--card-active) / <alpha-value>)",
         },
         success: {
           DEFAULT: "oklch(var(--success) / <alpha-value>)",

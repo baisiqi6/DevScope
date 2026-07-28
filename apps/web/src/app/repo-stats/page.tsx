@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnimatedBackground } from "@/components/animated-background";
+import { NumberTicker } from "@/components/number-ticker";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -140,7 +141,6 @@ function StatsContent() {
     );
   }
 
-  const formatNumber = (num: number) => new Intl.NumberFormat("zh-CN").format(num);
   const formatHours = (hours: number) => {
     if (hours < 1) return `${Math.round(hours * 60)}分钟`;
     if (hours < 24) return `${Math.round(hours)}小时`;
@@ -168,7 +168,7 @@ function StatsContent() {
               healthScore >= 60 ? "text-yellow-600" :
               "text-red-600"
             }`}>
-              {healthScore}
+              <NumberTicker value={healthScore} />
             </span>
           </CardTitle>
         </CardHeader>
@@ -212,11 +212,11 @@ function StatsContent() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-slate-600">⭐ Stars</p>
-                <p className="font-semibold">{formatNumber(stats.repository.stars)}</p>
+                <p className="font-semibold"><NumberTicker value={stats.repository.stars} /></p>
               </div>
               <div>
                 <p className="text-sm text-slate-600">🍴 Forks</p>
-                <p className="font-semibold">{formatNumber(stats.repository.forks)}</p>
+                <p className="font-semibold"><NumberTicker value={stats.repository.forks} /></p>
               </div>
               <div>
                 <p className="text-sm text-slate-600">🔷 Language</p>
@@ -254,15 +254,15 @@ function StatsContent() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
-                <p className="text-2xl font-bold text-blue-600">{stats.commitFrequency.commitsLast7Days}</p>
+                <p className="text-2xl font-bold text-blue-600"><NumberTicker value={stats.commitFrequency.commitsLast7Days} /></p>
                 <p className="text-sm text-slate-600">过去 7 天提交</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
-                <p className="text-2xl font-bold text-green-600">{stats.commitFrequency.commitsLast30Days}</p>
+                <p className="text-2xl font-bold text-green-600"><NumberTicker value={stats.commitFrequency.commitsLast30Days} /></p>
                 <p className="text-sm text-slate-600">过去 30 天提交</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg border border-purple-200/50">
-                <p className="text-2xl font-bold text-purple-600">{stats.commitFrequency.commitsLast90Days}</p>
+                <p className="text-2xl font-bold text-purple-600"><NumberTicker value={stats.commitFrequency.commitsLast90Days} /></p>
                 <p className="text-sm text-slate-600">过去 90 天提交</p>
               </div>
             </div>
@@ -293,15 +293,15 @@ function StatsContent() {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="p-3 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg border border-yellow-200/50">
-                <p className="text-2xl font-bold text-yellow-600">{stats.issuesStats.openIssues}</p>
+                <p className="text-2xl font-bold text-yellow-600"><NumberTicker value={stats.issuesStats.openIssues} /></p>
                 <p className="text-sm text-slate-600">开放中</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
-                <p className="text-2xl font-bold text-green-600">{stats.issuesStats.closedIssues}</p>
+                <p className="text-2xl font-bold text-green-600"><NumberTicker value={stats.issuesStats.closedIssues} /></p>
                 <p className="text-sm text-slate-600">已关闭</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
-                <p className="text-2xl font-bold text-blue-600">{stats.issuesStats.totalIssues}</p>
+                <p className="text-2xl font-bold text-blue-600"><NumberTicker value={stats.issuesStats.totalIssues} /></p>
                 <p className="text-sm text-slate-600">总计</p>
               </div>
             </div>
@@ -342,15 +342,15 @@ function StatsContent() {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="p-3 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg border border-yellow-200/50">
-                <p className="text-2xl font-bold text-yellow-600">{stats.prStats.openPRs}</p>
+                <p className="text-2xl font-bold text-yellow-600"><NumberTicker value={stats.prStats.openPRs} /></p>
                 <p className="text-sm text-slate-600">开放中</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
-                <p className="text-2xl font-bold text-green-600">{stats.prStats.mergedPRs}</p>
+                <p className="text-2xl font-bold text-green-600"><NumberTicker value={stats.prStats.mergedPRs} /></p>
                 <p className="text-sm text-slate-600">已合并</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/50">
-                <p className="text-2xl font-bold text-gray-600">{stats.prStats.closedPRs}</p>
+                <p className="text-2xl font-bold text-gray-600"><NumberTicker value={stats.prStats.closedPRs} /></p>
                 <p className="text-sm text-slate-600">已关闭</p>
               </div>
             </div>
@@ -391,11 +391,11 @@ function StatsContent() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg border border-blue-200/50">
-                <p className="text-2xl font-bold text-blue-600">{stats.contributorsStats.totalContributors}</p>
+                <p className="text-2xl font-bold text-blue-600"><NumberTicker value={stats.contributorsStats.totalContributors} /></p>
                 <p className="text-sm text-slate-600">总贡献者数</p>
               </div>
               <div className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg border border-green-200/50">
-                <p className="text-2xl font-bold text-green-600">{stats.contributorsStats.newContributorsLast30Days}</p>
+                <p className="text-2xl font-bold text-green-600"><NumberTicker value={stats.contributorsStats.newContributorsLast30Days} /></p>
                 <p className="text-sm text-slate-600">30 天新贡献者</p>
               </div>
             </div>

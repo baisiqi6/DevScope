@@ -30,6 +30,13 @@
     --warning-foreground: 0.2 0.035 70;
     --signal: 0.58 0.16 205;
     --signal-foreground: 0.985 0.008 205;
+    --card-hover: 0.962 0.013 221;
+    --card-active: 0.945 0.018 221;
+    --border-hover: 0.74 0.045 224;
+    --font-sans: "Geist Variable", "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", system-ui, sans-serif;
+    --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular",
+      Menlo, Consolas, monospace;
     --radius: 0.375rem;
   }
 
@@ -60,6 +67,9 @@
     --warning-foreground: 0.16 0.035 78;
     --signal: 0.77 0.145 203;
     --signal-foreground: 0.14 0.025 232;
+    --card-hover: 0.208 0.033 232;
+    --card-active: 0.232 0.038 232;
+    --border-hover: 0.44 0.062 226;
   }
 }
 
@@ -69,8 +79,16 @@
   }
   body {
     @apply min-h-screen bg-background text-foreground;
-    font-feature-settings: "kern" 1, "tnum" 1;
+    font-family: var(--font-sans);
+    font-feature-settings: "kern" 1;
     text-rendering: optimizeLegibility;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
   }
 
   ::selection {

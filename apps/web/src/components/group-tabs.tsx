@@ -85,10 +85,10 @@ function GroupTab({ name, count, isSelected, icon, onClick }: GroupTabProps) {
       onClick={onClick}
       aria-pressed={isSelected}
       className={cn(
-        'inline-flex h-9 max-w-full items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'inline-flex h-9 max-w-full items-center gap-2 rounded-md border px-3 text-sm font-medium transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         isSelected
           ? 'border-primary/30 bg-primary/10 text-primary shadow-[inset_0_-1px_0_oklch(var(--primary)/0.35)]'
-          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+          : 'border-transparent text-muted-foreground hover:border-border-hover hover:bg-muted hover:text-foreground'
       )}
     >
       {IconComponent && <IconComponent className="h-4 w-4" />}

@@ -1,8 +1,8 @@
 /**
  * @package @devscope/web
- * @description 玻璃态卡片组件
+ * @description 卡片组件：语义 token 表面 + hover 微抬升
  *
- * 提供现代的玻璃态效果，带有渐变边框、阴影和 hover 动画。
+ * hover 使用 translateY(-2px) 与边框亮度变化（border token），不引入阴影。
  */
 
 "use client";
@@ -13,50 +13,33 @@ import { cn } from "@/lib/utils";
 
 export interface GlassCardProps extends Omit<HTMLMotionProps<"div">, "children"> {
   /**
-   * 是否显示渐变边框
+   * 是否启用 hover 微抬升（translateY -2px + 边框提亮）
    */
-  gradientBorder?: boolean;
-  /**
-   * 悬停时是否放大
-   */
-  hoverScale?: boolean;
+  hoverLift?: boolean;
   /**
    * 子元素
    */
   children: React.ReactNode;
 }
 
-/**
- * 玻璃态卡片组件
- * 结合了背景模糊、半透明和渐变边框效果
- */
+/** 交互 spring 两档之 snappy 档（见 DESIGN.md 动效规范）。 */
+const SPRING_SNAPPY = { type: "spring", stiffness: 300, damping: 30 } as const;
+
 export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
-  ({ className, gradientBorder = true, hoverScale = false, children, ...props }, ref) => {
+  ({ className, hoverLift = false, children, ...props }, ref) => {
     return (
       <motion.div
         ref={ref}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        whileHover={hoverScale ? { scale: 1.02 } : {}}
-        transition={{ duration: 0.3, ease: "easeOut" }}
+        whileHover={hoverLift ? { y: -2 } : undefined}
+        transition={SPRING_SNAPPY}
         className={cn(
-          // 基础样式
-          "relative rounded-xl",
-          // 背景效果
-          "bg-white/80 backdrop-blur-md",
-          // 阴影
-          "shadow-lg shadow-slate-200/50",
-          "hover:shadow-xl hover:shadow-slate-300/50",
-          "transition-shadow duration-300",
+          "relative rounded-lg border border-border/80 bg-card text-card-foreground shadow-none",
+          "transition-[border-color,background-color] duration-150",
+          hoverLift && "hover:border-border-hover hover:bg-card-hover",
           className
         )}
         {...props}
       >
-        {/* 渐变边框效果 */}
-        {gradientBorder && (
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-100 via-indigo-100 to-purple-100 opacity-0 hover:opacity-100 transition-opacity duration-500 -z-10" />
-        )}
-
         {children}
       </motion.div>
     );
