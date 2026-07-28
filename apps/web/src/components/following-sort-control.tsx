@@ -78,13 +78,13 @@ export function FollowingSortControl({
         </Button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[140px]">
+          <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border bg-popover text-popover-foreground shadow-md">
             {sortOptions.map((option) => (
               <button
                 key={option.value}
                 onClick={() => handleSortChange(option.value, sortOrder)}
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-100 transition-colors flex items-center gap-2 ${
-                  sortBy === option.value ? "bg-blue-50 text-blue-700" : ""
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground ${
+                  sortBy === option.value ? "bg-accent text-accent-foreground" : ""
                 }`}
               >
                 <span>{option.icon}</span>

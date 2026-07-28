@@ -20,8 +20,7 @@ import { HealthReportView } from "@/components/health-report-view";
 import { AnimatedBackground } from "@/components/animated-background";
 import { ExecutionTimer } from "@/components/execution-timer";
 import { useAgentWorkflow } from "@/hooks/use-agent-workflow";
-import { Activity, Play, RotateCcw, HeartPulse, GitCommit, Users, MessageSquare, FileCode } from "lucide-react";
-import { motion } from "framer-motion";
+import { Activity, FileCode, GitCommit, HeartPulse, Loader2, MessageSquare, Play, RotateCcw, Users } from "lucide-react";
 
 // ============================================================================
 // 页面组件
@@ -99,82 +98,63 @@ export default function HealthReportPage() {
 
   return (
     <main className="min-h-screen">
-      {/* 动画背景 */}
       <AnimatedBackground />
 
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <div className="container mx-auto max-w-5xl px-4 py-6 sm:py-8">
         {/* 页面标题 */}
-        <motion.div
-          className="mb-8"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-md">
-              <Activity className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold">仓库健康度评估</h1>
-              <p className="text-gray-500 dark:text-gray-400 mt-1">
-                从 8 大维度深度分析 GitHub 仓库的健康状况
-              </p>
-            </div>
-          </div>
+        <header className="command-page-header mb-8">
+          <p className="command-kicker">分析视口</p>
+          <h1 className="text-2xl font-semibold tracking-tight">仓库健康度评估</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            从 8 大维度深度分析 GitHub 仓库的健康状况
+          </p>
 
           {/* 维度说明 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
-              { icon: GitCommit, label: "代码活跃度", color: "blue" },
-              { icon: Users, label: "社区参与度", color: "green" },
-              { icon: MessageSquare, label: "Issue 管理", color: "purple" },
-              { icon: FileCode, label: "技术质量", color: "orange" },
-            ].map((item, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
-                className="flex items-center gap-2 p-3 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
+              { icon: GitCommit, label: "代码活跃度" },
+              { icon: Users, label: "社区参与度" },
+              { icon: MessageSquare, label: "Issue 管理" },
+              { icon: FileCode, label: "技术质量" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-2 rounded-lg border border-border/80 bg-card p-3"
               >
-                <item.icon className={`h-4 w-4 text-${item.color}-500`} />
+                <item.icon className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">{item.label}</span>
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.div>
+        </header>
 
         {/* 输入区域 */}
         {!isCompleted && !isRunning && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-          >
-            <Card className="mb-6 border-2 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+          <div>
+            <Card className="command-surface mb-6">
+              <CardHeader className="border-b">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-2xl flex items-center gap-2">
-                      <HeartPulse className="h-6 w-6 text-green-600" />
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <HeartPulse className="h-5 w-5 text-primary" />
                       开始健康度评估
                     </CardTitle>
-                    <CardDescription className="mt-2 text-base">
+                    <CardDescription className="mt-2">
                       输入仓库地址，AI Agent 将从 8 大维度进行全面分析
                     </CardDescription>
                   </div>
-                  <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                    <Activity className="h-6 w-6 text-green-600" />
+                  <div className="hidden h-12 w-12 items-center justify-center rounded-full border border-primary/25 bg-primary/10 md:flex">
+                    <Activity className="h-5 w-5 text-primary" />
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6 pt-6">
                 {/* 仓库输入 */}
                 <div>
-                  <Label htmlFor="repo" className="text-base font-medium mb-2 block">
+                  <Label htmlFor="repo" className="mb-2 block text-base font-medium">
                     仓库地址
                   </Label>
-                  <p className="text-sm text-gray-500 mb-2">
+                  <p className="mb-2 text-sm text-muted-foreground">
                     格式: owner/repo（例如：RubyMetric/chsrc）
                   </p>
                   <Textarea
@@ -200,7 +180,7 @@ export default function HealthReportPage() {
 
                 {/* 额外上下文 */}
                 <div>
-                  <Label htmlFor="context" className="text-base font-medium mb-2 block">
+                  <Label htmlFor="context" className="mb-2 block text-base font-medium">
                     分析重点 (可选)
                   </Label>
                   <Textarea
@@ -214,21 +194,16 @@ export default function HealthReportPage() {
                 </div>
 
                 {/* 操作按钮 */}
-                <div className="flex gap-3 items-center">
-                  <Button
-                    onClick={handleStart}
-                    disabled={isRunning}
-                    size="lg"
-                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-                  >
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleStart} disabled={isRunning} size="lg">
                     {isRunning ? (
                       <>
-                        <span className="animate-spin mr-2">⏳</span>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                         分析中...
                       </>
                     ) : (
                       <>
-                        <Play className="h-4 w-4 mr-2" />
+                        <Play className="mr-2 h-4 w-4" />
                         开始评估
                       </>
                     )}
@@ -247,59 +222,51 @@ export default function HealthReportPage() {
 
                   {(isCompleted || isFailed) && (
                     <Button variant="outline" onClick={handleReset} size="lg">
-                      <RotateCcw className="h-4 w-4 mr-2" />
+                      <RotateCcw className="mr-2 h-4 w-4" />
                       重新评估
                     </Button>
                   )}
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         )}
 
         {/* 错误显示 */}
         {isFailed && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
+          <div className="mb-6">
+            <Card className="border-destructive/30 bg-destructive/5">
               <CardContent className="py-6">
-                <div className="flex items-center gap-3 text-red-600">
+                <div className="flex items-center gap-3 text-destructive">
                   <Activity className="h-6 w-6" />
                   <div>
                     <p className="font-medium">分析失败</p>
-                    <p className="text-sm text-red-500 mt-1">{error}</p>
+                    <p className="mt-1 text-sm">{error}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         )}
 
         {/* 恢复状态提示 */}
         {isRunning && events.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/30">
+          <div className="mb-6">
+            <Card className="border-signal/30 bg-signal/10">
               <CardContent className="py-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                    <span className="animate-spin">⏳</span>
+                  <div className="flex items-center gap-2 text-signal">
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                     <p>正在恢复分析状态，服务器仍在处理中...</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleReset}>
-                    <RotateCcw className="h-4 w-4 mr-1" />
+                    <RotateCcw className="mr-1 h-4 w-4" />
                     重新分析
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         )}
 
         {/* Agent 思考过程展示 */}
@@ -316,21 +283,16 @@ export default function HealthReportPage() {
 
         {/* 报告展示 */}
         {isCompleted && executionId && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="space-y-6"
-          >
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold">健康度报告</h2>
               <Button variant="outline" onClick={handleReset}>
-                <RotateCcw className="h-4 w-4 mr-2" />
+                <RotateCcw className="mr-2 h-4 w-4" />
                 新建分析
               </Button>
             </div>
             <HealthReportView reportId={executionId} executionId={executionId} />
-          </motion.div>
+          </div>
         )}
       </div>
     </main>

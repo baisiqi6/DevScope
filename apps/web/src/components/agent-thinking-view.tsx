@@ -48,9 +48,9 @@ export function AgentThinkingView({
   status,
 }: AgentThinkingViewProps) {
   return (
-    <Card className="w-full">
+    <Card className="command-surface w-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <StatusIcon status={status} />
           <span>Agent 思考过程</span>
           {status === "running" && (
@@ -59,9 +59,7 @@ export function AgentThinkingView({
             </Badge>
           )}
           {status === "completed" && (
-            <Badge variant="default" className="ml-2 bg-green-500">
-              完成
-            </Badge>
+            <Badge className="ml-2 bg-success text-success-foreground">完成</Badge>
           )}
           {status === "failed" && (
             <Badge variant="destructive" className="ml-2">
@@ -73,10 +71,10 @@ export function AgentThinkingView({
       <CardContent className="space-y-4">
         {/* 当前工具指示器 */}
         {currentTool && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <span className="text-sm text-blue-700 dark:text-blue-300">正在使用工具:</span>
-            <Badge variant="outline" className="bg-white dark:bg-gray-800">
+          <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/10 p-3">
+            <Wrench className="h-4 w-4 text-primary" />
+            <span className="text-sm text-primary">正在使用工具:</span>
+            <Badge variant="outline" className="bg-background">
               {getToolLabel(currentTool)}
             </Badge>
           </div>
@@ -84,45 +82,39 @@ export function AgentThinkingView({
 
         {/* 思考文本 */}
         {thinkingText && (
-          <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                思考中...
-              </span>
+          <div className="rounded-lg border border-border/60 bg-muted/60 p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Brain className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">思考中...</span>
             </div>
             <ScrollArea className="max-h-[150px]">
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                {thinkingText}
-              </p>
+              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{thinkingText}</p>
             </ScrollArea>
           </div>
         )}
 
         {/* 输出文本 */}
         {outputText && (
-          <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <FileText className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">输出</span>
+          <div className="rounded-lg border border-border/60 bg-muted/40 p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">输出</span>
             </div>
             <ScrollArea className="max-h-[200px]">
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                {outputText}
-              </p>
+              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{outputText}</p>
             </ScrollArea>
           </div>
         )}
 
         {/* 终端输出 */}
         {terminalOutput && (
-          <div className="p-4 bg-gray-900 dark:bg-black rounded-lg border border-gray-700">
-            <div className="flex items-center gap-2 mb-2">
-              <Terminal className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium text-green-400">终端输出</span>
+          <div className="rounded-lg border border-border/80 bg-background p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">终端输出</span>
             </div>
             <ScrollArea className="max-h-[300px]">
-              <pre className="text-xs text-green-300 font-mono whitespace-pre-wrap break-all">
+              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
                 {terminalOutput}
               </pre>
             </ScrollArea>
@@ -132,7 +124,7 @@ export function AgentThinkingView({
         {/* 事件时间线 */}
         {events.length > 0 && (
           <div>
-            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">
               事件时间线 ({events.length} 个事件)
             </h4>
             <ScrollArea className="h-[300px]">
@@ -147,8 +139,8 @@ export function AgentThinkingView({
 
         {/* 空状态 */}
         {events.length === 0 && status === "idle" && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <Brain className="h-12 w-12 mx-auto mb-2 opacity-50" />
+          <div className="py-8 text-center text-muted-foreground">
+            <Brain className="mx-auto mb-2 h-12 w-12 opacity-50" />
             <p>等待开始分析...</p>
           </div>
         )}
@@ -167,15 +159,15 @@ export function AgentThinkingView({
 function StatusIcon({ status }: { status: WorkflowStatus }) {
   switch (status) {
     case "running":
-      return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
+      return <Loader2 className="h-5 w-5 animate-spin text-signal motion-reduce:animate-none" />;
     case "completed":
-      return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+      return <CheckCircle2 className="h-5 w-5 text-success" />;
     case "failed":
-      return <AlertCircle className="h-5 w-5 text-red-500" />;
+      return <AlertCircle className="h-5 w-5 text-destructive" />;
     case "cancelled":
-      return <span className="text-yellow-500">已取消</span>;
+      return <span className="text-sm text-warning">已取消</span>;
     default:
-      return <Brain className="h-5 w-5 text-gray-400" />;
+      return <Brain className="h-5 w-5 text-muted-foreground" />;
   }
 }
 
@@ -188,11 +180,11 @@ function EventItem({ event }: { event: AgentWorkflowEvent }) {
   const time = new Date(event.data.timestamp).toLocaleTimeString();
 
   return (
-    <div className="flex items-start gap-2 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+    <div className="flex items-start gap-2 rounded p-2 transition-colors duration-150 hover:bg-muted/50">
       {icon}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{content}</p>
-        <p className="text-xs text-gray-400">{time}</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-foreground">{content}</p>
+        <p className="text-xs text-muted-foreground">{time}</p>
       </div>
     </div>
   );
@@ -204,22 +196,22 @@ function EventItem({ event }: { event: AgentWorkflowEvent }) {
 function getEventIcon(event: AgentWorkflowEvent) {
   switch (event.type) {
     case "thinking":
-      return <Brain className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />;
+      return <Brain className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />;
     case "tool_use":
-      return <Wrench className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />;
+      return <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-signal" />;
     case "tool_result":
-      return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />;
+      return <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-success" />;
     case "text":
-      return <FileText className="h-4 w-4 text-gray-500 flex-shrink-0 mt-0.5" />;
+      return <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />;
     case "terminal":
-      return <Terminal className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />;
+      return <Terminal className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />;
     case "report":
-      return <FileText className="h-4 w-4 text-indigo-500 flex-shrink-0 mt-0.5" />;
+      return <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />;
     case "complete":
       return event.data.status === "completed" ? (
-        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-success" />
       ) : (
-        <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
       );
     default:
       return null;
@@ -248,8 +240,8 @@ function getEventContent(event: AgentWorkflowEvent): string {
       return `报告已生成: ${event.data.summary.substring(0, 50)}...`;
     case "complete":
       return event.data.status === "completed"
-        ? "✅ 分析完成"
-        : `❌ 失败: ${event.data.error}`;
+        ? "分析完成"
+        : `失败: ${event.data.error}`;
     default:
       return "未知事件";
   }

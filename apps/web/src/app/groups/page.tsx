@@ -471,7 +471,7 @@ export default function GroupsManagementPage() {
             {isPageLoading ? (
               <div className="grid gap-3 md:grid-cols-2" aria-label="正在加载仓库">
                 {[0, 1].map((item) => (
-                  <div key={item} className="h-36 animate-pulse rounded-lg border bg-muted/40" />
+                  <div key={item} className="h-36 animate-pulse-soft rounded-lg border bg-muted/40" />
                 ))}
               </div>
             ) : sortedDisplayRepos.length === 0 ? (
@@ -517,7 +517,7 @@ export default function GroupsManagementPage() {
             </div>
 
             {isGroupsLoading ? (
-              <div className="h-24 animate-pulse rounded-lg border bg-muted/40" />
+              <div className="h-24 animate-pulse-soft rounded-lg border bg-muted/40" />
             ) : filteredGroups.length === 0 ? (
               <div className="rounded-lg border border-dashed px-4 py-10 text-center">
                 <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground" />

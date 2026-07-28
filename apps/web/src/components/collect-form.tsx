@@ -134,7 +134,7 @@ export function CollectForm({ onCollected }: CollectFormProps) {
             role={result.success ? 'status' : 'alert'}
             className={`whitespace-pre-line rounded-md border p-3 text-sm ${
               result.success
-                ? 'border-green-200 bg-green-50 text-green-800'
+                ? 'border-success/30 bg-success/10 text-success'
                 : 'border-destructive/30 bg-destructive/5 text-destructive'
             }`}
           >
