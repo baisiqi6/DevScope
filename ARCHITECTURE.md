@@ -13,7 +13,7 @@ Next.js Web :3000
   ▼
 Fastify + tRPC API :3100
   ├── PostgreSQL + pgvector :5432
-  ├── GitHub / OSS Insight
+  ├── GitHub API
   ├── DeepSeek 或其他 OpenAI-compatible API
   ├── BGE-M3 embedding 服务
 

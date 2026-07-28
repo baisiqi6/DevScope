@@ -8,7 +8,6 @@ DevScope 是一个面向技术投资人和独立开发者的开源生态智能�
 
 - GitHub 仓库采集、关注列表、分组与笔记
 - 仓库健康度、竞争格局和趋势分析
-- OSS Insight 数据检索
 - DeepSeek / OpenAI-compatible AI 调用
 - BGE-M3 向量嵌入与语义搜索
 - Agent 流式健康分析、PostgreSQL 报告历史与报告重开
