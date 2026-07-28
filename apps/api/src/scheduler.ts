@@ -10,17 +10,19 @@ import cron from "node-cron";
 import {
   createDb,
   createPipeline,
-  createOSSInsightClient,
+  enqueueJob,
   repositories,
   repoChunks,
 } from "@devscope/db";
 import { lt, eq, or, isNull } from "drizzle-orm";
+import { getOrCreateCurrentUserId } from "./current-user";
 
 // ============================================================================
 // 调度器
 // ============================================================================
 
 let db: ReturnType<typeof createDb>;
+const schedulerTimezone = process.env.SCHEDULER_TIMEZONE || "Asia/Shanghai";
 
 function getDb() {
   if (!db) {
@@ -92,57 +94,36 @@ async function refreshStaleRepositories() {
 }
 
 /**
- * 发现趋势项目（从 OSSInsight）
+ * 创建 GitHub 新项目发现任务
  * 调度：每天早上 6:00
  */
-async function discoverTrendingRepos() {
-  console.log("[Scheduler] 🔍 开始发现趋势项目...");
+export async function enqueueGithubDiscovery() {
+  console.log("[Scheduler] 🔍 开始创建趋势发现任务...");
 
   try {
     const database = getDb();
-    const ossinsight = createOSSInsightClient();
-
-    const trending = await ossinsight.getTrendingRepos(20, "7d");
-
-    if (!trending || trending.length === 0) {
-      console.log("[Scheduler] ⚠️ 未获取到趋势项目");
-      return;
-    }
-
-    const pipeline = createPipeline(database, {
-      githubToken: process.env.GITHUB_TOKEN,
-      skipEmbeddings: true,
+    const userId = await getOrCreateCurrentUserId(database);
+    const now = new Date();
+    const scheduleDate = now.toISOString().slice(0, 10);
+    const createdSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const job = await enqueueJob(database, {
+      userId,
+      type: "radar.discover.github",
+      idempotencyKey: `radar:github:new:7d:${scheduleDate}`,
+      payload: {
+        query: `created:>=${createdSince} stars:>=10 archived:false fork:false`,
+        limit: 20,
+        sort: "stars",
+        order: "desc",
+      },
+      maxAttempts: 3,
     });
 
-    let newCount = 0;
-
-    for (const repo of trending) {
-      const fullName = repo.fullName;
-      if (!fullName || !fullName.includes("/")) continue;
-
-      // 检查是否已存在
-      const existing = await database
-        .select({ id: repositories.id })
-        .from(repositories)
-        .where(eq(repositories.fullName, fullName))
-        .limit(1);
-
-      if (existing.length > 0) continue;
-
-      try {
-        await pipeline.runQuick({ repo: fullName });
-        newCount++;
-        console.log(`[Scheduler] 🆕 新趋势项目入库: ${fullName}`);
-      } catch (err: any) {
-        console.error(`[Scheduler] ❌ 趋势项目采集失败: ${fullName} - ${err.message}`);
-      }
-
-      await sleep(2000);
-    }
-
-    console.log(`[Scheduler] 🔍 趋势发现完成: 新增 ${newCount} 个项目`);
+    console.log(`[Scheduler] 🔍 趋势发现任务已就绪: #${job.id} (${job.status})`);
   } catch (err: any) {
-    console.error("[Scheduler] ❌ discoverTrendingRepos 失败:", err.message);
+    console.error("[Scheduler] ❌ enqueueGithubDiscovery 失败:", err.message);
   }
 }
 
@@ -237,20 +218,38 @@ export function startScheduler() {
   console.log("[Scheduler] 🚀 调度器启动");
 
   // 每天凌晨 2:00 刷新过期仓库
-  cron.schedule("0 2 * * *", () => {
-    refreshStaleRepositories();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 刷新过期仓库 (每天 02:00)");
+  cron.schedule(
+    "0 2 * * *",
+    () => {
+      refreshStaleRepositories();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 刷新过期仓库 (每天 02:00 ${schedulerTimezone})`
+  );
 
   // 每天早上 6:00 发现趋势项目
-  cron.schedule("0 6 * * *", () => {
-    discoverTrendingRepos();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 发现趋势项目 (每天 06:00)");
+  cron.schedule(
+    "0 6 * * *",
+    () => {
+      void enqueueGithubDiscovery();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 创建趋势发现任务 (每天 06:00 ${schedulerTimezone})`
+  );
 
   // 每 30 分钟处理待向量化数据
-  cron.schedule("*/30 * * * *", () => {
-    processPendingEmbeddings();
-  });
-  console.log("[Scheduler] ⏰ 已注册: 处理待向量化数据 (每 30 分钟)");
+  cron.schedule(
+    "*/30 * * * *",
+    () => {
+      processPendingEmbeddings();
+    },
+    { timezone: schedulerTimezone }
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: 处理待向量化数据 (每 30 分钟, ${schedulerTimezone})`
+  );
 }

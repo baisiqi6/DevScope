@@ -21,6 +21,7 @@ dist/
 *.pem
 .env*.local
 .env
+.env.production
 
 # Debug
 npm-debug.log*
@@ -41,9 +42,6 @@ lerna-debug.log*
 
 # Local agent planning
 .planning/
-
-# Drizzle
-drizzle/
 
 # Database
 *.db
