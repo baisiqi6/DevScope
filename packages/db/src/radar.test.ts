@@ -16,7 +16,7 @@ describe("技术雷达候选池", () => {
       owner: "Owner",
       name: "Repo",
       stars: 100,
-      source: "ossinsight",
+      source: "github_search",
       evidence: { period: "7d" },
       observedAt,
     })).resolves.toBe(candidate);
@@ -27,7 +27,7 @@ describe("技术雷达候选池", () => {
       owner: "Owner",
       name: "Repo",
       url: "https://github.com/owner/repo",
-      source: "ossinsight",
+      source: "github_search",
       firstSeenAt: observedAt,
       lastSeenAt: observedAt,
     }));
@@ -42,7 +42,7 @@ describe("技术雷达候选池", () => {
       fullName: "invalid",
       owner: "invalid",
       name: "invalid",
-      source: "ossinsight",
+      source: "github_search",
       evidence: {},
     })).rejects.toThrow("无效 GitHub 仓库全名");
   });

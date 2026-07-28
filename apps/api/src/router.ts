@@ -18,7 +18,6 @@ import {
   parseRepoFullName,
   repositories,
   repoChunks,
-  createOSSInsightClient,
   createGitHubCollector,
   getReleasesByRepoId,
   listWorkflowReportsByRepository,
@@ -29,11 +28,6 @@ import {
   repositoryAnalysisSchema,
   semanticSearchRequestSchema,
   semanticSearchResponseSchema,
-  trendingReposRequestSchema,
-  repoInsightsRequestSchema,
-  repoInsightsSchema,
-  trendingRepoSchema,
-  collectionStatsSchema,
   repositoryDetailSchema,
   type RepositoryAnalysis,
   type CollectionResult,
@@ -79,84 +73,6 @@ export const appRouter = router({
   groups: groupsRouter,
   groupMembers: groupMembersRouter,
   groupsQuery: groupsQueryRouter,
-
-  /**
-   * 获取趋势仓库列表
-   * @description 从 OSSInsight 获取当前热门的 GitHub 仓库
-   */
-  getTrendingRepos: publicProcedure
-    .input(trendingReposRequestSchema.partial())
-    .output(z.array(trendingRepoSchema))
-    .query(async ({ ctx, input }) => {
-      const client = createOSSInsightClient();
-
-      const limit = input?.limit ?? 10;
-      const period = input?.period ?? "7d";
-      const language = input?.language;
-
-      return await client.getTrendingRepos(limit, period, language);
-    }),
-
-  /**
-   * 按语言获取趋势仓库
-   * @description 获取指定编程语言的热门仓库
-   */
-  getTrendingByLanguage: publicProcedure
-    .input(z.object({
-      language: z.string().min(1),
-      limit: z.number().min(1).max(50).default(10),
-    }))
-    .output(z.array(trendingRepoSchema))
-    .query(async ({ ctx, input }) => {
-      const client = createOSSInsightClient();
-      return await client.getTrendingByLanguage(input.language, input.limit);
-    }),
-
-  /**
-   * 获取仓库深度洞察
-   * @description 从 OSSInsight 获取仓库的综合分析数据
-   */
-  getRepoInsights: publicProcedure
-    .input(repoInsightsRequestSchema.partial())
-    .output(repoInsightsSchema)
-    .query(async ({ ctx, input }) => {
-      const client = createOSSInsightClient();
-
-      if (!input?.owner || !input?.repo) {
-        throw new Error("owner and repo are required");
-      }
-
-      return await client.getRepoInsights(input.owner, input.repo);
-    }),
-
-  /**
-   * 获取集合统计
-   * @description 获取 OSSInsight 预定义的项目集合数据
-   */
-  getCollection: publicProcedure
-    .input(z.object({
-      collectionId: z.string().min(1),
-    }))
-    .output(collectionStatsSchema)
-    .query(async ({ ctx, input }) => {
-      const client = createOSSInsightClient();
-      return await client.getCollection(input.collectionId);
-    }),
-
-  /**
-   * 搜索仓库
-   * @description 使用 OSSInsight API 搜索 GitHub 仓库
-   */
-  searchRepos: publicProcedure
-    .input(z.object({
-      query: z.string().min(1),
-      limit: z.number().min(1).max(50).default(10),
-    }))
-    .output(z.array(trendingRepoSchema))
-    .query(async ({ ctx, input }) => {
-      const client = createOSSInsightClient();
-      return await client.searchRepos(input.query, input.limit);
-    }),
 
   /**
    * 获取用户关注的仓库列表

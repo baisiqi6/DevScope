@@ -99,11 +99,6 @@ export * from "./github";
 export * from "./pipeline";
 
 /**
- * OSSInsight API 客户端
- */
-export * from "./ossinsight";
-
-/**
  * 报告存储服务
  */
 export * from "./report-storage";
