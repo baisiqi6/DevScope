@@ -235,11 +235,17 @@ export const repositories = pgTable("repositories", {
   /** 用户自定义备注 */
   note: text("note"),
   /**
+   * 是否为基石依赖（reference）轻量行
+   * @description 当某外部仓库被 ≥2 个采集仓库依赖时，作为依赖目标写入仅含
+   * fullName/name/owner/url 的轻量行（is_reference=true），不参与采集/向量化/列表。
+   */
+  isReference: boolean("is_reference").default(false).notNull(),
+  /**
    * SBOM 依赖包列表（采集时缓存）
    * @description GitHub dependency graph SBOM 解析出的 { name, version } 列表，
    * 供依赖边重建使用；versionInfo 为精确版本。
    */
-  sbomPackages: jsonb("sbom_packages").$type<Array<{ name: string; version: string }>>(),
+  sbomPackages: jsonb("sbom_packages").$type<Array<{ name: string; version: string; system?: string }>>(),
   /** 向量化状态 */
   embeddingStatus: embeddingStatusEnum("embedding_status").default("pending"),
   /** 向量化进度百分比 (0-100) */

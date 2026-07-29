@@ -1,0 +1,1 @@
+ALTER TABLE "repositories" ADD COLUMN "is_reference" boolean DEFAULT false NOT NULL;

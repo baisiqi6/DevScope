@@ -263,6 +263,8 @@ describe("DataCollectionPipeline", () => {
           language: "TypeScript",
           license: "MIT",
           readme: expect.stringContaining("Test README"),
+          // 采集即视为正式仓库；命中同 fullName 的基石依赖轻量行时升级该行
+          isReference: false,
         })
       );
     });

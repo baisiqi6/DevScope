@@ -508,6 +508,8 @@ export class DataCollectionPipeline {
         readme: githubData.readme,
         readmeUrl: githubData.readmeUrl,
         lastFetchedAt: new Date(),
+        // 采集即视为正式仓库；若命中同 fullName 的基石依赖轻量行则升级该行
+        isReference: false,
       });
 
       repository = {

@@ -204,6 +204,33 @@ export class GitHubClient {
   }
 
   /**
+   * 解析仓库重命名后的规范 fullName（deps.dev 等外部数据源可能返回过期名称）
+   * 任何失败都返回原值，保证调用方行为不劣化
+   */
+  async getCanonicalFullName(fullName: string): Promise<string> {
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+    };
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/repos/${fullName}`, {
+        headers,
+        redirect: "follow",
+      });
+      if (!response.ok) {
+        return fullName;
+      }
+      const data = (await response.json()) as { full_name?: string };
+      return data.full_name ?? fullName;
+    } catch {
+      return fullName;
+    }
+  }
+
+  /**
    * 获取仓库 SBOM（Software Bill of Materials）
    * 404 表示仓库未启用 dependency graph，返回 null；
    * 5xx 多为 GitHub 按需生成 SBOM 的暂态失败，重试一次（fetch 默认跟随重命名重定向）

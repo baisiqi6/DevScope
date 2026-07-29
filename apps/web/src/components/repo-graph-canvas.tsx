@@ -23,21 +23,23 @@ export interface RepoGraphRendererProps {
   links: GraphLinkDatum[];
   reducedMotion: boolean;
   isMobile: boolean;
-  selectedNodeId: number | null;
-  focusRequest: { nodeId: number; seq: number } | null;
+  selectedNodeId: string | null;
+  focusRequest: { nodeId: string; seq: number } | null;
   layoutVersion: number;
   onNodeHover: (node: GraphNodeDatum | null) => void;
-  onNodeSelect: (id: number | null) => void;
+  onNodeSelect: (id: string | null) => void;
 }
 
 // force-graph 初始化后会把 link.source/target 替换为节点对象引用
-function endpointId(endpoint: GraphLinkDatum["source"]): number | undefined {
+function endpointId(endpoint: GraphLinkDatum["source"]): string | undefined {
   if (endpoint == null) return undefined;
   if (typeof endpoint === "object") return endpoint.id;
-  return Number(endpoint);
+  return String(endpoint);
 }
 
 function nodeRadius(node: GraphNodeDatum): number {
+  // 语言节点没有 stars，固定一个适中尺寸作为枢纽
+  if (node.kind === "language") return 4.5;
   return 2 + Math.log10((node.stars ?? 0) + 1) * 2.4;
 }
 
@@ -57,13 +59,13 @@ export default function RepoGraphCanvas({
   const fgRef = useRef<GraphMethods | undefined>(undefined);
   const fittedRef = useRef(false);
   const palette = useThemePalette();
-  const [hoverId, setHoverId] = useState<number | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
   const adjacency = useMemo(() => {
-    const map = new Map<number, Set<number>>();
-    const add = (a: number, b: number) => {
+    const map = new Map<string, Set<string>>();
+    const add = (a: string, b: string) => {
       let set = map.get(a);
       if (!set) {
         set = new Set();
@@ -126,13 +128,39 @@ export default function RepoGraphCanvas({
 
       ctx.globalAlpha = dimmed ? 0.15 : 1;
 
+      // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色
+      let fill: string;
+      if (node.kind === "reference") {
+        fill = oklch(palette.warning, 0.9);
+      } else if (node.kind === "language") {
+        fill = oklch(palette.primary, 0.9);
+      } else {
+        fill = languageColor(node.language) ?? oklch(palette.muted, 0.9);
+      }
+
       if (!dimmed) {
         ctx.shadowColor = oklch(palette.primary, isHovered || isSelected ? 0.9 : 0.5);
         ctx.shadowBlur = isHovered || isSelected ? 14 : 5;
       }
-      ctx.fillStyle = languageColor(node.language) ?? oklch(palette.muted, 0.9);
+      ctx.fillStyle = fill;
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+      if (node.kind === "reference") {
+        // 旋转 45° 的方形（菱形）
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+      } else if (node.kind === "language") {
+        // 竖长的菱形，与基石依赖的等宽菱形区分
+        ctx.moveTo(x, y - r * 1.35);
+        ctx.lineTo(x + r * 0.85, y);
+        ctx.lineTo(x, y + r * 1.35);
+        ctx.lineTo(x - r * 0.85, y);
+        ctx.closePath();
+      } else {
+        ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+      }
       ctx.fill();
       ctx.shadowBlur = 0;
 
@@ -182,6 +210,9 @@ export default function RepoGraphCanvas({
       if (link.type === "dependency") {
         return oklch(palette.warning, state === "active" ? 0.75 : 0.38);
       }
+      if (link.type === "written_in") {
+        return oklch(palette.muted, state === "active" ? 0.4 : 0.16);
+      }
       return oklch(palette.primary, state === "active" ? 0.65 : 0.26);
     },
     [linkState, palette]
@@ -190,6 +221,7 @@ export default function RepoGraphCanvas({
   const linkWidth = useCallback(
     (link: GraphLinkDatum): number => {
       const active = linkState(link) === "active";
+      if (link.type === "written_in") return active ? 0.9 : 0.5;
       if (link.type === "dependency") return active ? 2.2 : 1.4;
       const score = link.score ?? 0.5;
       return (0.3 + score * 1.1) * (active ? 1.6 : 1);
@@ -199,6 +231,8 @@ export default function RepoGraphCanvas({
 
   const linkParticles = useCallback(
     (link: GraphLinkDatum): number => {
+      // written_in 边不显示粒子
+      if (link.type === "written_in") return 0;
       if (reducedMotion || linkState(link) === "dimmed") return 0;
       const base = link.type === "dependency" ? 4 : 2;
       return isMobile ? Math.ceil(base / 2) : base;
@@ -218,6 +252,11 @@ export default function RepoGraphCanvas({
 
   const linkArrowLength = useCallback(
     (link: GraphLinkDatum): number => (link.type === "dependency" ? 4 : 0),
+    []
+  );
+
+  const linkLineDash = useCallback(
+    (link: GraphLinkDatum): number[] | null => (link.type === "written_in" ? [2, 2] : null),
     []
   );
 
@@ -269,6 +308,7 @@ export default function RepoGraphCanvas({
       nodePointerAreaPaint={paintNodeArea}
       linkColor={linkColor}
       linkWidth={linkWidth}
+      linkLineDash={linkLineDash}
       linkDirectionalParticles={linkParticles}
       linkDirectionalParticleSpeed={linkParticleSpeed}
       linkDirectionalParticleWidth={linkParticleWidth}

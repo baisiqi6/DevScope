@@ -16,7 +16,7 @@ import {
   poolRepoEmbedding,
   scheduleSimilarityRecompute,
 } from "@devscope/db";
-import { lt, eq, or, isNull } from "drizzle-orm";
+import { lt, eq, or, isNull, and } from "drizzle-orm";
 import { getOrCreateCurrentUserId } from "./current-user";
 
 // ============================================================================
@@ -49,9 +49,12 @@ async function refreshStaleRepositories() {
       .select({ id: repositories.id, fullName: repositories.fullName })
       .from(repositories)
       .where(
-        or(
-          lt(repositories.lastFetchedAt, staleThreshold),
-          isNull(repositories.lastFetchedAt)
+        and(
+          eq(repositories.isReference, false),
+          or(
+            lt(repositories.lastFetchedAt, staleThreshold),
+            isNull(repositories.lastFetchedAt)
+          )
         )
       );
 
@@ -143,7 +146,12 @@ async function processPendingEmbeddings() {
     const pendingRepos = await database
       .select({ id: repositories.id, fullName: repositories.fullName })
       .from(repositories)
-      .where(eq(repositories.embeddingStatus, "pending"))
+      .where(
+        and(
+          eq(repositories.isReference, false),
+          eq(repositories.embeddingStatus, "pending")
+        )
+      )
       .limit(10); // 每次最多处理 10 个
 
     if (pendingRepos.length === 0) {
