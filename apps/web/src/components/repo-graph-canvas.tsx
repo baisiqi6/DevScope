@@ -39,9 +39,9 @@ function endpointId(endpoint: GraphLinkDatum["source"]): string | undefined {
 
 function nodeRadius(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
-  if (node.kind === "language") return 5.5;
+  if (node.kind === "language") return 5;
   // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库节点同量级
-  if (node.kind === "reference") return 3.6 + Math.log10(degree + 1) * 3.4;
+  if (node.kind === "reference") return 5 + Math.log10(degree + 1) * 4.2;
   return 2 + Math.log10((node.stars ?? 0) + 1) * 2.4;
 }
 
