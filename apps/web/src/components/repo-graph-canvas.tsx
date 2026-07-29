@@ -8,6 +8,8 @@ import ForceGraph2D, {
 } from "react-force-graph-2d";
 import type { RepoGraphEdge, RepoGraphNode } from "@devscope/shared";
 import { languageColor } from "@/lib/language-colors";
+import { loadGraphLayout, saveGraphLayout } from "@/lib/graph-layout";
+import { oklch, useThemePalette } from "@/lib/theme-palette";
 
 type FGExtraLink = Pick<RepoGraphEdge, "type" | "score">;
 
@@ -16,49 +18,16 @@ export type GraphLinkDatum = LinkObject<RepoGraphNode, FGExtraLink>;
 
 type GraphMethods = ForceGraphMethods<NodeObject<RepoGraphNode>, LinkObject<RepoGraphNode, FGExtraLink>>;
 
-interface RepoGraphCanvasProps {
+export interface RepoGraphRendererProps {
   nodes: GraphNodeDatum[];
   links: GraphLinkDatum[];
   reducedMotion: boolean;
   isMobile: boolean;
   selectedNodeId: number | null;
   focusRequest: { nodeId: number; seq: number } | null;
+  layoutVersion: number;
   onNodeHover: (node: GraphNodeDatum | null) => void;
   onNodeSelect: (id: number | null) => void;
-}
-
-interface ThemePalette {
-  primary: string;
-  warning: string;
-  muted: string;
-  foreground: string;
-}
-
-function readPalette(): ThemePalette {
-  const style = getComputedStyle(document.documentElement);
-  const read = (name: string) => style.getPropertyValue(name).trim();
-  return {
-    primary: read("--primary"),
-    warning: read("--warning"),
-    muted: read("--muted-foreground"),
-    foreground: read("--foreground"),
-  };
-}
-
-function oklch(triplet: string, alpha: number): string {
-  return `oklch(${triplet} / ${alpha})`;
-}
-
-function useThemePalette(): ThemePalette {
-  const [palette, setPalette] = useState<ThemePalette>(readPalette);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => setPalette(readPalette()));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-
-  return palette;
 }
 
 // force-graph 初始化后会把 link.source/target 替换为节点对象引用
@@ -81,9 +50,10 @@ export default function RepoGraphCanvas({
   isMobile,
   selectedNodeId,
   focusRequest,
+  layoutVersion,
   onNodeHover,
   onNodeSelect,
-}: RepoGraphCanvasProps) {
+}: RepoGraphRendererProps) {
   const fgRef = useRef<GraphMethods | undefined>(undefined);
   const fittedRef = useRef(false);
   const palette = useThemePalette();
@@ -113,7 +83,21 @@ export default function RepoGraphCanvas({
 
   useEffect(() => {
     fittedRef.current = false;
-  }, [nodes]);
+    const stored = loadGraphLayout();
+    for (const node of nodes) {
+      const pos = stored[node.fullName];
+      if (pos) {
+        node.x = pos.x;
+        node.y = pos.y;
+        node.fx = pos.x;
+        node.fy = pos.y;
+      } else {
+        node.fx = undefined;
+        node.fy = undefined;
+      }
+    }
+    if (layoutVersion > 0) fgRef.current?.d3ReheatSimulation();
+  }, [nodes, layoutVersion]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -257,17 +241,21 @@ export default function RepoGraphCanvas({
     onNodeSelect(null);
   }, [onNodeSelect]);
 
-  const handleNodeDragEnd = useCallback((node: NodeObject<RepoGraphNode>) => {
-    node.fx = undefined;
-    node.fy = undefined;
-    fgRef.current?.d3ReheatSimulation();
-  }, []);
+  const handleNodeDragEnd = useCallback(
+    (node: NodeObject<RepoGraphNode>) => {
+      node.fx = node.x;
+      node.fy = node.y;
+      saveGraphLayout(nodes, false);
+    },
+    [nodes]
+  );
 
   const handleEngineStop = useCallback(() => {
+    saveGraphLayout(nodes, false);
     if (fittedRef.current) return;
     fittedRef.current = true;
     fgRef.current?.zoomToFit(reducedMotion ? 0 : 400, 60);
-  }, [reducedMotion]);
+  }, [nodes, reducedMotion]);
 
   return (
     <ForceGraph2D<RepoGraphNode, FGExtraLink>
