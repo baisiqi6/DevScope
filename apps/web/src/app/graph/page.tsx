@@ -10,6 +10,7 @@ import {
   Network,
   RefreshCw,
   Search,
+  Shuffle,
   Star,
   X,
 } from "lucide-react";
@@ -20,10 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { languageColor } from "@/lib/language-colors";
+import { clearGraphLayout } from "@/lib/graph-layout";
 import { cn } from "@/lib/utils";
 import type { GraphLinkDatum, GraphNodeDatum } from "@/components/repo-graph-canvas";
 
-const RepoGraphCanvas = dynamic(() => import("@/components/repo-graph-canvas"), {
+const RepoGraphView = dynamic(() => import("@/components/repo-graph-view"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -119,6 +121,7 @@ export default function GraphPage() {
   const [focusRequest, setFocusRequest] = useState<{ nodeId: number; seq: number } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNodeDatum | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const focusSeq = useRef(0);
 
@@ -309,6 +312,18 @@ export default function GraphPage() {
             type="button"
             variant="outline"
             size="sm"
+            onClick={() => {
+              clearGraphLayout();
+              setLayoutVersion((v) => v + 1);
+            }}
+          >
+            <Shuffle aria-hidden="true" />
+            重排布局
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             disabled={rebuild.isPending || MOCK_ENABLED}
             title={MOCK_ENABLED ? "模拟数据模式下不可用" : undefined}
             onClick={() => {
@@ -401,13 +416,14 @@ export default function GraphPage() {
   } else {
     content = (
       <div className="relative min-h-0 flex-1" onMouseMove={handleTooltipMove}>
-        <RepoGraphCanvas
+        <RepoGraphView
           nodes={nodes}
           links={links}
           reducedMotion={reduceMotion}
           isMobile={isMobile}
           selectedNodeId={selectedId}
           focusRequest={focusRequest}
+          layoutVersion={layoutVersion}
           onNodeHover={handleNodeHover}
           onNodeSelect={handleNodeSelect}
         />
