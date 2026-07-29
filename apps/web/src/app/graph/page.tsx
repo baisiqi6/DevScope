@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
@@ -150,15 +150,45 @@ interface NeighborEntry {
 export default function GraphPage() {
   const utils = trpc.useUtils();
   const graphQuery = trpc.graph.getRepoGraph.useQuery(undefined, { enabled: !MOCK_ENABLED });
-  const rebuild = trpc.graph.rebuildRepoGraph.useMutation({
-    onSuccess: (result) => {
+
+  // 异步重建：start 立即返回，轮询 status 直到 completed/failed。
+  // 同步长连接会被 Nginx 代理超时切断（HTML 错误页）。
+  const [rebuildPolling, setRebuildPolling] = useState(false);
+  const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
+  const rebuildStatus = trpc.graph.getRebuildGraphStatus.useQuery(undefined, {
+    enabled: !MOCK_ENABLED,
+    refetchInterval: rebuildPolling ? 3000 : false,
+  });
+  const startRebuild = trpc.graph.startRebuildGraph.useMutation({
+    onSuccess: () => {
+      setRebuildPolling(true);
+      setRebuildMsg("重建中：SBOM 回填与依赖解析需要几分钟到十几分钟…");
+    },
+    onError: (error) => setRebuildMsg(`重建启动失败：${error.message}`),
+  });
+
+  useEffect(() => {
+    const status = rebuildStatus.data?.status;
+    // 页面打开时若已有运行中的重建，恢复轮询
+    if (status === "running" && !rebuildPolling) {
+      setRebuildPolling(true);
+      setRebuildMsg("重建中：SBOM 回填与依赖解析需要几分钟到十几分钟…");
+    }
+    if (!rebuildPolling || !rebuildStatus.data) return;
+    if (status === "completed") {
+      setRebuildPolling(false);
+      const r = rebuildStatus.data.result;
       setRebuildMsg(
-        `重建完成：${result.pooledRepos} 仓库 · 相似 ${result.similarityEdges} · 依赖 ${result.dependencyEdges}`
+        r
+          ? `重建完成：${r.pooledRepos} 仓库 · 相似 ${r.similarityEdges} · 依赖 ${r.dependencyEdges} · 回填 ${r.sbomBackfilled}`
+          : "重建完成"
       );
       void utils.graph.getRepoGraph.invalidate();
-    },
-    onError: (error) => setRebuildMsg(`重建失败：${error.message}`),
-  });
+    } else if (status === "failed") {
+      setRebuildPolling(false);
+      setRebuildMsg(`重建失败：${rebuildStatus.data.error ?? "未知错误"}`);
+    }
+  }, [rebuildStatus.data, rebuildPolling, utils]);
 
   const [collectMsg, setCollectMsg] = useState<string | null>(null);
   const collectReference = trpc.collectRepository.useMutation({
@@ -180,7 +210,6 @@ export default function GraphPage() {
   const [threshold, setThreshold] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ nodeId: string; seq: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNodeDatum | null>(null);
@@ -430,15 +459,15 @@ export default function GraphPage() {
             type="button"
             variant="outline"
             size="sm"
-            disabled={rebuild.isPending || MOCK_ENABLED}
+            disabled={rebuildPolling || MOCK_ENABLED}
             title={MOCK_ENABLED ? "模拟数据模式下不可用" : undefined}
             onClick={() => {
               setRebuildMsg(null);
-              rebuild.mutate();
+              startRebuild.mutate();
             }}
           >
-            <RefreshCw aria-hidden="true" className={cn(rebuild.isPending && "animate-spin")} />
-            重建图谱
+            <RefreshCw aria-hidden="true" className={cn(rebuildPolling && "animate-spin")} />
+            {rebuildPolling ? "重建中…" : "重建图谱"}
           </Button>
           {rebuildMsg && (
             <span role="status" className="text-xs text-muted-foreground">
@@ -504,11 +533,14 @@ export default function GraphPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={rebuild.isPending || MOCK_ENABLED}
-            onClick={() => rebuild.mutate()}
+            disabled={rebuildPolling || MOCK_ENABLED}
+            onClick={() => {
+              setRebuildMsg(null);
+              startRebuild.mutate();
+            }}
           >
-            <RefreshCw aria-hidden="true" className={cn(rebuild.isPending && "animate-spin")} />
-            重建图谱
+            <RefreshCw aria-hidden="true" className={cn(rebuildPolling && "animate-spin")} />
+            {rebuildPolling ? "重建中…" : "重建图谱"}
           </Button>
         </div>
       </div>
