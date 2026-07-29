@@ -1234,6 +1234,7 @@ export const rebuildRepoGraphResultSchema = z.object({
   similarityEdges: z.number(),
   dependencyEdges: z.number(),
   pooledRepos: z.number(),
+  sbomBackfilled: z.number(),
 });
 
 export type RebuildRepoGraphResult = z.infer<typeof rebuildRepoGraphResultSchema>;

@@ -500,11 +500,13 @@ export async function recomputeDependencyEdges(
   }
 
   // ---- 第五步：写边——目标为采集仓库或入选基石行；in-degree <2 的外部依赖丢弃 ----
-  const edges: Array<{
+  // 重命名归一可能把原本不同的目标合并为同一 fullName，
+  // 必须按 (source, target) 二次合并，否则违反唯一约束 (source,target,edgeType)
+  const edgeByPair = new Map<string, {
     sourceRepoId: number;
     targetRepoId: number;
     packages: BridgingPackage[];
-  }> = [];
+  }>();
 
   for (const dep of grouped.values()) {
     const workspace = repoByFullName.get(dep.targetFullNameLower);
@@ -516,8 +518,21 @@ export async function recomputeDependencyEdges(
     }
     if (targetRepoId === undefined) continue;
     if (targetRepoId === dep.sourceRepoId) continue;
-    edges.push({ sourceRepoId: dep.sourceRepoId, targetRepoId, packages: dep.packages });
+
+    const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
+    const existing = edgeByPair.get(pairKey);
+    if (existing) {
+      for (const pkg of dep.packages) {
+        const pkgKey = `${pkg.system}:${pkg.name}@${pkg.version}`;
+        if (!existing.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
+          existing.packages.push(pkg);
+        }
+      }
+    } else {
+      edgeByPair.set(pairKey, { sourceRepoId: dep.sourceRepoId, targetRepoId, packages: [...dep.packages] });
+    }
   }
+  const edges = [...edgeByPair.values()];
 
   // ---- 第六步：事务内全量替换 dependency 边 ----
   await db.transaction(async (tx) => {
@@ -652,21 +667,78 @@ export async function getRepoGraphData(db: Db): Promise<{
 }
 
 // ============================================================================
+// SBOM 回填
+// ============================================================================
+
+export interface SbomBackfillOptions {
+  /** SBOM 抓取函数（缺省时回填跳过，便于测试与无 token 环境） */
+  fetchSbom?: (fullName: string) => Promise<Record<string, unknown> | null>;
+  delayMs?: number;
+}
+
+/**
+ * 为缺失 SBOM 的采集仓库补抓并持久化。
+ * 覆盖两类历史数据：sbom_packages 为 null（SBOM 持久化前采集），
+ * 以及包元素无 system 字段（多生态解析前的 npm-only 遗留，pypi 等被丢弃）。
+ */
+export async function backfillSbomPackages(db: Db, opts: SbomBackfillOptions = {}): Promise<number> {
+  if (!opts.fetchSbom) return 0;
+  const delayMs = opts.delayMs ?? 100;
+
+  const rows = await db
+    .select({ id: repositories.id, fullName: repositories.fullName, sbomPackages: repositories.sbomPackages })
+    .from(repositories)
+    .where(eq(repositories.isReference, false));
+
+  const missing = rows.filter(
+    (r) => r.sbomPackages == null || r.sbomPackages.some((p) => !p.system)
+  );
+
+  let filled = 0;
+  for (const repo of missing) {
+    try {
+      const raw = await opts.fetchSbom(repo.fullName);
+      if (raw) {
+        const packages = parseSbomPackages(raw);
+        await db
+          .update(repositories)
+          .set({ sbomPackages: packages, updatedAt: new Date() })
+          .where(eq(repositories.id, repo.id));
+        filled++;
+      }
+    } catch (err) {
+      console.warn(`[RepoGraph] SBOM backfill failed for ${repo.fullName}:`,
+        err instanceof Error ? err.message : err);
+    }
+    await sleep(delayMs);
+  }
+  if (filled > 0) {
+    console.log(`[RepoGraph] SBOM backfill: ${filled}/${missing.length} repos filled`);
+  }
+  return filled;
+}
+
+// ============================================================================
 // 全量重建
 // ============================================================================
 
 export async function rebuildRepoGraph(
   db: Db,
-  opts: { resolveMapping?: ResolveMappingFn; canonicalize?: (fullName: string) => Promise<string> } = {}
-): Promise<{ similarityEdges: number; dependencyEdges: number; pooledRepos: number }> {
+  opts: {
+    resolveMapping?: ResolveMappingFn;
+    canonicalize?: (fullName: string) => Promise<string>;
+    fetchSbom?: (fullName: string) => Promise<Record<string, unknown> | null>;
+  } = {}
+): Promise<{ similarityEdges: number; dependencyEdges: number; pooledRepos: number; sbomBackfilled: number }> {
   const pooledRepos = await backfillRepoEmbeddings(db);
   const similarityEdges = await recomputeSimilarityEdges(db);
+  const sbomBackfilled = await backfillSbomPackages(db, { fetchSbom: opts.fetchSbom });
   const dependencyEdges = await recomputeDependencyEdges(db, {
     resolveMapping: opts.resolveMapping,
     canonicalize: opts.canonicalize,
   });
 
-  return { similarityEdges, dependencyEdges, pooledRepos };
+  return { similarityEdges, dependencyEdges, pooledRepos, sbomBackfilled };
 }
 
 // ============================================================================
