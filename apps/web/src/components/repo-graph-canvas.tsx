@@ -37,9 +37,11 @@ function endpointId(endpoint: GraphLinkDatum["source"]): string | undefined {
   return String(endpoint);
 }
 
-function nodeRadius(node: GraphNodeDatum): number {
+function nodeRadius(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
-  if (node.kind === "language") return 4.5;
+  if (node.kind === "language") return 5.5;
+  // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库节点同量级
+  if (node.kind === "reference") return 3.6 + Math.log10(degree + 1) * 3.4;
   return 2 + Math.log10((node.stars ?? 0) + 1) * 2.4;
 }
 
@@ -62,6 +64,19 @@ export default function RepoGraphCanvas({
   const [hoverId, setHoverId] = useState<string | null>(null);
 
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
+
+  // 连接度（无向边计数）：基石节点尺寸的驱动量
+  const degreeById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const link of links) {
+      const s = endpointId(link.source);
+      const t = endpointId(link.target);
+      if (s == null || t == null) continue;
+      map.set(s, (map.get(s) ?? 0) + 1);
+      map.set(t, (map.get(t) ?? 0) + 1);
+    }
+    return map;
+  }, [links]);
 
   const adjacency = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -123,7 +138,7 @@ export default function RepoGraphCanvas({
         focusId != null && (node.id === focusId || adjacency.get(focusId)?.has(node.id) === true);
       const dimmed = focusId != null && !inNeighborhood;
 
-      const base = nodeRadius(node);
+      const base = nodeRadius(node, degreeById.get(node.id) ?? 0);
       const r = isHovered ? base * 1.3 : base;
 
       ctx.globalAlpha = dimmed ? 0.15 : 1;
@@ -183,15 +198,15 @@ export default function RepoGraphCanvas({
 
       ctx.globalAlpha = 1;
     },
-    [hoverId, selectedNodeId, focusId, adjacency, palette]
+    [hoverId, selectedNodeId, focusId, adjacency, palette, degreeById]
   );
 
   const paintNodeArea = useCallback((node: GraphNodeDatum, color: string, ctx: CanvasRenderingContext2D) => {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(node.x ?? 0, node.y ?? 0, nodeRadius(node) + 2, 0, 2 * Math.PI, false);
+    ctx.arc(node.x ?? 0, node.y ?? 0, nodeRadius(node, degreeById.get(node.id) ?? 0) + 2, 0, 2 * Math.PI, false);
     ctx.fill();
-  }, []);
+  }, [degreeById]);
 
   const linkState = useCallback(
     (link: GraphLinkDatum): "normal" | "active" | "dimmed" => {
@@ -302,7 +317,7 @@ export default function RepoGraphCanvas({
       graphData={graphData}
       backgroundColor="rgba(0,0,0,0)"
       nodeId="id"
-      nodeVal={(node) => nodeRadius(node) ** 2}
+      nodeVal={(node) => nodeRadius(node, degreeById.get(node.id as string) ?? 0) ** 2}
       nodeLabel={() => ""}
       nodeCanvasObject={paintNode}
       nodePointerAreaPaint={paintNodeArea}
