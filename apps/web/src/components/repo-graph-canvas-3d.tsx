@@ -50,9 +50,9 @@ const STAR_COUNT = 320;
 
 function nodeRadius3D(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
-  if (node.kind === "language") return 5;
+  if (node.kind === "language") return 4.2;
   // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库球体同量级
-  if (node.kind === "reference") return 3.2 + Math.log10(degree + 1) * 3.2;
+  if (node.kind === "reference") return 4.5 + Math.log10(degree + 1) * 4;
   return 1.6 + Math.log10((node.stars ?? 0) + 1) * 2.2;
 }
 
@@ -119,8 +119,8 @@ function toThreeColor(css: string): THREE.Color {
 
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
   // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色。
-  // 基石/语言节点压暗亮度，使 bloom 不越过阈值洗白成白点
-  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 1)).multiplyScalar(0.7);
+  // 基石用全饱和琥珀（无光照材质下 bloom 只加琥珀辉光，不会洗白）；语言节点略压暗避免喧宾夺主
+  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 1));
   if (node.kind === "language") return toThreeColor(oklch(palette.primary, 1)).multiplyScalar(0.65);
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
 }
@@ -525,7 +525,7 @@ export default function RepoGraphCanvas3D({
     let geometry: THREE.BufferGeometry;
     let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
     if (node.kind === "reference") {
-      geometry = new THREE.OctahedronGeometry(radius * 1.35);
+      geometry = new THREE.OctahedronGeometry(radius * 1.5);
       // 基石/语言用无光照材质：默认方向光的白色高光会把小节点洗成白点
       material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
     } else if (node.kind === "language") {
