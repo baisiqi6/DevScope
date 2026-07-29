@@ -1237,6 +1237,17 @@ export const rebuildRepoGraphResultSchema = z.object({
   sbomBackfilled: z.number(),
 });
 
+/** 异步重建状态查询的响应 */
+export const rebuildGraphStatusSchema = z.object({
+  status: z.enum(["idle", "running", "completed", "failed"]),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  result: rebuildRepoGraphResultSchema.nullable(),
+  error: z.string().nullable(),
+});
+
+export type RebuildGraphStatus = z.infer<typeof rebuildGraphStatusSchema>;
+
 export type RebuildRepoGraphResult = z.infer<typeof rebuildRepoGraphResultSchema>;
 
 // ============================================================================
