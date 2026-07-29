@@ -160,23 +160,30 @@ export default function RepoGraphCanvas({
       ctx.fillStyle = fill;
       ctx.beginPath();
       if (node.kind === "reference") {
-        // 旋转 45° 的方形（菱形）
         ctx.moveTo(x, y - r);
         ctx.lineTo(x + r, y);
         ctx.lineTo(x, y + r);
         ctx.lineTo(x - r, y);
         ctx.closePath();
+        ctx.fill();
       } else if (node.kind === "language") {
-        // 竖长的菱形，与基石依赖的等宽菱形区分
-        ctx.moveTo(x, y - r * 1.35);
-        ctx.lineTo(x + r * 0.85, y);
-        ctx.lineTo(x, y + r * 1.35);
-        ctx.lineTo(x - r * 0.85, y);
-        ctx.closePath();
+        // 黑洞化：漆黑核心 + 青色吸积环渐变
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+        ctx.fill();
+        const ringGradient = ctx.createRadialGradient(x, y, r * 0.9, x, y, r * 2.2);
+        ringGradient.addColorStop(0, oklch(palette.primary, 0));
+        ringGradient.addColorStop(0.55, oklch(palette.primary, 0.9));
+        ringGradient.addColorStop(1, oklch(palette.primary, 0));
+        ctx.fillStyle = ringGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 2.2, 0, 2 * Math.PI, false);
+        ctx.fill();
       } else {
         ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+        ctx.fill();
       }
-      ctx.fill();
       ctx.shadowBlur = 0;
 
       if (isSelected) {

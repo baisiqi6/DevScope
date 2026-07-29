@@ -37,6 +37,8 @@ interface OrbitControlsLike {
 interface NodeObjectEntry {
   node: GraphNodeDatum;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial | THREE.MeshBasicMaterial>;
+  /** 语言节点的黑洞吸积环（仅 kind=language 存在） */
+  ring?: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   label: THREE.Sprite;
   baseColor: THREE.Color;
 }
@@ -174,8 +176,37 @@ function createLabelSprite(text: string, palette: ThemePalette): THREE.Sprite {
 function disposeEntry(entry: NodeObjectEntry): void {
   entry.mesh.geometry.dispose();
   entry.mesh.material.dispose();
+  if (entry.ring) {
+    entry.ring.geometry.dispose();
+    entry.ring.material.map?.dispose();
+    entry.ring.material.dispose();
+  }
   entry.label.material.map?.dispose();
   entry.label.material.dispose();
+}
+
+/** 语言节点吸积环纹理：内缘淡、主环亮、外缘衰减的黑洞光环 */
+function createAccretionTexture(color: THREE.Color): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const rgb = color
+      .toArray()
+      .map((v) => Math.round(v * 255))
+      .join(",");
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.2, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, `rgba(${rgb},0)`);
+    gradient.addColorStop(0.5, `rgba(${rgb},0.15)`);
+    gradient.addColorStop(0.72, `rgba(${rgb},0.95)`);
+    gradient.addColorStop(0.85, `rgba(${rgb},0.4)`);
+    gradient.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 // 类型定义只声明了 cameraPosition 的 setter 重载；无参调用是运行时的 getter
@@ -280,6 +311,11 @@ export default function RepoGraphCanvas3D({
         // 无光照材质：用颜色明暗表达聚焦/常态
         material.color.copy(entry.baseColor).multiplyScalar(isFocus ? 1.4 : 1);
       }
+      // 黑洞核心漆黑不可提亮，状态交给吸积环表达
+      if (entry.ring) {
+        entry.ring.material.opacity = dimmed ? 0.12 : 1;
+        entry.ring.scale.setScalar(isFocus ? 1.2 : 1);
+      }
       entry.mesh.scale.setScalar(isFocus ? 1.28 : 1);
     }
   }, []);
@@ -367,6 +403,21 @@ export default function RepoGraphCanvas3D({
     if (link?.distance) {
       link.distance((l) => (l.type === "written_in" ? 70 : l.type === "dependency" ? 55 : 30));
     }
+
+    // 吸积环缓慢自转，营造黑洞视界的扭曲感（ref 方法面无 onRenderFramePre，
+    // 用独立 RAF 循环驱动；force-graph 本身连续渲染，旋转即生效）
+    let raf = 0;
+    const rotateRings = () => {
+      const t = performance.now() * 0.0004;
+      for (const entry of objectsRef.current.values()) {
+        if (entry.ring) {
+          entry.ring.rotation.z = t % (Math.PI * 2);
+        }
+      }
+      raf = requestAnimationFrame(rotateRings);
+    };
+    raf = requestAnimationFrame(rotateRings);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   // ------------------------------------------------------------------
@@ -521,16 +572,32 @@ export default function RepoGraphCanvas3D({
     const pal = paletteRef.current;
     const baseColor = nodeBaseColor(node, pal);
     const radius = nodeRadius3D(node, degreeById.get(node.id) ?? 0);
-    // 按节点类型选择几何体：仓库=球体，基石依赖=八面体，语言=十二面体
+    // 按节点类型选择几何体：仓库=球体，基石依赖=八面体，语言=黑洞（漆黑核心+吸积环）
     let geometry: THREE.BufferGeometry;
     let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
+    let ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | undefined;
     if (node.kind === "reference") {
       geometry = new THREE.OctahedronGeometry(radius * 1.5);
       // 基石/语言用无光照材质：默认方向光的白色高光会把小节点洗成白点
       material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
     } else if (node.kind === "language") {
-      geometry = new THREE.DodecahedronGeometry(radius * 1.25);
-      material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
+      geometry = new THREE.SphereGeometry(radius, 24, 16);
+      // 黑洞核心：纯黑，吃掉一切光
+      material = new THREE.MeshBasicMaterial({ color: new THREE.Color("#000000"), transparent: true, opacity: 1 });
+      // 吸积环：倾斜的青色光环，AdditiveBlending 叠加后由 bloom 拉出辉光
+      ring = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 1.25, radius * 2.3, 64),
+        new THREE.MeshBasicMaterial({
+          map: createAccretionTexture(baseColor),
+          transparent: true,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          opacity: 1,
+        })
+      );
+      ring.rotation.x = -1.15;
+      ring.rotation.z = 0.35;
     } else {
       geometry = new THREE.SphereGeometry(radius, 24, 16);
       material = new THREE.MeshStandardMaterial({
@@ -545,13 +612,14 @@ export default function RepoGraphCanvas3D({
     }
     const mesh = new THREE.Mesh(geometry, material);
     const label = createLabelSprite(node.fullName, pal);
-    label.position.y = radius + LABEL_HEIGHT / 2 + 2;
+    label.position.y = (ring ? radius * 2.3 : radius) + LABEL_HEIGHT / 2 + 2;
     const group = new THREE.Group();
     group.add(mesh, label);
+    if (ring) group.add(ring);
 
     const existing = objectsRef.current.get(node.id);
     if (existing) disposeEntry(existing);
-    objectsRef.current.set(node.id, { node, mesh, label, baseColor });
+    objectsRef.current.set(node.id, { node, mesh, ring, label, baseColor });
     applyNodeStates();
     return group;
   }, [applyNodeStates, degreeById]);
