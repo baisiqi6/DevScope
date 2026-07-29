@@ -122,7 +122,19 @@ jobs:
               echo "Server worktree is dirty; reconcile protected config before deployment"
               exit 1
             fi
-            git pull --ff-only origin main
+            # 服务器到 GitHub 的 TLS 连接不稳定（今夜 4/7 部署首次失败），
+            # git pull 需要有界重试，避免人工重启整个 workflow
+            for attempt in 1 2 3; do
+              if git pull --ff-only origin main; then
+                break
+              fi
+              echo "git pull attempt $attempt failed; retrying in 10s..."
+              sleep 10
+              if [ "$attempt" = "3" ]; then
+                echo "git pull failed after 3 attempts"
+                exit 1
+              fi
+            done
 
             # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
