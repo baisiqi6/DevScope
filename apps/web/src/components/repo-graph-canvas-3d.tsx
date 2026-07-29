@@ -36,7 +36,7 @@ interface OrbitControlsLike {
 
 interface NodeObjectEntry {
   node: GraphNodeDatum;
-  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial | THREE.MeshBasicMaterial>;
   label: THREE.Sprite;
   baseColor: THREE.Color;
 }
@@ -48,9 +48,11 @@ const AUTO_ROTATE_SPEED = 0.5;
 const AUTO_ROTATE_RESUME_MS = 8000;
 const STAR_COUNT = 320;
 
-function nodeRadius3D(node: GraphNodeDatum): number {
+function nodeRadius3D(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
-  if (node.kind === "language") return 3.6;
+  if (node.kind === "language") return 5;
+  // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库球体同量级
+  if (node.kind === "reference") return 3.2 + Math.log10(degree + 1) * 3.2;
   return 1.6 + Math.log10((node.stars ?? 0) + 1) * 2.2;
 }
 
@@ -63,29 +65,63 @@ function endpointId(endpoint: GraphLinkDatum["source"]): string | undefined {
 
 let colorProbeCtx: CanvasRenderingContext2D | null | undefined;
 
+// THREE.Color.setStyle 不识别 oklch（只告警并返回默认白色），
+// 现代 Chrome 的 canvas 归一化也保留 oklch 格式——必须自己做 OKLCH→sRGB 转换
+const OKLCH_RE = /^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*[\d.]+%?)?\s*\)$/i;
+
+function oklchToSrgb(l: number, c: number, hDeg: number): [number, number, number] {
+  const h = (hDeg * Math.PI) / 180;
+  const a = c * Math.cos(h);
+  const b = c * Math.sin(h);
+  const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = l - 0.0894841775 * a - 1.291485548 * b;
+  const l3 = l_ ** 3;
+  const m3 = m_ ** 3;
+  const s3 = s_ ** 3;
+  const toGamma = (x: number) => {
+    const v = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+    return Math.min(1, Math.max(0, v));
+  };
+  return [
+    toGamma(4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3),
+    toGamma(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3),
+    toGamma(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3),
+  ];
+}
+
 // THREE.Color 无法解析 oklch，借助 canvas 归一化为 #rrggbb
 function toThreeColor(css: string): THREE.Color {
-  const color = new THREE.Color();
+  const trimmed = css.trim();
+  const oklchMatch = OKLCH_RE.exec(trimmed);
+  if (oklchMatch) {
+    const [r, g, b] = oklchToSrgb(
+      Number(oklchMatch[1]),
+      Number(oklchMatch[2]),
+      Number(oklchMatch[3])
+    );
+    return new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+  }
+  if (colorProbeCtx === undefined) {
+    colorProbeCtx = document.createElement("canvas").getContext("2d");
+  }
   try {
-    color.setStyle(css);
-    return color;
+    return new THREE.Color().setStyle(trimmed);
   } catch {
-    if (colorProbeCtx === undefined) {
-      colorProbeCtx = document.createElement("canvas").getContext("2d");
-    }
     if (colorProbeCtx) {
       colorProbeCtx.fillStyle = "#000000";
-      colorProbeCtx.fillStyle = css;
+      colorProbeCtx.fillStyle = trimmed;
       return new THREE.Color(colorProbeCtx.fillStyle);
     }
-    return color.set("#888888");
+    return new THREE.Color("#888888");
   }
 }
 
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
-  // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色
-  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 0.9));
-  if (node.kind === "language") return toThreeColor(oklch(palette.primary, 0.9));
+  // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色。
+  // 基石/语言节点压暗亮度，使 bloom 不越过阈值洗白成白点
+  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 1)).multiplyScalar(0.7);
+  if (node.kind === "language") return toThreeColor(oklch(palette.primary, 1)).multiplyScalar(0.65);
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
 }
 
@@ -190,6 +226,19 @@ export default function RepoGraphCanvas3D({
 
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
+  // 连接度（无向边计数）：基石节点尺寸的驱动量
+  const degreeById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const link of links) {
+      const s = endpointId(link.source);
+      const t = endpointId(link.target);
+      if (s == null || t == null) continue;
+      map.set(s, (map.get(s) ?? 0) + 1);
+      map.set(t, (map.get(t) ?? 0) + 1);
+    }
+    return map;
+  }, [links]);
+
   const adjacency = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const add = (a: string, b: string) => {
@@ -225,7 +274,12 @@ export default function RepoGraphCanvas3D({
       const isFocus = id === focus;
       const dimmed = focus != null && !isFocus && neighbors?.has(id) !== true;
       material.opacity = dimmed ? 0.12 : 1;
-      material.emissiveIntensity = isFocus ? 1.1 : dimmed ? 0.1 : 0.4;
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.emissiveIntensity = isFocus ? 1.1 : dimmed ? 0.1 : 0.4;
+      } else {
+        // 无光照材质：用颜色明暗表达聚焦/常态
+        material.color.copy(entry.baseColor).multiplyScalar(isFocus ? 1.4 : 1);
+      }
       entry.mesh.scale.setScalar(isFocus ? 1.28 : 1);
     }
   }, []);
@@ -239,8 +293,12 @@ export default function RepoGraphCanvas3D({
     paletteRef.current = palette;
     for (const entry of objectsRef.current.values()) {
       entry.baseColor.copy(nodeBaseColor(entry.node, palette));
-      entry.mesh.material.color.copy(entry.baseColor).multiplyScalar(0.35);
-      entry.mesh.material.emissive.copy(entry.baseColor);
+      if (entry.mesh.material instanceof THREE.MeshStandardMaterial) {
+        entry.mesh.material.color.copy(entry.baseColor).multiplyScalar(0.35);
+        entry.mesh.material.emissive.copy(entry.baseColor);
+      } else {
+        entry.mesh.material.color.copy(entry.baseColor);
+      }
       const fresh = createLabelSprite(entry.node.fullName, palette);
       entry.label.material.map?.dispose();
       entry.label.material.dispose();
@@ -293,6 +351,23 @@ export default function RepoGraphCanvas3D({
     }
     if (layoutVersion > 0) fgRef.current?.d3ReheatSimulation();
   }, [nodes, layoutVersion]);
+
+  // ------------------------------------------------------------------
+  // 力导向参数：基石节点接入后边数激增，增强电荷排斥与边长避免簇成白团
+  // ------------------------------------------------------------------
+
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    const charge = fg.d3Force("charge") as { strength?: (v: number) => void } | undefined;
+    if (charge?.strength) charge.strength(-160);
+    const link = fg.d3Force("link") as
+      | { distance?: (v: (link: GraphLinkDatum) => number) => void }
+      | undefined;
+    if (link?.distance) {
+      link.distance((l) => (l.type === "written_in" ? 70 : l.type === "dependency" ? 55 : 30));
+    }
+  }, []);
 
   // ------------------------------------------------------------------
   // 发光（UnrealBloomPass）、星点背景、相机自动环绕
@@ -445,24 +520,28 @@ export default function RepoGraphCanvas3D({
   const nodeThreeObject = useCallback((node: GraphNodeDatum) => {
     const pal = paletteRef.current;
     const baseColor = nodeBaseColor(node, pal);
-    const radius = nodeRadius3D(node);
-    const material = new THREE.MeshStandardMaterial({
-      color: baseColor.clone().multiplyScalar(0.35),
-      emissive: baseColor.clone(),
-      emissiveIntensity: 0.4,
-      roughness: 0.35,
-      metalness: 0.1,
-      transparent: true,
-      opacity: 1,
-    });
+    const radius = nodeRadius3D(node, degreeById.get(node.id) ?? 0);
     // 按节点类型选择几何体：仓库=球体，基石依赖=八面体，语言=十二面体
     let geometry: THREE.BufferGeometry;
+    let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
     if (node.kind === "reference") {
       geometry = new THREE.OctahedronGeometry(radius * 1.35);
+      // 基石/语言用无光照材质：默认方向光的白色高光会把小节点洗成白点
+      material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
     } else if (node.kind === "language") {
       geometry = new THREE.DodecahedronGeometry(radius * 1.25);
+      material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
     } else {
       geometry = new THREE.SphereGeometry(radius, 24, 16);
+      material = new THREE.MeshStandardMaterial({
+        color: baseColor.clone().multiplyScalar(0.35),
+        emissive: baseColor.clone(),
+        emissiveIntensity: 0.4,
+        roughness: 0.35,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 1,
+      });
     }
     const mesh = new THREE.Mesh(geometry, material);
     const label = createLabelSprite(node.fullName, pal);
@@ -475,7 +554,7 @@ export default function RepoGraphCanvas3D({
     objectsRef.current.set(node.id, { node, mesh, label, baseColor });
     applyNodeStates();
     return group;
-  }, [applyNodeStates]);
+  }, [applyNodeStates, degreeById]);
 
   const linkColors = useMemo(() => {
     const bg = toThreeColor(oklch(palette.background, 1));
@@ -616,7 +695,7 @@ export default function RepoGraphCanvas3D({
       controlType="orbit"
       showNavInfo={false}
       nodeId="id"
-      nodeVal={(node) => nodeRadius3D(node) ** 2}
+      nodeVal={(node) => nodeRadius3D(node, degreeById.get(node.id as string) ?? 0) ** 2}
       nodeLabel={() => ""}
       nodeThreeObject={nodeThreeObject}
       linkOpacity={1}
