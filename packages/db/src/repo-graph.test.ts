@@ -431,6 +431,39 @@ describe("recomputeDependencyEdges", () => {
     expect(db._insertedEdges.map((e: any) => e.targetRepoId)).toEqual([2, 2]);
   });
 
+  it("重命名归一将两个外部目标合并后只产出一条边（防唯一约束冲突）", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [
+          { name: "react", version: "19.2.6", system: "npm" },
+          { name: "react-legacy", version: "1.0.0", system: "npm" },
+        ] },
+        { id: 2, fullName: "react/react", isReference: false, sbomPackages: null },
+        { id: 3, fullName: "org-b/app-b", isReference: false, sbomPackages: [
+          { name: "react", version: "19.2.6", system: "npm" },
+          { name: "react-legacy", version: "1.0.0", system: "npm" },
+        ] },
+      ],
+      // 两个包分别映射到 facebook/react 和 facebook/react-legacy（in-degree 均达 ≥2 门槛）
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockImplementation((system: string, name: string) =>
+      Promise.resolve(name === "react-legacy" ? "facebook/react-legacy" : "facebook/react")
+    );
+    // 两个外部名都归一到 react/react
+    const canonicalize = vi.fn().mockImplementation((fullName: string) =>
+      Promise.resolve(fullName === "facebook/react-legacy" ? "react/react" : "react/react")
+    );
+    const count = await recomputeDependencyEdges(db, { resolveMapping, canonicalize, delayMs: 0 });
+
+    // org-a 的两个目标合并为一条边；org-b 一条边——共 2 条，无唯一冲突
+    expect(count).toBe(2);
+    const aEdges = db._insertedEdges.filter((e: any) => e.sourceRepoId === 1);
+    expect(aEdges).toHaveLength(1);
+    expect(aEdges[0].evidence.packages.length).toBe(2);
+  });
+
   it("已采集仓库作为依赖目标时直接连边（无 in-degree 门槛、不建基石行）", async () => {
     const db = createDepMockDb({
       repos: [
@@ -593,5 +626,53 @@ describe("getRepoGraphData", () => {
     expect(writtenIn?.source).toBe("1");
     expect(writtenIn?.target).toBe("lang:TypeScript");
     expect(writtenIn?.score).toBeNull();
+  });
+});
+
+describe("backfillSbomPackages", () => {
+  it("回填 null 与遗留无 system 字段的行，跳过已多生态的行", async () => {
+    const updated: Array<{ id: number; packages: unknown }> = [];
+    const repos = [
+      { id: 1, fullName: "org/a", sbomPackages: null },
+      { id: 2, fullName: "org/b", sbomPackages: [{ name: "react", version: "19.0.0" }] }, // 遗留无 system
+      { id: 3, fullName: "org/c", sbomPackages: [{ name: "vue", version: "3.0.0", system: "npm" }] }, // 已多生态
+    ];
+    const db = {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(repos),
+        }),
+      }),
+      update: vi.fn().mockImplementation(() => ({
+        set: vi.fn().mockImplementation((vals: any) => ({
+          where: vi.fn().mockImplementation(() => {
+            updated.push({ id: 0, packages: vals.sbomPackages });
+            return Promise.resolve();
+          }),
+        })),
+      })),
+    } as any;
+
+    const { backfillSbomPackages } = await import("./repo-graph");
+    const fetchSbom = vi.fn().mockResolvedValue({ sbom: { packages: [
+      { name: "fastapi", versionInfo: "0.115.0", externalRefs: [{ referenceType: "purl", referenceLocator: "pkg:pypi/fastapi@0.115.0" }] },
+    ] } });
+
+    const filled = await backfillSbomPackages(db, { fetchSbom, delayMs: 0 });
+
+    // repo 1（null）与 repo 2（遗留）被抓取；repo 3 跳过
+    expect(fetchSbom).toHaveBeenCalledTimes(2);
+    expect(fetchSbom).toHaveBeenCalledWith("org/a");
+    expect(fetchSbom).toHaveBeenCalledWith("org/b");
+    expect(filled).toBe(2);
+    expect(updated).toHaveLength(2);
+    // pypi 包被正确解析并带 system 字段
+    expect((updated[0].packages as any[])[0]).toMatchObject({ name: "fastapi", system: "pypi" });
+  });
+
+  it("无 fetchSbom 时直接返回 0", async () => {
+    const { backfillSbomPackages } = await import("./repo-graph");
+    const db = { select: vi.fn() } as any;
+    expect(await backfillSbomPackages(db, {})).toBe(0);
   });
 });
