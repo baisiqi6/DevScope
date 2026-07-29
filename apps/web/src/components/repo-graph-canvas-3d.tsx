@@ -36,7 +36,7 @@ interface OrbitControlsLike {
 
 interface NodeObjectEntry {
   node: GraphNodeDatum;
-  mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>;
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   label: THREE.Sprite;
   baseColor: THREE.Color;
 }
@@ -49,14 +49,16 @@ const AUTO_ROTATE_RESUME_MS = 8000;
 const STAR_COUNT = 320;
 
 function nodeRadius3D(node: GraphNodeDatum): number {
+  // 语言节点没有 stars，固定一个适中尺寸作为枢纽
+  if (node.kind === "language") return 3.6;
   return 1.6 + Math.log10((node.stars ?? 0) + 1) * 2.2;
 }
 
 // force-graph 初始化后会把 link.source/target 替换为节点对象引用
-function endpointId(endpoint: GraphLinkDatum["source"]): number | undefined {
+function endpointId(endpoint: GraphLinkDatum["source"]): string | undefined {
   if (endpoint == null) return undefined;
   if (typeof endpoint === "object") return endpoint.id;
-  return Number(endpoint);
+  return String(endpoint);
 }
 
 let colorProbeCtx: CanvasRenderingContext2D | null | undefined;
@@ -81,6 +83,9 @@ function toThreeColor(css: string): THREE.Color {
 }
 
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
+  // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色
+  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 0.9));
+  if (node.kind === "language") return toThreeColor(oklch(palette.primary, 0.9));
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
 }
 
@@ -169,7 +174,7 @@ export default function RepoGraphCanvas3D({
   onNodeSelect,
 }: RepoGraphRendererProps) {
   const fgRef = useRef<Graph3DMethods | undefined>(undefined);
-  const objectsRef = useRef(new Map<number, NodeObjectEntry>());
+  const objectsRef = useRef(new Map<string, NodeObjectEntry>());
   const starsMaterialRef = useRef<THREE.PointsMaterial | null>(null);
   const fittedRef = useRef(false);
   const flownRef = useRef(false);
@@ -177,7 +182,7 @@ export default function RepoGraphCanvas3D({
 
   const palette = useThemePalette();
   const paletteRef = useRef(palette);
-  const [hoverId, setHoverId] = useState<number | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   const focusId = hoverId ?? selectedNodeId;
   const focusIdRef = useRef(focusId);
@@ -186,15 +191,15 @@ export default function RepoGraphCanvas3D({
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
   const adjacency = useMemo(() => {
-    const map = new Map<number, Set<number>>();
-    const add = (a: number, b: number) => {
+    const map = new Map<string, Set<string>>();
+    const add = (a: string, b: string) => {
       let set = map.get(a);
       if (!set) {
         set = new Set();
         map.set(a, set);
       }
       set.add(b);
-    };
+    }
     for (const link of links) {
       const s = endpointId(link.source);
       const t = endpointId(link.target);
@@ -229,7 +234,7 @@ export default function RepoGraphCanvas3D({
     applyNodeStates();
   }, [focusId, adjacency, applyNodeStates]);
 
-  // 主题切换：原地更新球体颜色与标签纹理，避免重建全部节点对象
+  // 主题切换：原地更新几何体颜色与标签纹理，避免重建全部节点对象
   useEffect(() => {
     paletteRef.current = palette;
     for (const entry of objectsRef.current.values()) {
@@ -450,7 +455,16 @@ export default function RepoGraphCanvas3D({
       transparent: true,
       opacity: 1,
     });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), material);
+    // 按节点类型选择几何体：仓库=球体，基石依赖=八面体，语言=十二面体
+    let geometry: THREE.BufferGeometry;
+    if (node.kind === "reference") {
+      geometry = new THREE.OctahedronGeometry(radius * 1.35);
+    } else if (node.kind === "language") {
+      geometry = new THREE.DodecahedronGeometry(radius * 1.25);
+    } else {
+      geometry = new THREE.SphereGeometry(radius, 24, 16);
+    }
+    const mesh = new THREE.Mesh(geometry, material);
     const label = createLabelSprite(node.fullName, pal);
     label.position.y = radius + LABEL_HEIGHT / 2 + 2;
     const group = new THREE.Group();
@@ -467,12 +481,16 @@ export default function RepoGraphCanvas3D({
     const bg = toThreeColor(oklch(palette.background, 1));
     const primary = toThreeColor(oklch(palette.primary, 1));
     const warning = toThreeColor(oklch(palette.warning, 1));
+    const muted = toThreeColor(oklch(palette.muted, 1));
     const mix = (color: THREE.Color, t: number) => `#${color.clone().lerp(bg, t).getHexString()}`;
     return {
       similarity: mix(primary, 0.45),
       similarityActive: mix(primary, 0.05),
       dependency: mix(warning, 0.35),
       dependencyActive: mix(warning, 0),
+      // written_in 边大幅混向背景色，实现“低透明细虚线”的 3D 等效
+      writtenIn: mix(muted, 0.75),
+      writtenInActive: mix(muted, 0.45),
       dimmed: mix(primary, 0.9),
     };
   }, [palette]);
@@ -494,6 +512,9 @@ export default function RepoGraphCanvas3D({
       if (link.type === "dependency") {
         return state === "active" ? linkColors.dependencyActive : linkColors.dependency;
       }
+      if (link.type === "written_in") {
+        return state === "active" ? linkColors.writtenInActive : linkColors.writtenIn;
+      }
       return state === "active" ? linkColors.similarityActive : linkColors.similarity;
     },
     [linkState, linkColors]
@@ -502,6 +523,7 @@ export default function RepoGraphCanvas3D({
   const linkWidth = useCallback(
     (link: GraphLinkDatum): number => {
       const active = linkState(link) === "active";
+      if (link.type === "written_in") return active ? 0.4 : 0.22;
       if (link.type === "dependency") return active ? 1.2 : 0.8;
       const score = link.score ?? 0.5;
       return (0.22 + score * 0.3) * (active ? 1.5 : 1);
@@ -511,6 +533,8 @@ export default function RepoGraphCanvas3D({
 
   const linkParticles = useCallback(
     (link: GraphLinkDatum): number => {
+      // written_in 边不显示粒子
+      if (link.type === "written_in") return 0;
       if (linkState(link) === "dimmed") return 0;
       return link.type === "dependency" ? 4 : 2;
     },

@@ -1186,9 +1186,13 @@ export const similarityEvidenceSchema = z.object({
 
 export const dependencyEvidenceSchema = z.object({
   kind: z.literal("dependency"),
-  system: z.literal("npm"),
-  packageName: z.string(),
-  packageVersion: z.string(),
+  packages: z.array(
+    z.object({
+      system: z.string(),
+      name: z.string(),
+      version: z.string(),
+    })
+  ),
   resolvedBy: z.literal("deps.dev"),
 });
 
@@ -1200,18 +1204,20 @@ export const repoRelationshipEvidenceSchema = z.discriminatedUnion("kind", [
 export type RepoRelationshipEvidence = z.infer<typeof repoRelationshipEvidenceSchema>;
 
 export const repoGraphNodeSchema = z.object({
-  id: z.number(),
+  id: z.string(),
+  kind: z.enum(["repo", "reference", "language"]),
   fullName: z.string(),
   name: z.string(),
   language: z.string().nullable(),
   stars: z.number().nullable(),
   description: z.string().nullable(),
+  isReference: z.boolean(),
 });
 
 export const repoGraphEdgeSchema = z.object({
-  source: z.number(),
-  target: z.number(),
-  type: z.enum(["similarity", "dependency"]),
+  source: z.string(),
+  target: z.string(),
+  type: z.enum(["similarity", "dependency", "written_in"]),
   score: z.number().nullable(),
 });
 

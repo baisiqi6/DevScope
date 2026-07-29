@@ -505,7 +505,7 @@ export const groupsQueryRouter = router({
       })
       .from(repositories)
       .leftJoin(groupMembers, eq(groupMembers.repoId, repositories.id))
-      .where(sql`${groupMembers.id} IS NULL`)
+      .where(and(eq(repositories.isReference, false), sql`${groupMembers.id} IS NULL`))
       .orderBy(desc(repositories.stars));
   }),
 

@@ -181,6 +181,7 @@ export const appRouter = router({
           note: repositories.note,
         })
         .from(repositories)
+        .where(eq(repositories.isReference, false))
         .orderBy(desc(repositories.stars))
         .limit(input.limit)
         .offset(input.offset);

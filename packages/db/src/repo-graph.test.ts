@@ -6,7 +6,9 @@ import {
   poolRepoEmbedding,
   getRepoGraphData,
 } from "./repo-graph";
+import { repositories, packageRepoMappings, repoRelationships } from "./schema";
 import sbomFixture from "./__fixtures__/sbom-tailwindcss.json";
+import sbomPypiFixture from "./__fixtures__/sbom-pypi-minimal.json";
 
 // ============================================================================
 // SBOM 解析测试（真实 fixture）
@@ -48,7 +50,7 @@ describe("parseSbomPackages", () => {
 
   it("应去重同名同版本的包", () => {
     const packages = parseSbomPackages(sbomFixture as Record<string, unknown>);
-    const keys = packages.map((p) => `${p.name}@${p.version}`);
+    const keys = packages.map((p) => `${p.system}:${p.name}@${p.version}`);
     const unique = new Set(keys);
     expect(keys.length).toBe(unique.size);
   });
@@ -59,12 +61,54 @@ describe("parseSbomPackages", () => {
     expect(parseSbomPackages({ sbom: { packages: [] } })).toEqual([]);
   });
 
-  it("应过滤非 npm 包（如 cargo、github actions）", () => {
+  it("应识别多生态：包含精确版本的 cargo 包，过滤 github actions 与范围版本", () => {
     const packages = parseSbomPackages(sbomFixture as Record<string, unknown>);
-    const names = packages.map((p) => p.name);
-    expect(names).not.toContain("serde");
-    expect(names).not.toContain("actions/checkout");
-    expect(names).not.toContain("regex");
+    const names = packages.map((p) => `${p.name}@${p.version}`);
+
+    // cargo 精确版本现在被纳入
+    expect(names).toContain("serde@1.0.163");
+    expect(names).toContain("regex@1.11.1");
+    expect(names).toContain("rustc-hash@2.1.1");
+    // cargo 范围版本仍被拒绝
+    expect(names).not.toContain("rustc-hash@>= 2.1.1,< 3.0.0");
+    expect(names).not.toContain("regex@>= 1.11.1,< 2.0.0");
+    // 不支持的生态（githubactions）仍被过滤
+    expect(names).not.toContain("actions/checkout@3.*.*");
+    expect(packages.some((p) => p.name === "actions/checkout")).toBe(false);
+  });
+
+  it("应为每个包标注 purl 系统（npm/cargo）", () => {
+    const packages = parseSbomPackages(sbomFixture as Record<string, unknown>);
+    const byName = new Map(packages.map((p) => [`${p.name}@${p.version}`, p.system]));
+    expect(byName.get("picocolors@1.1.1")).toBe("npm");
+    expect(byName.get("serde@1.0.163")).toBe("cargo");
+  });
+});
+
+// ============================================================================
+// SBOM 解析测试（pypi 最小 fixture）
+// ============================================================================
+
+describe("parseSbomPackages（pypi fixture）", () => {
+  const packages = parseSbomPackages(sbomPypiFixture as Record<string, unknown>);
+  const byKey = new Map(packages.map((p) => [`${p.system}:${p.name}@${p.version}`, p]));
+
+  it("应解析精确版本的 pypi 包", () => {
+    expect(byKey.has("pypi:django@4.2.1")).toBe(true);
+    expect(byKey.has("pypi:requests@2.31.0")).toBe(true);
+  });
+
+  it("pypi 允许 X.Y 无 patch 段", () => {
+    expect(byKey.has("pypi:numpy@1.26")).toBe(true);
+  });
+
+  it("仍拒绝范围 spec 与不支持的生态", () => {
+    expect(packages.some((p) => p.name === "flask")).toBe(false);
+    expect(packages.some((p) => p.name === "actions/checkout")).toBe(false);
+  });
+
+  it("同一 SBOM 中的 npm 包照常解析", () => {
+    expect(byKey.has("npm:picocolors@1.1.1")).toBe(true);
   });
 });
 
@@ -140,6 +184,7 @@ describe("recomputeSimilarityEdges", () => {
       insert: vi.fn().mockReturnValue({ values: insertValues }),
       transaction: vi.fn().mockImplementation(async (fn: any) => {
         await fn({
+          execute: vi.fn().mockResolvedValue(undefined),
           delete: vi.fn().mockReturnValue({ where: deleteWhere }),
           insert: vi.fn().mockReturnValue({ values: insertValues }),
         });
@@ -220,163 +265,71 @@ describe("recomputeSimilarityEdges", () => {
 // ============================================================================
 
 describe("recomputeDependencyEdges", () => {
-  function createMockDb(opts: {
-    repos: Array<{ id: number; fullName: string }>;
-    cachedMappings?: Array<{ sourceRepo: string | null }>;
+  // 按表路由的 mock：repositories 返回仓库列表，packageRepoMappings 返回固定缓存结果
+  function createDepMockDb(opts: {
+    repos: Array<{ id: number; fullName: string; sbomPackages: unknown; isReference?: boolean }>;
+    cacheResult?: Array<{ sourceRepo: string | null }>;
   }) {
-    const insertedValues: any[] = [];
+    const cacheResult = opts.cacheResult ?? [];
     const insertedMappings: any[] = [];
-
-    const selectMock = vi.fn().mockImplementation(() => {
-      let fromTable: string = "";
-      return {
-        from: vi.fn().mockImplementation((table: any) => {
-          fromTable = table?.constructor?.name || "";
-          return {
-            where: vi.fn().mockImplementation(() => {
-              if (fromTable === "PgTable") {
-                return Promise.resolve(opts.repos);
-              }
-              return Promise.resolve(opts.cachedMappings ?? []);
-            }),
-            limit: vi.fn().mockResolvedValue(opts.cachedMappings ?? []),
-          };
-        }),
-      };
-    });
-
-    return {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(opts.repos),
-        }),
-      })),
-      delete: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockImplementation((vals: any) => {
-          if (Array.isArray(vals)) insertedValues.push(...vals);
-          return {
-            onConflictDoUpdate: vi.fn().mockImplementation((opts: any) => {
-              insertedMappings.push(opts);
-              return Promise.resolve();
-            }),
-          };
-        }),
-      }),
-      transaction: vi.fn().mockImplementation(async (fn: any) => {
-        await fn({
-          delete: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue(undefined),
-          }),
-          insert: vi.fn().mockReturnValue({
-            values: vi.fn().mockImplementation((vals: any) => {
-              if (Array.isArray(vals)) insertedValues.push(...vals);
-              return Promise.resolve();
-            }),
-          }),
-        });
-      }),
-      _insertedValues: insertedValues,
-      _insertedMappings: insertedMappings,
-    } as any;
-  }
-
-  it("缓存命中时不调用 resolveMapping", async () => {
-    const db = {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockImplementation((...args: any[]) => {
-            return {
-              limit: vi.fn().mockResolvedValue([{ sourceRepo: "facebook/react" }]),
-            };
-          }),
-        }),
-      })),
-      delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-        }),
-      }),
-      transaction: vi.fn().mockImplementation(async (fn: any) => {
-        await fn({
-          delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-          insert: vi.fn().mockReturnValue({
-            values: vi.fn().mockResolvedValue(undefined),
-          }),
-        });
-      }),
-    } as any;
-
-    // Override first select to return repos
-    let callCount = 0;
-    db.select.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return {
-          from: vi.fn().mockReturnValue({
-            where: undefined,
-            then: (resolve: any) => resolve([
-              { id: 1, fullName: "vercel/next.js", sbomPackages: [{ name: "react", version: "19.2.6" }] },
-              { id: 2, fullName: "facebook/react", sbomPackages: null },
-            ]),
-          }),
-        };
-      }
-      return {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{ sourceRepo: "facebook/react" }]),
-          }),
-        }),
-      };
-    });
-
-    const resolveMapping = vi.fn();
-    const count = await recomputeDependencyEdges(db, {
-      resolveMapping,
-      delayMs: 0,
-    });
-
-    expect(resolveMapping).not.toHaveBeenCalled();
-  });
-
-  it("缓存未命中时调用 resolveMapping 并写入缓存", async () => {
-    let selectCallCount = 0;
+    const referenceUpserts: any[] = [];
     const insertedEdges: any[] = [];
+    let nextRefId = 1000;
+    const refIdByFullName = new Map<string, number>();
+    for (const r of opts.repos) refIdByFullName.set(r.fullName.toLowerCase(), r.id);
 
     const db = {
       select: vi.fn().mockImplementation(() => {
-        selectCallCount++;
-        if (selectCallCount === 1) {
+        let table: unknown = null;
+        const builder: any = {
+          from: vi.fn().mockImplementation((t: unknown) => {
+            table = t;
+            return builder;
+          }),
+          where: vi.fn().mockImplementation(() => builder),
+          limit: vi.fn().mockImplementation(() => builder),
+          then: (resolve: any, reject: any) => {
+            let result: unknown = [];
+            if (table === repositories) result = opts.repos;
+            else if (table === packageRepoMappings) result = cacheResult;
+            return Promise.resolve(result).then(resolve, reject);
+          },
+        };
+        return builder;
+      }),
+      insert: vi.fn().mockImplementation((table: unknown) => {
+        if (table === packageRepoMappings) {
           return {
-            from: vi.fn().mockResolvedValue([
-              { id: 1, fullName: "vercel/next.js", sbomPackages: [{ name: "react", version: "19.2.6" }] },
-              { id: 2, fullName: "facebook/react", sbomPackages: null },
-            ]),
+            values: vi.fn().mockImplementation((v: any) => ({
+              onConflictDoUpdate: vi.fn().mockImplementation(() => {
+                insertedMappings.push(v);
+                return Promise.resolve();
+              }),
+            })),
           };
         }
-        return {
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([]),
-            }),
-          }),
-        };
-      }),
-      delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockImplementation((vals: any) => {
-          if (Array.isArray(vals)) insertedEdges.push(...vals);
+        if (table === repositories) {
           return {
-            onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+            values: vi.fn().mockImplementation((v: any) => ({
+              onConflictDoUpdate: vi.fn().mockImplementation(() => ({
+                returning: vi.fn().mockImplementation(() => {
+                  let id = refIdByFullName.get(v.fullName);
+                  if (id === undefined) {
+                    id = nextRefId++;
+                    refIdByFullName.set(v.fullName, id);
+                  }
+                  referenceUpserts.push(v);
+                  return Promise.resolve([{ id }]);
+                }),
+              })),
+            })),
           };
-        }),
+        }
+        return { values: vi.fn().mockResolvedValue(undefined) };
       }),
       transaction: vi.fn().mockImplementation(async (fn: any) => {
         await fn({
+          execute: vi.fn().mockResolvedValue(undefined),
           delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
           insert: vi.fn().mockReturnValue({
             values: vi.fn().mockImplementation((vals: any) => {
@@ -386,56 +339,189 @@ describe("recomputeDependencyEdges", () => {
           }),
         });
       }),
-    } as any;
+      _insertedMappings: insertedMappings,
+      _referenceUpserts: referenceUpserts,
+      _insertedEdges: insertedEdges,
+      _refIdByFullName: refIdByFullName,
+    };
+    return db as any;
+  }
 
-    const resolveMapping = vi.fn().mockResolvedValue("facebook/react");
-    const count = await recomputeDependencyEdges(db, {
-      resolveMapping,
-      delayMs: 0,
+  it("缓存命中时不调用 resolveMapping", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+      ],
+      cacheResult: [{ sourceRepo: "facebook/react" }],
     });
 
-    expect(resolveMapping).toHaveBeenCalledWith("npm", "react", "19.2.6");
-    expect(count).toBe(1);
+    const resolveMapping = vi.fn();
+    await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    expect(resolveMapping).not.toHaveBeenCalled();
   });
 
-  it("target 不在工作区内的边被过滤", async () => {
-    let selectCallCount = 0;
-    const db = {
-      select: vi.fn().mockImplementation(() => {
-        selectCallCount++;
-        if (selectCallCount === 1) {
-          return {
-            from: vi.fn().mockResolvedValue([
-              { id: 1, fullName: "vercel/next.js", sbomPackages: [{ name: "lodash", version: "4.17.21" }] },
-            ]),
-          };
-        }
-        return {
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ sourceRepo: "lodash/lodash" }]),
-            }),
-          }),
-        };
-      }),
-      delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-        }),
-      }),
-      transaction: vi.fn().mockImplementation(async (fn: any) => {
-        await fn({
-          delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-          insert: vi.fn().mockReturnValue({
-            values: vi.fn().mockResolvedValue(undefined),
-          }),
-        });
-      }),
-    } as any;
+  it("缓存未命中时按 system 调用 resolveMapping 并写入缓存", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "django", version: "4.2.1", system: "pypi" }] },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "django", version: "4.2.1", system: "pypi" }] },
+      ],
+      cacheResult: [],
+    });
 
-    const count = await recomputeDependencyEdges(db, { delayMs: 0 });
-    expect(count).toBe(0);
+    const resolveMapping = vi.fn().mockResolvedValue("django/django");
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    expect(resolveMapping).toHaveBeenCalledWith("pypi", "django", "4.2.1");
+    expect(count).toBe(2);
+    expect(db._insertedMappings.length).toBeGreaterThan(0);
+    expect(db._insertedMappings[0].system).toBe("pypi");
+  });
+
+  it("in-degree ≥2 的外部目标才成为基石依赖并连边，<2 的被丢弃", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
+        { id: 3, fullName: "org-c/app-c", isReference: false, sbomPackages: [{ name: "solo-pkg", version: "1.0.0", system: "npm" }] },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => {
+      if (name === "lodash") return "lodash/lodash";
+      if (name === "solo-pkg") return "solo/solo-pkg";
+      return null;
+    });
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    // lodash/lodash in-degree=2 → 基石行 + 2 条边；solo in-degree=1 → 丢弃
+    expect(count).toBe(2);
+    expect(db._referenceUpserts).toHaveLength(1);
+    expect(db._referenceUpserts[0].fullName).toBe("lodash/lodash");
+    expect(db._referenceUpserts[0].owner).toBe("lodash");
+    expect(db._referenceUpserts[0].name).toBe("lodash");
+    expect(db._referenceUpserts[0].url).toBe("https://github.com/lodash/lodash");
+    expect(db._referenceUpserts[0].isReference).toBe(true);
+    expect(db._referenceUpserts.some((u: any) => u.fullName === "solo/solo-pkg")).toBe(false);
+
+    const lodashId = db._refIdByFullName.get("lodash/lodash");
+    for (const e of db._insertedEdges) expect(e.targetRepoId).toBe(lodashId);
+  });
+
+  it("重命名归一：deps.dev 过期 fullName 归一后与采集行合并，直接连边", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+        { id: 2, fullName: "react/react", isReference: false, sbomPackages: null },
+        { id: 3, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+      ],
+      cacheResult: [{ sourceRepo: "facebook/react" }],
+    });
+
+    const resolveMapping = vi.fn();
+    const canonicalize = vi.fn().mockResolvedValue("react/react");
+    const count = await recomputeDependencyEdges(db, { resolveMapping, canonicalize, delayMs: 0 });
+
+    // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边，不建基石行
+    expect(canonicalize).toHaveBeenCalledWith("facebook/react");
+    expect(count).toBe(2);
+    expect(db._referenceUpserts).toHaveLength(0);
+    expect(db._insertedEdges.map((e: any) => e.targetRepoId)).toEqual([2, 2]);
+  });
+
+  it("已采集仓库作为依赖目标时直接连边（无 in-degree 门槛、不建基石行）", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+        { id: 2, fullName: "facebook/react", isReference: false, sbomPackages: null },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockResolvedValue("facebook/react");
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    expect(count).toBe(1);
+    expect(db._referenceUpserts).toHaveLength(0);
+    expect(db._insertedEdges[0].sourceRepoId).toBe(1);
+    expect(db._insertedEdges[0].targetRepoId).toBe(2);
+  });
+
+  it("基石依赖候选按 in-degree 降序封顶 Top 30", async () => {
+    const pkgsA: Array<{ name: string; version: string; system: string }> = [];
+    const pkgsB: Array<{ name: string; version: string; system: string }> = [];
+    for (let i = 0; i < 35; i++) {
+      pkgsA.push({ name: `pkg-${i}`, version: "1.0.0", system: "npm" });
+      pkgsB.push({ name: `pkg-${i}`, version: "1.0.0", system: "npm" });
+    }
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: pkgsA },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: pkgsB },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => `owner/${name}`);
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    expect(db._referenceUpserts).toHaveLength(30);
+    expect(count).toBe(60); // 30 个目标 × 2 个源仓库
+  });
+
+  it("同源多包指向同一目标时只留一条边且 evidence 记录全部桥接包", async () => {
+    const db = createDepMockDb({
+      repos: [
+        {
+          id: 1,
+          fullName: "org-a/app-a",
+          isReference: false,
+          sbomPackages: [
+            { name: "lodash", version: "4.17.21", system: "npm" },
+            { name: "lodash-es", version: "4.17.21", system: "npm" },
+          ],
+        },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockResolvedValue("lodash/lodash");
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    expect(count).toBe(2);
+    const edgeFrom1 = db._insertedEdges.find((e: any) => e.sourceRepoId === 1);
+    expect(edgeFrom1.evidence.kind).toBe("dependency");
+    expect(edgeFrom1.evidence.resolvedBy).toBe("deps.dev");
+    expect(edgeFrom1.evidence.packages).toHaveLength(2);
+    expect(edgeFrom1.evidence.packages.map((p: any) => p.name).sort()).toEqual(["lodash", "lodash-es"]);
+  });
+
+  it("基石依赖行（is_reference=true）的 SBOM 不作为解析起点", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
+        { id: 3, fullName: "lodash/lodash", isReference: true, sbomPackages: [{ name: "some-dep", version: "1.0.0", system: "npm" }] },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => {
+      if (name === "lodash") return "lodash/lodash";
+      if (name === "some-dep") return "other/dep";
+      return null;
+    });
+    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+
+    // reference 行的 SBOM 不参与解析
+    expect(resolveMapping).not.toHaveBeenCalledWith("npm", "some-dep", "1.0.0");
+    // lodash/lodash 已存在（id=3），upsert 复用同一行
+    expect(db._referenceUpserts[0].fullName).toBe("lodash/lodash");
+    expect(db._refIdByFullName.get("lodash/lodash")).toBe(3);
+    expect(count).toBe(2);
   });
 });
 
@@ -444,35 +530,68 @@ describe("recomputeDependencyEdges", () => {
 // ============================================================================
 
 describe("getRepoGraphData", () => {
-  it("返回 nodes 和 edges 结构", async () => {
-    const mockNodes = [
-      { id: 1, fullName: "a/b", name: "b", language: "TypeScript", stars: 100, description: "desc" },
-    ];
-    const mockEdges = [
-      { source: 1, target: 2, type: "similarity", score: 0.9 },
-    ];
-
-    let selectCallCount = 0;
-    const db = {
+  function createGraphMockDb(repos: unknown[], edges: unknown[]) {
+    return {
       select: vi.fn().mockImplementation(() => {
-        selectCallCount++;
-        return {
-          from: vi.fn().mockResolvedValue(
-            selectCallCount === 1 ? mockNodes : mockEdges
-          ),
+        let table: unknown = null;
+        const builder: any = {
+          from: vi.fn().mockImplementation((t: unknown) => {
+            table = t;
+            return builder;
+          }),
+          where: vi.fn().mockImplementation(() => builder),
+          then: (resolve: any, reject: any) => {
+            let result: unknown = [];
+            if (table === repositories) result = repos;
+            else if (table === repoRelationships) result = edges;
+            return Promise.resolve(result).then(resolve, reject);
+          },
         };
+        return builder;
       }),
     } as any;
+  }
+
+  it("返回 repo/reference/language 节点与 similarity/dependency/written_in 边", async () => {
+    const repos = [
+      { id: 1, fullName: "org-a/app-a", name: "app-a", language: "TypeScript", stars: 100, description: "desc", isReference: false },
+      { id: 2, fullName: "lodash/lodash", name: "lodash", language: null, stars: null, description: null, isReference: true },
+    ];
+    const edges = [{ source: 1, target: 2, type: "dependency", score: null }];
+    const db = createGraphMockDb(repos, edges);
 
     const result = await getRepoGraphData(db);
 
-    expect(result.nodes).toEqual(mockNodes);
-    expect(result.edges).toHaveLength(1);
-    expect(result.edges[0]).toEqual({
-      source: 1,
-      target: 2,
-      type: "similarity",
-      score: 0.9,
-    });
+    // repo 节点：id 为字符串，kind=repo
+    const repoNode = result.nodes.find((n) => n.id === "1");
+    expect(repoNode?.kind).toBe("repo");
+    expect(repoNode?.isReference).toBe(false);
+    expect(repoNode?.fullName).toBe("org-a/app-a");
+
+    // reference 节点：kind=reference，isReference=true
+    const refNode = result.nodes.find((n) => n.id === "2");
+    expect(refNode?.kind).toBe("reference");
+    expect(refNode?.isReference).toBe(true);
+
+    // 语言节点由采集仓库即时合成；reference 行（language=null）不产生语言节点
+    const langNodes = result.nodes.filter((n) => n.kind === "language");
+    expect(langNodes).toHaveLength(1);
+    const langNode = result.nodes.find((n) => n.id === "lang:TypeScript");
+    expect(langNode?.name).toBe("TypeScript");
+    expect(langNode?.stars).toBeNull();
+    expect(langNode?.description).toBeNull();
+    expect(langNode?.isReference).toBe(false);
+
+    // 存储的依赖边映射为字符串 id
+    const depEdge = result.edges.find((e) => e.type === "dependency");
+    expect(depEdge?.source).toBe("1");
+    expect(depEdge?.target).toBe("2");
+    expect(depEdge?.score).toBeNull();
+
+    // written_in 边由采集仓库指向其语言节点
+    const writtenIn = result.edges.find((e) => e.type === "written_in");
+    expect(writtenIn?.source).toBe("1");
+    expect(writtenIn?.target).toBe("lang:TypeScript");
+    expect(writtenIn?.score).toBeNull();
   });
 });
