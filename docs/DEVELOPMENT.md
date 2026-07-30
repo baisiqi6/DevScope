@@ -38,7 +38,7 @@ API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置�
 
 - `DATABASE_URL`：PostgreSQL 连接串；
 - `GITHUB_TOKEN`：GitHub 数据采集令牌；
-- 一组分析模型配置：优先 `DEEPSEEK_API_KEY`，或使用 `OPENAI_COMPATIBLE_API_KEY`。
+- 一组分析模型配置：优先使用通用 `OPENAI_COMPATIBLE_*`；未配置时回退到 `DEEPSEEK_*`。
 
 ### 语义搜索
 
@@ -109,7 +109,9 @@ pnpm db:studio
 
 本地 `pnpm dev` 会同时启动 API、Web 和 Worker。scheduler 仅在
 `ENABLE_SCHEDULER=true` 时创建每日 GitHub Search 任务；Worker 可以独立运行并消费
-`jobs`。当前发现结果只写入 `radar_candidates`，不会自动进入正式仓库列表。
+`jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild` 和 `radar.discover.github`，
+运行中会续租，异常中断后的过期任务会被恢复。健康分析需要 AI 配置，图谱依赖回填和 Radar
+发现需要 `GITHUB_TOKEN`；当前发现结果只写入 `radar_candidates`，不会自动进入正式仓库列表。
 
 ## CLI 与 MCP
 
@@ -133,6 +135,15 @@ node apps/mcp/dist/index.js
 npx tsx skills/repo-fetch/index.ts vercel/next.js
 npx tsx skills/repo-analyze/index.ts vercel/next.js
 cat analysis.json | npx tsx skills/report-generate/index.ts --format markdown
+```
+
+完整 stdin/stdout 管道已经过集成测试：
+
+```bash
+echo "vercel/next.js" \
+  | npx tsx skills/repo-fetch/index.ts --include-issues --include-commits \
+  | npx tsx skills/repo-analyze/index.ts \
+  | npx tsx skills/report-generate/index.ts --title "Next.js 分析报告"
 ```
 
 详细参数见各目录的 `SKILL.md`。

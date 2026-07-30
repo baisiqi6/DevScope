@@ -12,7 +12,8 @@ DevScope 是一个面向技术投资人和独立开发者的开源生态智能�
 - BGE-M3 向量嵌入与语义搜索
 - Agent 流式健康分析、PostgreSQL 报告历史与报告重开
 - 统一 API Client、`devscope` CLI 与 MCP stdio Server
-- PostgreSQL 持久任务、独立 Worker 与 GitHub Search 技术候选池
+- 按用户隔离的仓库关系图谱与持久重建状态
+- PostgreSQL 持久任务、独立 Worker、健康分析与 GitHub Search 技术候选池
 - `repo-fetch`、`repo-analyze`、`report-generate` 三个 CLI Skills
 
 健康分析报告已使用 PostgreSQL 持久化，容器内文件只作为可选导出缓存。
@@ -71,7 +72,7 @@ apps/
   api/                    Fastify + tRPC 后端
   cli/                    面向人类与 Agent 的 devscope 命令行
   mcp/                    基于 stdio 的 MCP Server
-  worker/                 持久任务与技术雷达后台 Worker
+  worker/                 健康分析、图谱重建与技术雷达后台 Worker
 packages/
   ai/                     OpenAI-compatible AI 能力
   client/                 API 调用、认证头与响应校验
@@ -91,11 +92,11 @@ docs/
 
 ## 当前边界与下一阶段
 
-现有 API 使用 `publicProcedure`，部分数据路径仍依赖默认用户或首个用户语义。因此，下一阶段从私有版扩展到公开多用户版之前，至少需要完成：
+现有 API 使用 `publicProcedure`，当前用户解析仍是“首个用户/默认用户”的单用户实现；这不是应用鉴权。用户仓库关联、分组、报告、任务和图谱的数据访问已显式携带 `userId`，但从私有版扩展到公开多用户版之前仍至少需要完成：
 
 1. 登录、会话与统一身份模型；
-2. 所有查询和写入的租户隔离；
-3. 数据库约束与正式迁移基线；
+2. 用真实会话替换当前用户解析，并完成全路由授权审计；
+3. 多用户数据迁移演练及必要的数据库/RLS 防御；
 4. API 限流、审计、配额和密钥管理；
 5. 多用户授权测试与生产可观测性。
 
