@@ -38,8 +38,80 @@ export const RepoAnalyzeInputSchema = z.object({
   /** 仓库标识符 (owner/repo) */
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo"),
   /** 可选的额外上下文 */
-  context: z.string().optional(),
+  context: z.string().max(20_000).optional(),
 });
+
+const PIPE_CONTEXT_LIMIT = 12_000;
+
+/**
+ * 解析 stdin 契约：既接受逐行 owner/repo，也接受 repo-fetch 输出的 JSON 数组。
+ */
+export function parseAnalyzeStdin(
+  inputText: string,
+  explicitContext?: string,
+): z.input<typeof RepoAnalyzeInputSchema>[] {
+  const trimmed = inputText.trim();
+  if (!trimmed) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    return trimmed
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((repo) => ({ repo, context: explicitContext }));
+  }
+
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+  return items.map((item) => normalizePipedItem(item, explicitContext));
+}
+
+function normalizePipedItem(
+  item: unknown,
+  explicitContext?: string,
+): z.input<typeof RepoAnalyzeInputSchema> {
+  if (typeof item === "string") {
+    return { repo: item, context: explicitContext };
+  }
+
+  if (!item || typeof item !== "object") {
+    throw new Error("stdin JSON 每一项必须是 owner/repo 字符串或对象");
+  }
+
+  const value = item as Record<string, unknown>;
+  if (typeof value.repo === "string") {
+    return {
+      repo: value.repo,
+      context: combineContexts(
+        typeof value.context === "string" ? value.context : undefined,
+        explicitContext,
+      ),
+    };
+  }
+
+  const repository = value.repository;
+  if (repository && typeof repository === "object") {
+    const fullName = (repository as Record<string, unknown>).fullName;
+    if (typeof fullName === "string") {
+      const serialized = JSON.stringify(item);
+      const fetchedContext = `repo-fetch 已获取的数据：\n${serialized.slice(0, PIPE_CONTEXT_LIMIT)}`
+        + (serialized.length > PIPE_CONTEXT_LIMIT ? "\n[数据已截断]" : "");
+      return {
+        repo: fullName,
+        context: combineContexts(explicitContext, fetchedContext),
+      };
+    }
+  }
+
+  throw new Error("stdin JSON 缺少 repo 或 repository.fullName");
+}
+
+function combineContexts(...parts: Array<string | undefined>): string | undefined {
+  const combined = parts.filter((part): part is string => Boolean(part)).join("\n\n");
+  return combined || undefined;
+}
 
 // ============================================================================
 // 类型定义
@@ -153,16 +225,7 @@ export async function main(args: string[]): Promise<void> {
       inputText += chunk;
     }
 
-    const repos = inputText
-      .trim()
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    inputs = repos.map((r) => ({
-      repo: r,
-      context,
-    }));
+    inputs = parseAnalyzeStdin(inputText, context);
   } else if (repo) {
     inputs = [{ repo, context }];
   } else {

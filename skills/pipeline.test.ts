@@ -26,7 +26,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fetchRepository, fetchRepositories } from "./repo-fetch/index";
-import { analyzeRepository, analyzeRepositories } from "./repo-analyze/index";
+import {
+  RepoAnalyzeInputSchema,
+  analyzeRepository,
+  analyzeRepositories,
+  parseAnalyzeStdin,
+} from "./repo-analyze/index";
 import { generateReport } from "./report-generate/index";
 import { repositoryAnalysisSchema } from "@devscope/shared";
 
@@ -172,12 +177,12 @@ describe("Pipeline 集成测试", () => {
         commitsLimit: 10,
       });
 
-      // 使用仓库名进行分析
-      const analyzedData = await analyzeRepository({
-        repo: fetchedData.repository.fullName,
-      });
+      // 模拟真实 CLI：repo-fetch 的 JSON stdout 直接作为 repo-analyze 的 stdin。
+      const [analysisInput] = parseAnalyzeStdin(JSON.stringify([fetchedData]));
+      const analyzedData = await analyzeRepository(RepoAnalyzeInputSchema.parse(analysisInput));
 
       expect(analyzedData.repo).toBe(fetchedData.repository.fullName);
+      expect(mockStructuredComplete.mock.calls[0]?.[0]).toContain("repo-fetch 已获取的数据");
     });
 
     it("应该处理 fetch 阶段的错误", async () => {
