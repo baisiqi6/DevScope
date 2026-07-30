@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-      // Next.js 服务器端 fetch 没有超时限制
+      signal: req.signal,
     });
 
     if (!response.ok) {

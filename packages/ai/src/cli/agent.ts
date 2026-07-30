@@ -38,9 +38,7 @@ DevScope Agent CLI
 }
 
 async function main() {
-  const agent = createAgent({
-    model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-  });
+  const agent = createAgent();
 
   console.log(`\n用户: ${prompt}\n`);
   console.log("助手: ");

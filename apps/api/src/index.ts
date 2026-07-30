@@ -190,7 +190,9 @@ const start = async () => {
     // 检查环境变量配置
     const hasGitHubToken = !!process.env.GITHUB_TOKEN;
     const hasDbUrl = !!process.env.DATABASE_URL;
-    const hasDeepSeekKey = !!process.env.DEEPSEEK_API_KEY;
+    const hasAnalysisKey = !!(
+      process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY
+    );
     const hasSiliconFlowKey = !!process.env.SILICONFLOW_API_KEY;
     const hasBgeApiUrl = !!process.env.BGE_API_URL;
     const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
@@ -199,7 +201,7 @@ const start = async () => {
     console.log("🔧 环境变量检查:");
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
-    console.log(`  DEEPSEEK_API_KEY: ${hasDeepSeekKey ? "✅ 已配置" : "❌ 未配置"}`);
+    console.log(`  AI_API_KEY: ${hasAnalysisKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  SILICONFLOW_API_KEY: ${hasSiliconFlowKey ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  BGE_API_URL: ${hasBgeApiUrl ? "✅ 已配置" : "❌ 未配置"} ${hasBgeApiUrl ? `(${process.env.BGE_API_URL})` : ""}`);
     console.log(`  BGE_MODEL_NAME: ${hasBgeModelName ? "✅ 已配置" : "❌ 未配置"} ${hasBgeModelName ? `(${process.env.BGE_MODEL_NAME})` : ""}`);

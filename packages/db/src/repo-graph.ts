@@ -5,7 +5,16 @@ import {
   repoChunks,
   repoRelationships,
   packageRepoMappings,
+  userWatchedRepositories,
 } from "./schema";
+
+function userRepositoryScope(userId: number) {
+  return sql`EXISTS (
+    SELECT 1 FROM user_watched_repositories user_repo
+    WHERE user_repo.repo_id = ${repositories.id}
+      AND user_repo.user_id = ${userId}
+  )`;
+}
 
 // ============================================================================
 // SBOM 解析
@@ -125,11 +134,11 @@ export async function poolRepoEmbedding(db: Db, repoId: number): Promise<boolean
   return true;
 }
 
-export async function backfillRepoEmbeddings(db: Db): Promise<number> {
+export async function backfillRepoEmbeddings(db: Db, userId: number): Promise<number> {
   const repos = await db
     .select({ id: repositories.id })
     .from(repositories)
-    .where(eq(repositories.isReference, false));
+    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
 
   let pooled = 0;
   for (const repo of repos) {
@@ -150,7 +159,8 @@ export interface SimilarityOptions {
 
 export async function recomputeSimilarityEdges(
   db: Db,
-  opts: SimilarityOptions = {}
+  userId: number,
+  opts: SimilarityOptions = {},
 ): Promise<number> {
   const topK = opts.topK ?? 8;
   const minScore = opts.minScore ?? 0.75;
@@ -161,7 +171,11 @@ export async function recomputeSimilarityEdges(
       embedding: repositories.embedding,
     })
     .from(repositories)
-    .where(and(eq(repositories.isReference, false), isNotNull(repositories.embedding)));
+    .where(and(
+      eq(repositories.isReference, false),
+      isNotNull(repositories.embedding),
+      userRepositoryScope(userId),
+    ));
 
   if (reposWithEmbedding.length === 0) return 0;
 
@@ -201,11 +215,15 @@ export async function recomputeSimilarityEdges(
   await db.transaction(async (tx) => {
     await tx
       .delete(repoRelationships)
-      .where(eq(repoRelationships.edgeType, "similarity"));
+      .where(and(
+        eq(repoRelationships.userId, userId),
+        eq(repoRelationships.edgeType, "similarity"),
+      ));
 
     if (edges.length > 0) {
       await tx.insert(repoRelationships).values(
         edges.map((e) => ({
+          userId,
           sourceRepoId: e.sourceRepoId,
           targetRepoId: e.targetRepoId,
           edgeType: "similarity" as const,
@@ -302,7 +320,8 @@ interface BridgingPackage {
 
 export async function recomputeDependencyEdges(
   db: Db,
-  opts: DependencyEdgeOptions = {}
+  userId: number,
+  opts: DependencyEdgeOptions = {},
 ): Promise<number> {
   const resolveMapping = opts.resolveMapping ?? resolveViaDepsDev;
   const delayMs = opts.delayMs ?? 50;
@@ -314,7 +333,8 @@ export async function recomputeDependencyEdges(
       sbomPackages: repositories.sbomPackages,
       isReference: repositories.isReference,
     })
-    .from(repositories);
+    .from(repositories)
+    .where(userRepositoryScope(userId));
 
   // 只有采集仓库（is_reference=false）的 SBOM 作为依赖解析起点
   const collectedRepos = allRepos.filter((r) => !r.isReference);
@@ -497,6 +517,18 @@ export async function recomputeDependencyEdges(
       })
       .returning({ id: repositories.id });
     referenceIdByLower.set(targetLower, row.id);
+    await db
+      .insert(userWatchedRepositories)
+      .values({
+        userId,
+        repoId: row.id,
+        repoFullName: fullName,
+        enableDailyReport: false,
+      })
+      .onConflictDoUpdate({
+        target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+        set: { repoFullName: fullName, updatedAt: new Date() },
+      });
   }
 
   // ---- 第五步：写边——目标为采集仓库或入选基石行；in-degree <2 的外部依赖丢弃 ----
@@ -538,11 +570,15 @@ export async function recomputeDependencyEdges(
   await db.transaction(async (tx) => {
     await tx
       .delete(repoRelationships)
-      .where(eq(repoRelationships.edgeType, "dependency"));
+      .where(and(
+        eq(repoRelationships.userId, userId),
+        eq(repoRelationships.edgeType, "dependency"),
+      ));
 
     if (edges.length > 0) {
       await tx.insert(repoRelationships).values(
         edges.map((e) => ({
+          userId,
           sourceRepoId: e.sourceRepoId,
           targetRepoId: e.targetRepoId,
           edgeType: "dependency" as const,
@@ -556,10 +592,23 @@ export async function recomputeDependencyEdges(
       );
     }
 
-    // 清理不再被任何边引用的失效基石行（如重命名归一后失去存在意义的旧名行）
+    // 先清理当前用户不再使用的 reference 关联，再清理全局无人引用的轻量实体。
+    await tx.execute(sql`
+      DELETE FROM user_watched_repositories user_repo
+      USING repositories repo
+      WHERE user_repo.repo_id = repo.id
+        AND user_repo.user_id = ${userId}
+        AND repo.is_reference = true
+        AND NOT EXISTS (
+          SELECT 1 FROM repo_relationships edge
+          WHERE edge.user_id = ${userId}
+            AND (edge.source_repo_id = repo.id OR edge.target_repo_id = repo.id)
+        )
+    `);
     await tx.execute(sql`
       DELETE FROM repositories
       WHERE is_reference = true
+        AND id NOT IN (SELECT repo_id FROM user_watched_repositories)
         AND id NOT IN (SELECT source_repo_id FROM repo_relationships)
         AND id NOT IN (SELECT target_repo_id FROM repo_relationships)
     `);
@@ -590,7 +639,7 @@ export interface RepoGraphDataEdge {
   score: number | null;
 }
 
-export async function getRepoGraphData(db: Db): Promise<{
+export async function getRepoGraphData(db: Db, userId: number): Promise<{
   nodes: RepoGraphDataNode[];
   edges: RepoGraphDataEdge[];
 }> {
@@ -604,7 +653,8 @@ export async function getRepoGraphData(db: Db): Promise<{
       description: repositories.description,
       isReference: repositories.isReference,
     })
-    .from(repositories);
+    .from(repositories)
+    .where(userRepositoryScope(userId));
 
   const nodes: RepoGraphDataNode[] = repos.map((r) => ({
     id: String(r.id),
@@ -642,7 +692,8 @@ export async function getRepoGraphData(db: Db): Promise<{
       type: repoRelationships.edgeType,
       score: repoRelationships.score,
     })
-    .from(repoRelationships);
+    .from(repoRelationships)
+    .where(eq(repoRelationships.userId, userId));
 
   const edges: RepoGraphDataEdge[] = storedEdges.map((e) => ({
     source: String(e.source),
@@ -681,14 +732,18 @@ export interface SbomBackfillOptions {
  * 覆盖两类历史数据：sbom_packages 为 null（SBOM 持久化前采集），
  * 以及包元素无 system 字段（多生态解析前的 npm-only 遗留，pypi 等被丢弃）。
  */
-export async function backfillSbomPackages(db: Db, opts: SbomBackfillOptions = {}): Promise<number> {
+export async function backfillSbomPackages(
+  db: Db,
+  userId: number,
+  opts: SbomBackfillOptions = {},
+): Promise<number> {
   if (!opts.fetchSbom) return 0;
   const delayMs = opts.delayMs ?? 100;
 
   const rows = await db
     .select({ id: repositories.id, fullName: repositories.fullName, sbomPackages: repositories.sbomPackages })
     .from(repositories)
-    .where(eq(repositories.isReference, false));
+    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
 
   const missing = rows.filter(
     (r) => r.sbomPackages == null || r.sbomPackages.some((p) => !p.system)
@@ -724,43 +779,22 @@ export async function backfillSbomPackages(db: Db, opts: SbomBackfillOptions = {
 
 export async function rebuildRepoGraph(
   db: Db,
+  userId: number,
   opts: {
     resolveMapping?: ResolveMappingFn;
     canonicalize?: (fullName: string) => Promise<string>;
     fetchSbom?: (fullName: string) => Promise<Record<string, unknown> | null>;
   } = {}
 ): Promise<{ similarityEdges: number; dependencyEdges: number; pooledRepos: number; sbomBackfilled: number }> {
-  const pooledRepos = await backfillRepoEmbeddings(db);
-  const similarityEdges = await recomputeSimilarityEdges(db);
-  const sbomBackfilled = await backfillSbomPackages(db, { fetchSbom: opts.fetchSbom });
-  const dependencyEdges = await recomputeDependencyEdges(db, {
+  const pooledRepos = await backfillRepoEmbeddings(db, userId);
+  const similarityEdges = await recomputeSimilarityEdges(db, userId);
+  const sbomBackfilled = await backfillSbomPackages(db, userId, { fetchSbom: opts.fetchSbom });
+  const dependencyEdges = await recomputeDependencyEdges(db, userId, {
     resolveMapping: opts.resolveMapping,
     canonicalize: opts.canonicalize,
   });
 
   return { similarityEdges, dependencyEdges, pooledRepos, sbomBackfilled };
-}
-
-// ============================================================================
-// 防抖触发器
-// ============================================================================
-
-let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
-const DEBOUNCE_MS = 5 * 60 * 1000;
-
-export function scheduleSimilarityRecompute(db: Db): void {
-  if (recomputeTimer) {
-    clearTimeout(recomputeTimer);
-  }
-  recomputeTimer = setTimeout(async () => {
-    recomputeTimer = null;
-    try {
-      const count = await recomputeSimilarityEdges(db);
-      console.log(`[RepoGraph] Debounced similarity recompute done: ${count} edges`);
-    } catch (err) {
-      console.error("[RepoGraph] Debounced similarity recompute failed:", err);
-    }
-  }, DEBOUNCE_MS);
 }
 
 function sleep(ms: number): Promise<void> {

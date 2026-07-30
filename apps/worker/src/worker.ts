@@ -2,14 +2,22 @@ import {
   claimNextJob,
   completeJob,
   failJob,
+  GRAPH_REBUILD_JOB,
+  graphRebuildJobPayloadSchema,
   GitHubCollector,
+  HEALTH_ANALYSIS_JOB,
+  healthAnalysisJobPayloadSchema,
   recoverExpiredJobs,
+  rebuildRepoGraph,
+  renewJobLease,
+  runAgentWorkflow,
   upsertRadarCandidate,
   type Db,
   type GitHubSearchRepo,
   type Job,
   type UpsertRadarCandidateInput,
 } from "@devscope/db";
+import { GitHubClient } from "@devscope/shared";
 import { z } from "zod";
 
 export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
@@ -44,6 +52,13 @@ export interface WorkerDependencies {
   ) => Promise<unknown>;
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => Date;
+  runHealthAnalysis?: typeof runAgentWorkflow;
+  rebuildGraph?: (db: Db, userId: number) => Promise<{
+    similarityEdges: number;
+    dependencyEdges: number;
+    pooledRepos: number;
+    sbomBackfilled: number;
+  }>;
 }
 
 /**
@@ -84,20 +99,36 @@ export async function runWorker(
     }
 
     console.log(`[Worker] 开始任务 #${job.id} ${job.type}，第 ${job.attempt} 次尝试`);
+    const stopLeaseHeartbeat = startLeaseHeartbeat(
+      db,
+      job.id,
+      options.workerId,
+      leaseDurationMs,
+    );
 
     try {
       const result = await executeJob(db, job, dependencies);
       await completeJob(db, job.id, options.workerId, result, now());
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
     } catch (error) {
-      const failed = await failJob(db, job.id, options.workerId, error, {
-        retryDelayMs: options.retryDelayMs,
-        now: now(),
-      });
-      console.error(
-        `[Worker] 任务 #${job.id} ${job.type} 失败，状态 ${failed.status}:`,
-        error
-      );
+      try {
+        const failed = await failJob(db, job.id, options.workerId, error, {
+          retryDelayMs: options.retryDelayMs,
+          now: now(),
+        });
+        console.error(
+          `[Worker] 任务 #${job.id} ${job.type} 失败，状态 ${failed.status}:`,
+          error
+        );
+      } catch (stateError) {
+        // 租约可能已被其他 Worker 回收；不能让一次状态竞争终止整个轮询进程。
+        console.error(
+          `[Worker] 任务 #${job.id} 执行失败且无法写回状态，将等待租约恢复:`,
+          stateError,
+        );
+      }
+    } finally {
+      stopLeaseHeartbeat();
     }
   }
 }
@@ -110,6 +141,28 @@ export async function executeJob(
   job: Job,
   dependencies: WorkerDependencies = {}
 ): Promise<Record<string, unknown>> {
+  if (job.type === HEALTH_ANALYSIS_JOB) {
+    const payload = healthAnalysisJobPayloadSchema.parse(job.payload);
+    const runHealthAnalysis = dependencies.runHealthAnalysis ?? runAgentWorkflow;
+    const result = await runHealthAnalysis(
+      db,
+      job.userId,
+      { repos: [payload.repoFullName], analysisType: "health_report" },
+      {},
+      { executionId: payload.executionId, resumeExecution: true },
+    );
+    return {
+      executionId: result.executionId,
+      reportId: result.report.reportId,
+    };
+  }
+
+  if (job.type === GRAPH_REBUILD_JOB) {
+    graphRebuildJobPayloadSchema.parse(job.payload);
+    const rebuildGraph = dependencies.rebuildGraph ?? defaultRebuildGraph;
+    return rebuildGraph(db, job.userId);
+  }
+
   if (job.type !== GITHUB_DISCOVERY_JOB) {
     throw new Error(`不支持的任务类型: ${job.type}`);
   }
@@ -161,6 +214,30 @@ export async function executeJob(
     discovered: repositories.length,
     upserted,
   };
+}
+
+function startLeaseHeartbeat(
+  db: Db,
+  jobId: number,
+  workerId: string,
+  leaseDurationMs: number,
+): () => void {
+  const intervalMs = Math.max(1_000, Math.floor(leaseDurationMs / 3));
+  const timer = setInterval(() => {
+    void renewJobLease(db, jobId, workerId, leaseDurationMs).catch((error) => {
+      console.error(`[Worker] 任务 #${jobId} 续租失败:`, error);
+    });
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+async function defaultRebuildGraph(db: Db, userId: number) {
+  const github = new GitHubClient(process.env.GITHUB_TOKEN || undefined);
+  return rebuildRepoGraph(db, userId, {
+    canonicalize: (fullName) => github.getCanonicalFullName(fullName),
+    fetchSbom: (fullName) => github.getSbom(fullName),
+  });
 }
 
 async function defaultSearchRepositories(

@@ -9,7 +9,6 @@
 
 import { z } from "zod";
 import { router, publicProcedure } from "./trpc";
-import type { Context } from "./context";
 import { createAI, BGEEmbeddingProvider } from "@devscope/ai";
 import {
   semanticSearchRepoChunks,
@@ -23,8 +22,14 @@ import {
   listWorkflowReportsByRepository,
   workflowExecutions,
   workflowReports,
+  enqueueRestartableJob,
+  HEALTH_ANALYSIS_JOB,
+  healthAnalysisJobKey,
+  healthAnalysisJobPayloadSchema,
+  userWatchedRepositories,
+  type Db,
 } from "@devscope/db";
-import { desc, eq, sql, and, inArray } from "drizzle-orm";
+import { desc, eq, sql, and } from "drizzle-orm";
 import {
   repositoryAnalysisRequestSchema,
   repositoryAnalysisSchema,
@@ -38,13 +43,51 @@ import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/gr
 import { graphRouter } from "./router/graph";
 import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
 import { v4 as uuidv4 } from "uuid";
-import { runAgentWorkflow } from "./services/agent-workflow";
 
 const activeRepositoryCollections = new Set<string>();
 
 function normalizeRepoKey(fullName: string): string {
   const { owner, repo } = parseRepoFullName(fullName.trim());
   return `${owner}/${repo}`.toLowerCase();
+}
+
+async function requireWatchedRepository(
+  db: Db,
+  userId: number,
+  repoId: number,
+): Promise<void> {
+  const [association] = await db
+    .select({ repoId: userWatchedRepositories.repoId })
+    .from(userWatchedRepositories)
+    .where(and(
+      eq(userWatchedRepositories.userId, userId),
+      eq(userWatchedRepositories.repoId, repoId),
+    ))
+    .limit(1);
+
+  if (!association) {
+    throw new Error(`Repository with ID ${repoId} not found`);
+  }
+}
+
+async function requireWatchedRepositoryByFullName(
+  db: Db,
+  userId: number,
+  fullName: string,
+): Promise<void> {
+  const [association] = await db
+    .select({ repoId: userWatchedRepositories.repoId })
+    .from(userWatchedRepositories)
+    .innerJoin(repositories, eq(repositories.id, userWatchedRepositories.repoId))
+    .where(and(
+      eq(userWatchedRepositories.userId, userId),
+      eq(repositories.fullName, fullName),
+    ))
+    .limit(1);
+
+  if (!association) {
+    throw new Error(`Repository ${fullName} not found`);
+  }
 }
 
 // ============================================================================
@@ -56,13 +99,7 @@ function normalizeRepoKey(fullName: string): string {
  * 注意：延迟创建以确保环境变量已加载
  */
 function getAI() {
-  return createAI({
-    // 显式指定使用 DeepSeek（OpenAI 兼容模式）
-    provider: "openai-compatible",
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
-    defaultModel: "deepseek-chat",
-  });
+  return createAI();
 }
 
 // ============================================================================
@@ -98,15 +135,32 @@ export const appRouter = router({
       try {
         const repos = await github.getFollowing(undefined, limit);
         console.log("[getFollowing] Found repos:", repos.length);
+        const db = ctx.db;
+        const userId = await getOrCreateCurrentUserId(db);
 
-        // 更新已采集仓库的 starredAt
+        // 关注时间属于用户关联，不写入全局 GitHub 仓库实体。
         try {
-          const db = ctx.db;
           for (const repo of repos) {
-            if ((repo as any).starredAt) {
-              await db.update(repositories)
-                .set({ starredAt: new Date((repo as any).starredAt) })
-                .where(eq(repositories.fullName, repo.fullName));
+            const starredAt = (repo as { starredAt?: Date }).starredAt;
+            if (starredAt) {
+              const [storedRepo] = await db
+                .select({ id: repositories.id })
+                .from(repositories)
+                .where(eq(repositories.fullName, repo.fullName))
+                .limit(1);
+              if (!storedRepo) continue;
+              await db
+                .insert(userWatchedRepositories)
+                .values({
+                  userId,
+                  repoId: storedRepo.id,
+                  repoFullName: repo.fullName,
+                  starredAt,
+                })
+                .onConflictDoUpdate({
+                  target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+                  set: { starredAt, repoFullName: repo.fullName, updatedAt: new Date() },
+                });
             }
           }
         } catch (e) {
@@ -162,6 +216,7 @@ export const appRouter = router({
     }).default({}))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
 
       const repos = await db
         .select({
@@ -177,10 +232,17 @@ export const appRouter = router({
           language: repositories.language,
           license: repositories.license,
           lastFetchedAt: repositories.lastFetchedAt,
-          starredAt: repositories.starredAt,
-          note: repositories.note,
+          starredAt: userWatchedRepositories.starredAt,
+          note: userWatchedRepositories.notes,
         })
         .from(repositories)
+        .innerJoin(
+          userWatchedRepositories,
+          and(
+            eq(userWatchedRepositories.repoId, repositories.id),
+            eq(userWatchedRepositories.userId, userId),
+          ),
+        )
         .where(eq(repositories.isReference, false))
         .orderBy(desc(repositories.stars))
         .limit(input.limit)
@@ -204,10 +266,21 @@ export const appRouter = router({
     .output(repositoryDetailSchema)
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
 
       const repoList = await db
-        .select()
+        .select({
+          repository: repositories,
+          note: userWatchedRepositories.notes,
+        })
         .from(repositories)
+        .innerJoin(
+          userWatchedRepositories,
+          and(
+            eq(userWatchedRepositories.repoId, repositories.id),
+            eq(userWatchedRepositories.userId, userId),
+          ),
+        )
         .where(eq(repositories.id, input.id))
         .limit(1);
 
@@ -215,7 +288,7 @@ export const appRouter = router({
         throw new Error(`Repository with ID ${input.id} not found`);
       }
 
-      const repo = repoList[0];
+      const { repository: repo, note } = repoList[0];
 
       // 分块统计 - SQL 聚合，不加载向量数据
       const chunkStatsRows = await db
@@ -240,7 +313,7 @@ export const appRouter = router({
         name: repo.name,
         owner: repo.owner,
         description: repo.description,
-        note: repo.note,
+        note,
         url: repo.url,
         stars: repo.stars,
         forks: repo.forks,
@@ -317,6 +390,8 @@ export const appRouter = router({
     })))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireWatchedRepository(db, userId, input.repoId);
       const releases = await getReleasesByRepoId(db, input.repoId, input.limit);
 
       return releases.map((r) => ({
@@ -353,6 +428,7 @@ export const appRouter = router({
       activeRepositoryCollections.add(repoKey);
 
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
       const pipeline = createPipeline(db);
       let backgroundTaskOwnsLock = false;
 
@@ -365,6 +441,20 @@ export const appRouter = router({
           config: { skipEmbeddings: true }, // 始终先快速采集
         });
         console.log("[collectRepository] Quick collection result:", result);
+
+        if (result.repository?.id && result.repository.fullName) {
+          await db
+            .insert(userWatchedRepositories)
+            .values({
+              userId,
+              repoId: result.repository.id,
+              repoFullName: result.repository.fullName,
+            })
+            .onConflictDoUpdate({
+              target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+              set: { repoFullName: result.repository.fullName, updatedAt: new Date() },
+            });
+        }
 
         // 如果用户没有选择跳过向量化，启动后台向量化任务
         if (!input.skipEmbeddings && result.repository?.id) {
@@ -416,15 +506,21 @@ export const appRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
-      await db.update(repositories)
-        .set({ note: input.note || null })
-        .where(eq(repositories.id, input.repoId));
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireWatchedRepository(db, userId, input.repoId);
+      await db
+        .update(userWatchedRepositories)
+        .set({ notes: input.note || null, updatedAt: new Date() })
+        .where(and(
+          eq(userWatchedRepositories.userId, userId),
+          eq(userWatchedRepositories.repoId, input.repoId),
+        ));
       return { success: true };
     }),
 
   /**
-   * 启动健康度分析（fire-and-forget）
-   * @description 创建 execution 并后台执行 Agent 工作流，立即返回 executionId
+   * 启动可恢复的健康度分析
+   * @description 在同一事务中创建持久任务和 execution，立即返回 executionId
    */
   startHealthAnalysis: publicProcedure
     .input(z.object({
@@ -437,38 +533,41 @@ export const appRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
       const userId = await getOrCreateCurrentUserId(db);
-
-      // 在途去重：同仓库存在 pending/running 且 updatedAt 在 30 分钟内的 execution
-      const cutoff = new Date(Date.now() - 30 * 60_000);
-      const [existing] = await db
-        .select({ executionId: workflowExecutions.executionId })
-        .from(workflowExecutions)
-        .where(
-          and(
-            eq(workflowExecutions.userId, userId),
-            inArray(workflowExecutions.status, ["pending", "running"]),
-            sql`${workflowExecutions.updatedAt} > ${cutoff}`,
-            sql`${workflowExecutions.input}->>'repos' LIKE ${`%${input.repoFullName}%`}`,
-          )
-        )
-        .limit(1);
-
-      if (existing) {
-        return { executionId: existing.executionId, deduplicated: true };
-      }
+      await requireWatchedRepositoryByFullName(db, userId, input.repoFullName);
 
       const executionId = uuidv4();
+      const idempotencyKey = healthAnalysisJobKey(input.repoFullName);
 
-      // fire-and-forget 后台执行；execution 记录由 service 以传入的 executionId 统一创建，
-      // 调用方不得重复 insert（execution_id 有唯一约束）
-      runAgentWorkflow(db, userId, {
-        repos: [input.repoFullName],
-        analysisType: "health_report",
-      }, {}, executionId).catch((err) => {
-        console.error("[startHealthAnalysis] Background workflow failed:", err);
+      return db.transaction(async (tx) => {
+        const { job, enqueued } = await enqueueRestartableJob(tx, {
+          userId,
+          type: HEALTH_ANALYSIS_JOB,
+          idempotencyKey,
+          payload: { executionId, repoFullName: input.repoFullName },
+          priority: 5,
+          maxAttempts: 3,
+        });
+
+        if (!enqueued) {
+          const existingPayload = healthAnalysisJobPayloadSchema.parse(job.payload);
+          return { executionId: existingPayload.executionId, deduplicated: true };
+        }
+
+        await tx.insert(workflowExecutions).values({
+          executionId,
+          userId,
+          workflowId: "agent_health_analysis",
+          workflowType: "health_report",
+          status: "pending",
+          input: {
+            repos: [input.repoFullName],
+            analysisType: "health_report",
+          },
+          currentNode: "queued",
+        });
+
+        return { executionId, deduplicated: false };
       });
-
-      return { executionId, deduplicated: false };
     }),
 
   /**
@@ -587,6 +686,8 @@ export const appRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireWatchedRepository(db, userId, input.repoId);
 
       const repoList = await db
         .select({
@@ -631,8 +732,13 @@ export const appRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
 
-      // 如果指定了 repoId，只同步该仓库
+      if (input.repoId !== undefined) {
+        await requireWatchedRepository(db, userId, input.repoId);
+      }
+
+      // 只同步当前用户关联的仓库；repositories 仍是可共享的 GitHub 实体。
       const whereClause = input.repoId
         ? eq(repositories.id, input.repoId)
         : undefined;
@@ -644,6 +750,13 @@ export const appRouter = router({
           embeddingStatus: repositories.embeddingStatus,
         })
         .from(repositories)
+        .innerJoin(
+          userWatchedRepositories,
+          and(
+            eq(userWatchedRepositories.repoId, repositories.id),
+            eq(userWatchedRepositories.userId, userId),
+          ),
+        )
         .where(whereClause);
 
       const results = [];
@@ -815,6 +928,8 @@ export const appRouter = router({
           `Repository ${fullName} not found. Please collect the repository data first using the data collection pipeline.`
         );
       }
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireWatchedRepository(db, userId, repository.id);
 
       // 3. 生成查询的 embedding 向量
       const embedder = new BGEEmbeddingProvider();

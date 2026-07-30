@@ -40,12 +40,15 @@ vi.mock("@devscope/ai", () => {
 });
 
 // Mock @devscope/db 模块
-vi.mock("@devscope/db", () => {
+vi.mock("@devscope/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@devscope/db")>();
   const mockGetRepositoryByFullName = vi.fn();
   const mockSemanticSearchRepoChunks = vi.fn();
   const mockListWorkflowReportsByRepository = vi.fn();
+  const mockEnqueueRestartableJob = vi.fn();
 
   return {
+    ...actual,
     createDb: vi.fn(() => ({
       select: vi.fn(),
       insert: vi.fn(),
@@ -55,10 +58,12 @@ vi.mock("@devscope/db", () => {
     getRepositoryByFullName: mockGetRepositoryByFullName,
     semanticSearchRepoChunks: mockSemanticSearchRepoChunks,
     listWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
+    enqueueRestartableJob: mockEnqueueRestartableJob,
     users: { id: "users.id" },
     __mockGetRepositoryByFullName: mockGetRepositoryByFullName,
     __mockSemanticSearchRepoChunks: mockSemanticSearchRepoChunks,
     __mockListWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
+    __mockEnqueueRestartableJob: mockEnqueueRestartableJob,
   };
 });
 
@@ -73,21 +78,36 @@ import {
   __mockGetRepositoryByFullName as mockGetRepositoryByFullName,
   __mockSemanticSearchRepoChunks as mockSemanticSearchRepoChunks,
   __mockListWorkflowReportsByRepository as mockListWorkflowReportsByRepository,
+  __mockEnqueueRestartableJob as mockEnqueueRestartableJob,
+  userWatchedRepositories,
+  users,
 } from "@devscope/db";
 
-const createCaller = (db: any = {}) =>
+const createCaller = (db: any = createCurrentUserDb(7)) =>
   appRouter.createCaller({
     db,
     req: {} as any,
     res: {} as any,
   });
 
-function createCurrentUserDb(userId: number) {
+function createCurrentUserDb(userId: number, watched = true) {
   return {
     select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        limit: vi.fn().mockResolvedValue([{ id: userId }]),
-      })),
+      from: vi.fn((table: unknown) => {
+        if (table === users) {
+          return { limit: vi.fn().mockResolvedValue([{ id: userId }]) };
+        }
+        if (table === userWatchedRepositories) {
+          const limit = vi.fn().mockResolvedValue(watched ? [{ repoId: 1 }] : []);
+          return {
+            where: vi.fn(() => ({ limit })),
+            innerJoin: vi.fn(() => ({
+              where: vi.fn(() => ({ limit })),
+            })),
+          };
+        }
+        throw new Error("unexpected table");
+      }),
     })),
   };
 }
@@ -414,6 +434,81 @@ describe("appRouter", () => {
     });
   });
 
+  describe("startHealthAnalysis", () => {
+    it("拒绝为当前用户未关联的仓库创建任务", async () => {
+      const transaction = vi.fn();
+      const db = {
+        ...createCurrentUserDb(7, false),
+        transaction,
+      };
+
+      await expect(createCaller(db).startHealthAnalysis({ repoFullName: "owner/repo" }))
+        .rejects.toThrow("Repository owner/repo not found");
+      expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it("在同一事务中创建 pending execution 和持久任务", async () => {
+      const insertValues = vi.fn().mockResolvedValue(undefined);
+      const tx = { insert: vi.fn(() => ({ values: insertValues })) };
+      const db = {
+        ...createCurrentUserDb(7),
+        transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)),
+      };
+      mockEnqueueRestartableJob.mockImplementation(async (_db, input) => ({
+        enqueued: true,
+        job: {
+          payload: input.payload,
+          status: "queued",
+          createdAt: new Date(),
+        },
+      }));
+
+      const result = await createCaller(db).startHealthAnalysis({ repoFullName: "owner/repo" });
+
+      expect(result).toEqual({ executionId: expect.any(String), deduplicated: false });
+      expect(mockEnqueueRestartableJob).toHaveBeenCalledWith(tx, expect.objectContaining({
+        type: "analysis.health",
+        idempotencyKey: "analysis:health:owner/repo",
+        payload: {
+          executionId: result.executionId,
+          repoFullName: "owner/repo",
+        },
+      }));
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+        executionId: result.executionId,
+        userId: 7,
+        status: "pending",
+        currentNode: "queued",
+      }));
+    });
+
+    it("已有活跃任务时返回原 execution，不创建孤儿记录", async () => {
+      const insertValues = vi.fn();
+      const tx = { insert: vi.fn(() => ({ values: insertValues })) };
+      const db = {
+        ...createCurrentUserDb(7),
+        transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)),
+      };
+      mockEnqueueRestartableJob.mockResolvedValue({
+        enqueued: false,
+        job: {
+          payload: {
+            executionId: "550e8400-e29b-41d4-a716-446655440000",
+            repoFullName: "owner/repo",
+          },
+          status: "running",
+        },
+      });
+
+      await expect(createCaller(db).startHealthAnalysis({ repoFullName: "owner/repo" }))
+        .resolves.toEqual({
+          executionId: "550e8400-e29b-41d4-a716-446655440000",
+          deduplicated: true,
+        });
+      expect(insertValues).not.toHaveBeenCalled();
+    });
+  });
+
   // ========================================================================
   // 语义搜索接口测试
   // ========================================================================
@@ -508,6 +603,16 @@ describe("appRouter", () => {
         5 // limit
       );
       expect(mockComplete).toHaveBeenCalled();
+    });
+
+    it("拒绝搜索当前用户未关联的全局仓库", async () => {
+      const caller = createCaller(createCurrentUserDb(7, false));
+
+      await expect(caller.semanticSearch({
+        repo: "test/repo",
+        query: "How to deploy?",
+      })).rejects.toThrow("Repository with ID 1 not found");
+      expect(mockEmbed).not.toHaveBeenCalled();
     });
 
     it("应该在仓库不存在时抛出错误", async () => {

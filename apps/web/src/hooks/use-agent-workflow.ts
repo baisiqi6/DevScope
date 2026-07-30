@@ -20,6 +20,12 @@ import type { AgentWorkflowEvent } from "@devscope/shared";
  */
 export type WorkflowStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 
+export function getStreamEndError(status: WorkflowStatus): string | null {
+  return status === "running"
+    ? "工作流连接意外结束，请查询服务器状态后重试"
+    : null;
+}
+
 /**
  * 报告结果
  */
@@ -471,10 +477,12 @@ export function useAgentWorkflow(options: UseAgentWorkflowOptions) {
           }
         }
 
-        // 检查最终状态
+        // 未收到 complete 就断流不能视为成功。
         setState((prev) => {
-          if (prev.status === "running") {
-            return { ...prev, status: "completed" };
+          const streamEndError = getStreamEndError(prev.status);
+          if (streamEndError) {
+            options.onError?.(streamEndError);
+            return { ...prev, status: "failed", error: streamEndError };
           }
           return prev;
         });

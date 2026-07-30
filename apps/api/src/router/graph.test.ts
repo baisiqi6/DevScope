@@ -1,108 +1,142 @@
-/**
- * @package @devscope/api/router/graph
- * @description 异步图谱重建状态机测试
- */
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-vi.mock("@devscope/db", () => ({
-  getRepoGraphData: vi.fn(),
-  rebuildRepoGraph: vi.fn(),
+const { mockEnqueue, mockGetJob, mockGetGraph, mockGetCurrentUserId } = vi.hoisted(() => ({
+  mockEnqueue: vi.fn(),
+  mockGetJob: vi.fn(),
+  mockGetGraph: vi.fn(),
+  mockGetCurrentUserId: vi.fn(),
 }));
 
-import { rebuildRepoGraph } from "@devscope/db";
+vi.mock("@devscope/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@devscope/db")>();
+  return {
+    ...actual,
+    getRepoGraphData: mockGetGraph,
+    enqueueRestartableJob: mockEnqueue,
+    getJobByIdempotencyKey: mockGetJob,
+  };
+});
 
-const mockRebuild = vi.mocked(rebuildRepoGraph);
+vi.mock("../current-user", () => ({
+  getOrCreateCurrentUserId: mockGetCurrentUserId,
+}));
 
-async function freshCaller() {
-  // 重建状态是模块级单例，每个用例需要全新模块实例
-  vi.resetModules();
-  const mod = await import("./graph");
-  return mod.graphRouter.createCaller({ db: {} } as never);
-}
+import { graphRouter } from "./graph";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
+const caller = graphRouter.createCaller({ db: {} } as never);
 
-async function flushMicrotasks() {
-  await new Promise((resolve) => setImmediate(resolve));
-}
-
-describe("graph router 异步重建状态机", () => {
+describe("graph router 持久重建任务", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetCurrentUserId.mockResolvedValue(7);
   });
 
-  it("start 立即返回 running，并发 start 返回 alreadyRunning", async () => {
-    const d = deferred<never>();
-    mockRebuild.mockReturnValue(d.promise);
-    const caller = await freshCaller();
+  it("按当前 userId 读取图谱", async () => {
+    mockGetGraph.mockResolvedValue({ nodes: [], edges: [] });
 
-    const first = await caller.startRebuildGraph();
-    expect(first.status).toBe("running");
-    expect(first.alreadyRunning).toBe(false);
-    expect(first.startedAt).toBeTruthy();
-
-    const second = await caller.startRebuildGraph();
-    expect(second.status).toBe("running");
-    expect(second.alreadyRunning).toBe(true);
-
-    const status = await caller.getRebuildGraphStatus();
-    expect(status.status).toBe("running");
-    expect(status.result).toBeNull();
+    await expect(caller.getRepoGraph()).resolves.toEqual({ nodes: [], edges: [] });
+    expect(mockGetGraph).toHaveBeenCalledWith(expect.anything(), 7);
   });
 
-  it("重建完成后状态为 completed 并携带统计", async () => {
-    const d = deferred<{
-      similarityEdges: number;
-      dependencyEdges: number;
-      pooledRepos: number;
-      sbomBackfilled: number;
-    }>();
-    mockRebuild.mockReturnValue(d.promise);
-    const caller = await freshCaller();
+  it("启动时入队，已有活跃任务时返回 alreadyRunning", async () => {
+    mockEnqueue
+      .mockResolvedValueOnce({ job: createJob({ status: "queued" }), enqueued: true })
+      .mockResolvedValueOnce({ job: createJob({ status: "running" }), enqueued: false });
 
-    await caller.startRebuildGraph();
-    d.resolve({ similarityEdges: 3, dependencyEdges: 128, pooledRepos: 4, sbomBackfilled: 2 });
-    await flushMicrotasks();
-
-    const status = await caller.getRebuildGraphStatus();
-    expect(status.status).toBe("completed");
-    expect(status.finishedAt).toBeTruthy();
-    expect(status.result).toEqual({
-      similarityEdges: 3,
-      dependencyEdges: 128,
-      pooledRepos: 4,
-      sbomBackfilled: 2,
+    await expect(caller.startRebuildGraph()).resolves.toEqual({
+      status: "running",
+      startedAt: expect.any(String),
+      alreadyRunning: false,
     });
-    expect(status.error).toBeNull();
+    await expect(caller.startRebuildGraph()).resolves.toEqual({
+      status: "running",
+      startedAt: expect.any(String),
+      alreadyRunning: true,
+    });
   });
 
-  it("重建失败后状态为 failed 并记录错误，可重新启动", async () => {
-    const d = deferred<never>();
-    mockRebuild.mockReturnValueOnce(d.promise);
-    const caller = await freshCaller();
+  it("重启终态任务后沿用本轮 payload 的请求时间", async () => {
+    const requestedAt = "2026-07-29T08:30:00.000Z";
+    mockEnqueue.mockResolvedValue({
+      job: createJob({
+        payload: { requestedAt },
+        startedAt: null,
+        createdAt: new Date("2026-07-28T00:00:00.000Z"),
+      }),
+      enqueued: false,
+    });
 
-    await caller.startRebuildGraph();
-    d.reject(new Error("deps.dev unavailable"));
-    await flushMicrotasks();
+    await expect(caller.startRebuildGraph()).resolves.toEqual({
+      status: "running",
+      startedAt: requestedAt,
+      alreadyRunning: true,
+    });
+  });
 
-    const failed = await caller.getRebuildGraphStatus();
-    expect(failed.status).toBe("failed");
-    expect(failed.error).toContain("deps.dev unavailable");
+  it.each([
+    ["queued", "running"],
+    ["retry_wait", "running"],
+    ["running", "running"],
+    ["succeeded", "completed"],
+    ["dead", "failed"],
+    ["cancelled", "failed"],
+  ] as const)("将 job 状态 %s 映射为图谱状态 %s", async (jobStatus, graphStatus) => {
+    mockGetJob.mockResolvedValue(createJob({ status: jobStatus }));
 
-    // 失败后可再次启动
-    const d2 = deferred<never>();
-    mockRebuild.mockReturnValue(d2.promise);
-    const restarted = await caller.startRebuildGraph();
-    expect(restarted.status).toBe("running");
-    expect(restarted.alreadyRunning).toBe(false);
+    const status = await caller.getRebuildGraphStatus();
+
+    expect(status.status).toBe(graphStatus);
+    if (graphStatus === "completed") {
+      expect(status.result).toEqual({
+        similarityEdges: 3,
+        dependencyEdges: 4,
+        pooledRepos: 5,
+        sbomBackfilled: 2,
+      });
+    }
+    if (graphStatus === "failed") {
+      expect(status.error).toBe("graph failed");
+    }
+  });
+
+  it("没有历史任务时返回 idle", async () => {
+    mockGetJob.mockResolvedValue(null);
+    await expect(caller.getRebuildGraphStatus()).resolves.toEqual({
+      status: "idle",
+      startedAt: null,
+      finishedAt: null,
+      result: null,
+      error: null,
+    });
   });
 });
+
+function createJob(overrides: Record<string, unknown> = {}) {
+  const now = new Date("2026-07-29T00:00:00.000Z");
+  return {
+    id: 1,
+    userId: 7,
+    type: "graph.rebuild",
+    idempotencyKey: "graph:rebuild",
+    payload: { requestedAt: now.toISOString() },
+    result: {
+      similarityEdges: 3,
+      dependencyEdges: 4,
+      pooledRepos: 5,
+      sbomBackfilled: 2,
+    },
+    status: "queued",
+    priority: 0,
+    attempt: 0,
+    maxAttempts: 3,
+    availableAt: now,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    lastError: "graph failed",
+    startedAt: now,
+    completedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}

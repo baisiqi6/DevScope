@@ -14,7 +14,6 @@ import {
   repositories,
   repoChunks,
   poolRepoEmbedding,
-  scheduleSimilarityRecompute,
 } from "@devscope/db";
 import { lt, eq, or, isNull, and } from "drizzle-orm";
 import { getOrCreateCurrentUserId } from "./current-user";
@@ -204,7 +203,6 @@ async function processPendingEmbeddings() {
         console.log(`[Scheduler] ✅ 向量化完成: ${repo.fullName}`);
 
         await poolRepoEmbedding(database, repo.id);
-        scheduleSimilarityRecompute(database);
       } catch (err: any) {
         failed++;
         console.error(`[Scheduler] ❌ 向量化失败: ${repo.fullName} - ${err.message}`);

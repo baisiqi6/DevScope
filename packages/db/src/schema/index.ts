@@ -230,10 +230,6 @@ export const repositories = pgTable("repositories", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   /** 最后采集时间 */
   lastFetchedAt: timestamp("last_fetched_at"),
-  /** 关注时间（用户 star 该仓库的时间） */
-  starredAt: timestamp("starred_at"),
-  /** 用户自定义备注 */
-  note: text("note"),
   /**
    * 是否为基石依赖（reference）轻量行
    * @description 当某外部仓库被 ≥2 个采集仓库依赖时，作为依赖目标写入仅含
@@ -277,7 +273,7 @@ export const repoChunks = pgTable("repo_chunks", {
   /** 分块唯一标识 */
   id: serial("id").primaryKey(),
   /** 所属仓库 ID */
-  repoId: serial("repo_id")
+  repoId: integer("repo_id")
     .references(() => repositories.id)
     .notNull(),
   /** 分块内容 */
@@ -307,7 +303,7 @@ export const hackernewsItems = pgTable("hackernews_items", {
   /** HN item ID */
   id: serial("id").primaryKey(),
   /** 关联的仓库 ID */
-  repoId: serial("repo_id").references(() => repositories.id),
+  repoId: integer("repo_id").references(() => repositories.id).notNull(),
   /** HN item 类型 (story, comment) */
   type: text("type").notNull(),
   /** 标题 (story) */
@@ -340,7 +336,7 @@ export const documents = pgTable("documents", {
   /** 文档唯一标识（自增主键） */
   id: serial("id").primaryKey(),
   /** 所属用户 ID（外键关联 users 表） */
-  userId: serial("user_id")
+  userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
   /** 文档标题 */
@@ -466,7 +462,7 @@ export const workflowExecutions = pgTable("workflow_executions", {
   /** DevScope 执行 ID（用于查询状态和关联报告） */
   executionId: text("execution_id").notNull().unique(),
   /** 用户 ID（外键关联 users 表） */
-  userId: serial("user_id")
+  userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
   /** 执行器或分析流程标识 */
@@ -519,7 +515,7 @@ export const workflowReports = pgTable("workflow_reports", {
     .references(() => workflowExecutions.executionId)
     .notNull(),
   /** 用户 ID */
-  userId: serial("user_id")
+  userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
   /** 报告类型 */
@@ -557,11 +553,11 @@ export const userWatchedRepositories = pgTable("user_watched_repositories", {
   /** 记录唯一标识 */
   id: serial("id").primaryKey(),
   /** 用户 ID（外键关联 users 表） */
-  userId: serial("user_id")
+  userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
   /** 关联的仓库 ID（外键关联 repositories 表） */
-  repoId: serial("repo_id")
+  repoId: integer("repo_id")
     .references(() => repositories.id)
     .notNull(),
   /** 仓库全名（冗余字段，方便查询） */
@@ -572,6 +568,8 @@ export const userWatchedRepositories = pgTable("user_watched_repositories", {
   priority: integer("priority").default(0),
   /** 备注 */
   notes: text("notes"),
+  /** 当前用户在 GitHub 关注该仓库的时间 */
+  starredAt: timestamp("starred_at"),
   /** 创建时间 */
   createdAt: timestamp("created_at").defaultNow().notNull(),
   /** 最后更新时间 */
@@ -579,7 +577,7 @@ export const userWatchedRepositories = pgTable("user_watched_repositories", {
 }, (table) => ({
   userIdIdx: index("user_watched_repos_user_id_idx").on(table.userId),
   repoIdIdx: index("user_watched_repos_repo_id_idx").on(table.repoId),
-  uniqueUserRepo: index("user_watched_repos_user_repo_unique_idx").on(table.userId, table.repoId),
+  uniqueUserRepo: uniqueIndex("user_watched_repos_user_repo_unique_idx").on(table.userId, table.repoId),
 }));
 
 // ============================================================================
@@ -624,7 +622,7 @@ export const releases = pgTable("releases", {
   /** Release ID（GitHub） */
   id: integer("id").primaryKey(),
   /** 关联的仓库 ID */
-  repoId: serial("repo_id").references(() => repositories.id),
+  repoId: integer("repo_id").references(() => repositories.id).notNull(),
   /** Tag 名称 (如 v1.0.0) */
   tagName: text("tag_name").notNull(),
   /** Release 名称 */
@@ -763,6 +761,9 @@ export type NewGroupMember = typeof groupMembers.$inferInsert;
  */
 export const repoRelationships = pgTable("repo_relationships", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   sourceRepoId: integer("source_repo_id")
     .references(() => repositories.id, { onDelete: "cascade" })
     .notNull(),
@@ -775,11 +776,13 @@ export const repoRelationships = pgTable("repo_relationships", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  uniqueEdge: uniqueIndex("repo_relationships_source_target_type_unique").on(
+  uniqueEdge: uniqueIndex("repo_relationships_user_source_target_type_unique").on(
+    table.userId,
     table.sourceRepoId,
     table.targetRepoId,
     table.edgeType
   ),
+  userIdIdx: index("repo_relationships_user_id_idx").on(table.userId),
   targetRepoIdIdx: index("repo_relationships_target_repo_id_idx").on(table.targetRepoId),
 }));
 

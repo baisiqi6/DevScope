@@ -638,12 +638,14 @@ export type SemanticSearchResponse = z.infer<typeof semanticSearchResponseSchema
  * SSE 事件类型枚举
  */
 export const sseEventTypeSchema = z.enum([
+  "init",
   "thinking",
   "tool_use",
   "tool_result",
   "text",
   "report",
   "complete",
+  "terminal",
 ]);
 
 /** SSE 事件类型 */
@@ -771,11 +773,11 @@ export type AgentWorkflowEvent = z.infer<typeof agentWorkflowEventSchema>;
  */
 export const agentWorkflowRequestSchema = z.object({
   /** 要分析的仓库列表 (owner/repo) */
-  repos: z.array(z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo")),
+  repos: z.array(z.string().regex(/^[\w.-]+\/[\w.-]+$/, "格式应为 owner/repo")).min(1).max(20),
   /** 分析类型 */
   analysisType: z.enum(["competitive_landscape", "health_report", "single_repo"]),
   /** 额外上下文 */
-  context: z.string().optional(),
+  context: z.string().max(20_000).optional(),
 });
 
 /** Agent 工作流请求类型 */

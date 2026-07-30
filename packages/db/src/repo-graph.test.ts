@@ -6,7 +6,12 @@ import {
   poolRepoEmbedding,
   getRepoGraphData,
 } from "./repo-graph";
-import { repositories, packageRepoMappings, repoRelationships } from "./schema";
+import {
+  repositories,
+  packageRepoMappings,
+  repoRelationships,
+  userWatchedRepositories,
+} from "./schema";
 import sbomFixture from "./__fixtures__/sbom-tailwindcss.json";
 import sbomPypiFixture from "./__fixtures__/sbom-pypi-minimal.json";
 
@@ -202,7 +207,7 @@ describe("recomputeSimilarityEdges", () => {
     ];
     const db = createMockDb(repos);
 
-    const count = await recomputeSimilarityEdges(db, { topK: 8, minScore: 0.75 });
+    const count = await recomputeSimilarityEdges(db, 1, { topK: 8, minScore: 0.75 });
 
     expect(count).toBe(2);
     expect(db._insertedValues).toHaveLength(2);
@@ -218,7 +223,7 @@ describe("recomputeSimilarityEdges", () => {
     ];
     const db = createMockDb(repos);
 
-    const count = await recomputeSimilarityEdges(db, { minScore: 0.75 });
+    const count = await recomputeSimilarityEdges(db, 1, { minScore: 0.75 });
 
     expect(count).toBe(0);
   });
@@ -230,7 +235,7 @@ describe("recomputeSimilarityEdges", () => {
     ];
     const db = createMockDb(repos);
 
-    await recomputeSimilarityEdges(db);
+    await recomputeSimilarityEdges(db, 1);
 
     expect(db.transaction).toHaveBeenCalled();
     expect(db._deleteWhere).toHaveBeenCalled();
@@ -245,7 +250,7 @@ describe("recomputeSimilarityEdges", () => {
     ];
     const db = createMockDb(repos);
 
-    const count = await recomputeSimilarityEdges(db, { topK: 2, minScore: 0.75 });
+    const count = await recomputeSimilarityEdges(db, 1, { topK: 2, minScore: 0.75 });
 
     const fromRepo1 = db._insertedValues.filter(
       (e: any) => e.sourceRepoId === 1
@@ -255,7 +260,7 @@ describe("recomputeSimilarityEdges", () => {
 
   it("无 embedding 的仓库不产生边", async () => {
     const db = createMockDb([]);
-    const count = await recomputeSimilarityEdges(db);
+    const count = await recomputeSimilarityEdges(db, 1);
     expect(count).toBe(0);
   });
 });
@@ -325,6 +330,13 @@ describe("recomputeDependencyEdges", () => {
             })),
           };
         }
+        if (table === userWatchedRepositories) {
+          return {
+            values: vi.fn().mockReturnValue({
+              onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+            }),
+          };
+        }
         return { values: vi.fn().mockResolvedValue(undefined) };
       }),
       transaction: vi.fn().mockImplementation(async (fn: any) => {
@@ -356,7 +368,7 @@ describe("recomputeDependencyEdges", () => {
     });
 
     const resolveMapping = vi.fn();
-    await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(resolveMapping).not.toHaveBeenCalled();
   });
@@ -371,7 +383,7 @@ describe("recomputeDependencyEdges", () => {
     });
 
     const resolveMapping = vi.fn().mockResolvedValue("django/django");
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(resolveMapping).toHaveBeenCalledWith("pypi", "django", "4.2.1");
     expect(count).toBe(2);
@@ -394,7 +406,7 @@ describe("recomputeDependencyEdges", () => {
       if (name === "solo-pkg") return "solo/solo-pkg";
       return null;
     });
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     // lodash/lodash in-degree=2 → 基石行 + 2 条边；solo in-degree=1 → 丢弃
     expect(count).toBe(2);
@@ -422,7 +434,7 @@ describe("recomputeDependencyEdges", () => {
 
     const resolveMapping = vi.fn();
     const canonicalize = vi.fn().mockResolvedValue("react/react");
-    const count = await recomputeDependencyEdges(db, { resolveMapping, canonicalize, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
 
     // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边，不建基石行
     expect(canonicalize).toHaveBeenCalledWith("facebook/react");
@@ -455,7 +467,7 @@ describe("recomputeDependencyEdges", () => {
     const canonicalize = vi.fn().mockImplementation((fullName: string) =>
       Promise.resolve(fullName === "facebook/react-legacy" ? "react/react" : "react/react")
     );
-    const count = await recomputeDependencyEdges(db, { resolveMapping, canonicalize, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
 
     // org-a 的两个目标合并为一条边；org-b 一条边——共 2 条，无唯一冲突
     expect(count).toBe(2);
@@ -474,7 +486,7 @@ describe("recomputeDependencyEdges", () => {
     });
 
     const resolveMapping = vi.fn().mockResolvedValue("facebook/react");
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(count).toBe(1);
     expect(db._referenceUpserts).toHaveLength(0);
@@ -498,7 +510,7 @@ describe("recomputeDependencyEdges", () => {
     });
 
     const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => `owner/${name}`);
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(db._referenceUpserts).toHaveLength(30);
     expect(count).toBe(60); // 30 个目标 × 2 个源仓库
@@ -522,7 +534,7 @@ describe("recomputeDependencyEdges", () => {
     });
 
     const resolveMapping = vi.fn().mockResolvedValue("lodash/lodash");
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(count).toBe(2);
     const edgeFrom1 = db._insertedEdges.find((e: any) => e.sourceRepoId === 1);
@@ -547,7 +559,7 @@ describe("recomputeDependencyEdges", () => {
       if (name === "some-dep") return "other/dep";
       return null;
     });
-    const count = await recomputeDependencyEdges(db, { resolveMapping, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     // reference 行的 SBOM 不参与解析
     expect(resolveMapping).not.toHaveBeenCalledWith("npm", "some-dep", "1.0.0");
@@ -593,7 +605,7 @@ describe("getRepoGraphData", () => {
     const edges = [{ source: 1, target: 2, type: "dependency", score: null }];
     const db = createGraphMockDb(repos, edges);
 
-    const result = await getRepoGraphData(db);
+    const result = await getRepoGraphData(db, 1);
 
     // repo 节点：id 为字符串，kind=repo
     const repoNode = result.nodes.find((n) => n.id === "1");
@@ -658,7 +670,7 @@ describe("backfillSbomPackages", () => {
       { name: "fastapi", versionInfo: "0.115.0", externalRefs: [{ referenceType: "purl", referenceLocator: "pkg:pypi/fastapi@0.115.0" }] },
     ] } });
 
-    const filled = await backfillSbomPackages(db, { fetchSbom, delayMs: 0 });
+    const filled = await backfillSbomPackages(db, 1, { fetchSbom, delayMs: 0 });
 
     // repo 1（null）与 repo 2（遗留）被抓取；repo 3 跳过
     expect(fetchSbom).toHaveBeenCalledTimes(2);
@@ -673,6 +685,6 @@ describe("backfillSbomPackages", () => {
   it("无 fetchSbom 时直接返回 0", async () => {
     const { backfillSbomPackages } = await import("./repo-graph");
     const db = { select: vi.fn() } as any;
-    expect(await backfillSbomPackages(db, {})).toBe(0);
+    expect(await backfillSbomPackages(db, 1, {})).toBe(0);
   });
 });

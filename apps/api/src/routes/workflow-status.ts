@@ -9,7 +9,8 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createDb, workflowExecutions } from "@devscope/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getOrCreateCurrentUserId } from "../current-user";
 
 // ============================================================================
 // 路由注册
@@ -24,6 +25,7 @@ export async function registerWorkflowStatusRoute(fastify: FastifyInstance): Pro
 
     try {
       const db = createDb();
+      const userId = await getOrCreateCurrentUserId(db);
 
       const rows = await db
         .select({
@@ -36,7 +38,10 @@ export async function registerWorkflowStatusRoute(fastify: FastifyInstance): Pro
           result: workflowExecutions.result,
         })
         .from(workflowExecutions)
-        .where(eq(workflowExecutions.executionId, executionId))
+        .where(and(
+          eq(workflowExecutions.executionId, executionId),
+          eq(workflowExecutions.userId, userId),
+        ))
         .limit(1);
 
       if (rows.length === 0) {
