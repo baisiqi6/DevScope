@@ -3,7 +3,7 @@
  * @description OpenAI-compatible AIProvider 与 TextChunker 单元测试
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 const mockCreate = vi.fn();
@@ -34,6 +34,10 @@ describe("AIProvider", () => {
     });
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("调用 OpenAI-compatible API 返回文本", async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [{ message: { content: "你好" } }],
@@ -47,6 +51,21 @@ describe("AIProvider", () => {
         { role: "system", content: "使用中文" },
         { role: "user", content: "打个招呼" },
       ],
+    }));
+  });
+
+  it("通用 OpenAI-compatible 模型配置优先于 DeepSeek 回退", async () => {
+    vi.stubEnv("OPENAI_COMPATIBLE_MODEL", "compatible-model");
+    vi.stubEnv("DEEPSEEK_MODEL", "deepseek-model");
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: "ok" } }],
+    });
+
+    const configured = new AIProvider({ apiKey: "test-api-key" });
+    await configured.complete("test");
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+      model: "compatible-model",
     }));
   });
 

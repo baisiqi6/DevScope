@@ -11,6 +11,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { GitHubClient, repositoryAnalysisSchema } from "@devscope/shared";
+import { resolveOpenAICompatibleConfig } from "./config.js";
 
 // ============================================================================
 // 类型定义
@@ -53,6 +54,8 @@ export interface DevScopeAgentConfig {
   systemPrompt?: string;
   /** 启用的工具列表 (默认全部启用) */
   enabledTools?: string[];
+  /** 单次执行允许的最大工具轮次 */
+  maxToolRounds?: number;
 }
 
 /**
@@ -384,19 +387,18 @@ export class DevScopeAgent {
   private maxTokens: number;
   private systemPrompt: string;
   private enabledTools: string[] | undefined;
+  private maxToolRounds: number;
   private tools: Map<string, AgentTool> = new Map();
 
   constructor(config: DevScopeAgentConfig = {}) {
     this.providerType = config.provider || "openai-compatible";
-    const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
-    const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+    const resolvedConfig = resolveOpenAICompatibleConfig(config);
 
-    if (!apiKey) {
-      throw new Error("API Key is required. Set DEEPSEEK_API_KEY or OPENAI_COMPATIBLE_API_KEY environment variable.");
-    }
-
-    this.openaiClient = new OpenAI({ apiKey, baseURL });
-    this.model = config.model || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+    this.openaiClient = new OpenAI({
+      apiKey: resolvedConfig.apiKey,
+      baseURL: resolvedConfig.baseURL,
+    });
+    this.model = resolvedConfig.model;
 
     this.maxTokens = config.maxTokens || 4096;
     this.systemPrompt = config.systemPrompt || `你是一个专业的开源项目分析师助手。
@@ -414,6 +416,7 @@ export class DevScopeAgent {
 
 你可以自主决定使用哪些工具，以及调用的顺序。`;
     this.enabledTools = config.enabledTools;
+    this.maxToolRounds = config.maxToolRounds ?? 12;
 
     console.log(`[DevScopeAgent] Initialized with provider: ${this.providerType}, model: ${this.model}`);
 
@@ -575,14 +578,12 @@ export class DevScopeAgent {
   /**
    * 运行 Agent (非流式)
    */
-  async run(prompt: string): Promise<AgentResult<string>> {
-    return this.runOpenAICompatible(prompt);
+  async run(prompt: string, signal?: AbortSignal): Promise<AgentResult<string>> {
+    return this.runOpenAICompatible(prompt, signal);
   }
 
-  /**
-   * 使用 OpenAI 兼容 API 运行 Agent (DeepSeek)
-   */
-  private async runOpenAICompatible(prompt: string): Promise<AgentResult<string>> {
+  /** 使用 OpenAI-compatible API 运行 Agent。 */
+  private async runOpenAICompatible(prompt: string, signal?: AbortSignal): Promise<AgentResult<string>> {
     const toolCallsList: AgentResult["toolCalls"] = [];
     const messages: Array<{ role: string; content: string; tool_calls?: any[] }> = [
       { role: "user", content: prompt },
@@ -590,29 +591,34 @@ export class DevScopeAgent {
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let toolRounds = 0;
 
     console.log(`[DevScopeAgent.runOpenAICompatible] Starting agent loop`);
 
     // Agent 循环
     while (true) {
+      signal?.throwIfAborted();
+      if (toolRounds >= this.maxToolRounds) {
+        throw new Error(`Agent exceeded ${this.maxToolRounds} tool rounds`);
+      }
       // 添加 system 消息
       const messagesWithSystem = [
         { role: "system", content: this.systemPrompt },
         ...messages,
       ];
 
-      console.log(`[DevScopeAgent.runOpenAICompatible] Sending request to DeepSeek API...`);
+      console.log(`[DevScopeAgent.runOpenAICompatible] Sending model request...`);
       console.log(`[DevScopeAgent.runOpenAICompatible] Messages count: ${messagesWithSystem.length}`);
       console.log(`[DevScopeAgent.runOpenAICompatible] Tools count: ${this.getToolDefinitions().length}`);
 
-      const response = await this.openaiClient!.chat.completions.create({
+      const response = await this.openaiClient.chat.completions.create({
         model: this.model,
         max_tokens: this.maxTokens,
         messages: messagesWithSystem as any,
         tools: this.getToolDefinitions() as any,
-      });
+      }, signal ? { signal } : undefined);
 
-      console.log(`[DevScopeAgent.runOpenAICompatible] Received response from DeepSeek API`);
+      console.log(`[DevScopeAgent.runOpenAICompatible] Received model response`);
       console.log(`[DevScopeAgent.runOpenAICompatible] Usage:`, response.usage);
 
       totalInputTokens += response.usage?.prompt_tokens || 0;
@@ -644,11 +650,13 @@ export class DevScopeAgent {
       }
 
       console.log(`[DevScopeAgent.runOpenAICompatible] Tool calls detected: ${responseToolCalls.length}`);
+      toolRounds += 1;
 
       // 执行工具调用
       const toolMessages: any[] = [];
 
       for (const toolCall of responseToolCalls) {
+        signal?.throwIfAborted();
         const functionName = toolCall.function.name;
         const functionArgs = JSON.parse(toolCall.function.arguments);
 
@@ -690,18 +698,26 @@ export class DevScopeAgent {
   /**
    * 运行 Agent (流式)
    */
-  async stream(prompt: string, callbacks: StreamCallbacks = {}): Promise<AgentResult<string>> {
-    return this.streamOpenAICompatible(prompt, callbacks);
+  async stream(
+    prompt: string,
+    callbacks: StreamCallbacks = {},
+    signal?: AbortSignal,
+  ): Promise<AgentResult<string>> {
+    return this.streamOpenAICompatible(prompt, callbacks, signal);
   }
 
   /**
    * 使用 OpenAI 兼容 API 流式运行 Agent (简化版，使用非流式 + 回调)
    */
-  private async streamOpenAICompatible(prompt: string, callbacks: StreamCallbacks): Promise<AgentResult<string>> {
+  private async streamOpenAICompatible(
+    prompt: string,
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal,
+  ): Promise<AgentResult<string>> {
     console.log(`[DevScopeAgent.streamOpenAICompatible] Starting stream execution`);
     try {
       // 简化版：使用非流式实现，但仍然触发回调
-      const result = await this.runOpenAICompatible(prompt);
+      const result = await this.runOpenAICompatible(prompt, signal);
 
       console.log(`[DevScopeAgent.streamOpenAICompatible] Execution completed, triggering callbacks`);
 

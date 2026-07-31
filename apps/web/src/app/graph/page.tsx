@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
 import {
   ArrowUpRight,
-  Download,
+  Box,
   Loader2,
   Network,
   RefreshCw,
   Search,
   Shuffle,
+  Square,
   Star,
   X,
 } from "lucide-react";
@@ -23,6 +24,15 @@ import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { languageColor } from "@/lib/language-colors";
 import { clearGraphLayout } from "@/lib/graph-layout";
+import {
+  canRender3D,
+  detectGraphRendererCapabilities,
+  loadGraphRendererMode,
+  resolveGraphRendererMode,
+  saveGraphRendererMode,
+  type GraphRendererCapabilities,
+  type GraphRendererMode,
+} from "@/lib/graph-renderer-mode";
 import { cn } from "@/lib/utils";
 import type { GraphLinkDatum, GraphNodeDatum } from "@/components/repo-graph-canvas";
 
@@ -110,18 +120,27 @@ function buildMockGraph(size: number): { nodes: RepoGraphNode[]; edges: RepoGrap
     }
   }
 
-  // 基石依赖节点 + 依赖边
+  // 技术栈节点 + 依赖边
+  const mockStacks = [
+    { slug: "react", name: "React" },
+    { slug: "vue", name: "Vue" },
+    { slug: "spring-boot", name: "Spring Boot" },
+    { slug: "nextjs", name: "Next.js" },
+    { slug: "django", name: "Django" },
+    { slug: "vite", name: "Vite" },
+  ];
   const refCount = Math.min(6, Math.max(2, Math.floor(size / 50)));
   for (let r = 0; r < refCount; r++) {
+    const stack = mockStacks[r];
     const refId = `9000${r}`;
     nodes.push({
       id: refId,
       kind: "reference",
-      fullName: `foundation/dep-${r}`,
-      name: `dep-${r}`,
+      fullName: `tech-stack/${stack.slug}`,
+      name: stack.name,
       language: null,
       stars: null,
-      description: `模拟基石依赖 ${r}`,
+      description: `${stack.name} 技术栈`,
       isReference: true,
     });
     const dependents = 2 + Math.floor(rand() * 3);
@@ -145,6 +164,10 @@ const MOCK_DATA = MOCK_ENABLED ? buildMockGraph(MOCK_SIZE) : null;
 interface NeighborEntry {
   node: RepoGraphNode;
   score: number | null;
+}
+
+function nodeDisplayName(node: Pick<RepoGraphNode, "kind" | "name" | "fullName">): string {
+  return node.kind === "reference" ? node.name : node.fullName;
 }
 
 export default function GraphPage() {
@@ -190,18 +213,35 @@ export default function GraphPage() {
     }
   }, [rebuildStatus.data, rebuildPolling, utils]);
 
-  const [collectMsg, setCollectMsg] = useState<string | null>(null);
-  const collectReference = trpc.collectRepository.useMutation({
-    onSuccess: (result) => {
-      setCollectMsg(`采集完成：${result.repository?.fullName ?? ""}`);
-      void utils.graph.getRepoGraph.invalidate();
-      void utils.getRepositories.invalidate();
-    },
-    onError: (error) => setCollectMsg(`采集失败：${error.message}`),
-  });
-
   const reduceMotion = useReducedMotion() ?? false;
   const isMobile = useMediaQuery("(max-width: 767px)");
+  const [rendererPreference, setRendererPreference] = useState<GraphRendererMode>("2d");
+  const [rendererCapabilities, setRendererCapabilities] =
+    useState<GraphRendererCapabilities | null>(null);
+
+  useEffect(() => {
+    setRendererPreference(loadGraphRendererMode());
+    setRendererCapabilities(detectGraphRendererCapabilities());
+  }, []);
+
+  const rendererMode = resolveGraphRendererMode(
+    rendererPreference,
+    rendererCapabilities,
+    reduceMotion,
+    isMobile,
+  );
+  const threeDEnabled = canRender3D(rendererCapabilities, reduceMotion, isMobile);
+  const threeDUnavailableReason =
+    rendererCapabilities == null
+      ? "正在检测 3D 支持"
+      : reduceMotion
+        ? "系统已开启减少动态效果"
+        : "当前设备不支持 3D 模式";
+
+  const changeRendererMode = useCallback((mode: GraphRendererMode) => {
+    setRendererPreference(mode);
+    saveGraphRendererMode(mode);
+  }, []);
 
   const [showSimilarity, setShowSimilarity] = useState(true);
   const [showDependency, setShowDependency] = useState(true);
@@ -320,16 +360,17 @@ export default function GraphPage() {
 
   const handleNodeSelect = useCallback((id: string | null) => {
     setSelectedId(id);
-    setCollectMsg(null);
   }, []);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const q = searchText.trim().toLowerCase();
     if (!q) return;
-    const match = nodes.find((n) => n.fullName.toLowerCase().includes(q));
+    const match = nodes.find(
+      (n) => n.fullName.toLowerCase().includes(q) || n.name.toLowerCase().includes(q)
+    );
     if (!match) {
-      setSearchError("未找到匹配的仓库");
+      setSearchError("未找到匹配的仓库或技术栈");
       return;
     }
     setSearchError(null);
@@ -359,6 +400,31 @@ export default function GraphPage() {
           </p>
         </div>
 
+        <div role="group" aria-label="图谱渲染模式" className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant={rendererMode === "2d" ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={rendererMode === "2d"}
+            onClick={() => changeRendererMode("2d")}
+          >
+            <Square aria-hidden="true" data-icon="inline-start" />
+            2D
+          </Button>
+          <Button
+            type="button"
+            variant={rendererMode === "3d" ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={rendererMode === "3d"}
+            disabled={!threeDEnabled}
+            title={!threeDEnabled ? threeDUnavailableReason : "切换到 3D 图谱"}
+            onClick={() => changeRendererMode("3d")}
+          >
+            <Box aria-hidden="true" data-icon="inline-start" />
+            3D
+          </Button>
+        </div>
+
         <form onSubmit={handleSearch} className="flex items-center gap-1.5">
           <Input
             value={searchText}
@@ -366,8 +432,8 @@ export default function GraphPage() {
               setSearchText(event.target.value);
               setSearchError(null);
             }}
-            placeholder="仓库名定位…"
-            aria-label="按仓库 fullName 定位节点"
+            placeholder="仓库或技术栈…"
+            aria-label="按仓库或技术栈名称定位节点"
             className="h-9 w-40 max-w-[38vw]"
           />
           <Button type="submit" variant="outline" size="sm" aria-label="定位节点">
@@ -486,7 +552,7 @@ export default function GraphPage() {
         <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
         <span>仓库（语言着色）</span>
         <span aria-hidden="true" className="h-2.5 w-2.5 rotate-45 bg-warning" />
-        <span>基石依赖（未采集）</span>
+        <span>技术栈</span>
         <span aria-hidden="true" className="h-3 w-2 rotate-45 rounded-[2px] bg-primary" />
         <span>语言</span>
         <span aria-hidden="true" className="h-px w-5 bg-primary" />
@@ -577,6 +643,7 @@ export default function GraphPage() {
     content = (
       <div className="relative min-h-0 flex-1" onMouseMove={handleTooltipMove}>
         <RepoGraphView
+          mode={rendererMode}
           nodes={nodes}
           links={links}
           reducedMotion={reduceMotion}
@@ -600,9 +667,9 @@ export default function GraphPage() {
         >
           {hoveredNode && (
             <>
-              <p className="font-mono text-[13px] font-semibold">{hoveredNode.fullName}</p>
+              <p className="font-mono text-[13px] font-semibold">{nodeDisplayName(hoveredNode)}</p>
               {hoveredNode.kind === "reference" && (
-                <p className="mt-0.5 text-[11px] text-warning">基石依赖 · 未采集</p>
+                <p className="mt-0.5 text-[11px] text-warning">技术栈</p>
               )}
               {hoveredNode.kind === "language" && (
                 <p className="mt-0.5 text-[11px] text-primary">
@@ -665,9 +732,9 @@ export default function GraphPage() {
             <>
               <header className="flex items-start justify-between gap-2 border-b border-border/80 p-4">
                 <div className="min-w-0">
-                  <p className="truncate font-mono text-sm font-semibold">{selectedNode.fullName}</p>
+                  <p className="truncate font-mono text-sm font-semibold">{nodeDisplayName(selectedNode)}</p>
                   {selectedNode.kind === "reference" && (
-                    <p className="mt-0.5 text-xs text-warning">基石依赖 · 未采集</p>
+                    <p className="mt-0.5 text-xs text-warning">技术栈</p>
                   )}
                   {selectedNode.kind === "language" && (
                     <p className="mt-0.5 text-xs text-primary">语言节点</p>
@@ -777,40 +844,18 @@ export default function GraphPage() {
                     />
                   </>
                 )}
-
-                {collectMsg && selectedNode.kind === "reference" && (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    {collectMsg}
-                  </p>
-                )}
               </div>
 
-              <footer className="border-t border-border/80 p-4">
-                {selectedNode.kind === "reference" ? (
-                  <Button
-                    className="w-full"
-                    disabled={collectReference.isPending || MOCK_ENABLED}
-                    onClick={() => {
-                      setCollectMsg(null);
-                      collectReference.mutate({ repo: selectedNode.fullName });
-                    }}
-                  >
-                    {collectReference.isPending ? (
-                      <Loader2 aria-hidden="true" className="animate-spin" />
-                    ) : (
-                      <Download aria-hidden="true" />
-                    )}
-                    采集此仓库
-                  </Button>
-                ) : selectedNode.kind === "repo" ? (
+              {selectedNode.kind === "repo" && (
+                <footer className="border-t border-border/80 p-4">
                   <Button asChild className="w-full">
                     <Link href={`/repository/${selectedNode.id}`}>
                       查看详情
                       <ArrowUpRight aria-hidden="true" />
                     </Link>
                   </Button>
-                ) : null}
-              </footer>
+                </footer>
+              )}
             </>
           )}
         </aside>
@@ -862,7 +907,7 @@ function NeighborSection({
                   }}
                 />
               )}
-              <span className="truncate font-mono">{node.fullName}</span>
+              <span className="truncate font-mono">{nodeDisplayName(node)}</span>
               {score != null && (
                 <span className="ml-auto shrink-0 text-muted-foreground">
                   {Math.round(score * 100)}%

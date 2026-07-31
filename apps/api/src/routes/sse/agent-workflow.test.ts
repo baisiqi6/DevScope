@@ -1,5 +1,18 @@
-import { describe, expect, it } from "vitest";
-import { generateStructuredReport } from "../../services/agent-workflow";
+import { describe, expect, it, vi } from "vitest";
+
+const { mockAgentStream } = vi.hoisted(() => ({
+  mockAgentStream: vi.fn(),
+}));
+
+vi.mock("@devscope/ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@devscope/ai")>();
+  return {
+    ...actual,
+    createAgent: () => ({ stream: mockAgentStream }),
+  };
+});
+
+import { generateStructuredReport, runAgentWorkflow } from "../../services/agent-workflow";
 
 const repo = "owner/repo";
 
@@ -80,5 +93,36 @@ describe("generateStructuredReport", () => {
     );
 
     expect(report.riskMatrix.overallRisk).toBe(expected);
+  });
+});
+
+describe("runAgentWorkflow cancellation", () => {
+  it("AbortSignal 中止后将 execution 标记为 cancelled", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const db = {
+      insert: () => ({ values: vi.fn().mockResolvedValue(undefined) }),
+      update: () => ({
+        set: (value: Record<string, unknown>) => {
+          updates.push(value);
+          return { where: vi.fn().mockResolvedValue(undefined) };
+        },
+      }),
+    };
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(runAgentWorkflow(
+      db as never,
+      1,
+      { repos: [repo], analysisType: "health_report" },
+      {},
+      { executionId: "execution-cancelled", signal: controller.signal },
+    )).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(mockAgentStream).not.toHaveBeenCalled();
+    expect(updates).toContainEqual(expect.objectContaining({
+      status: "cancelled",
+      error: null,
+    }));
   });
 });

@@ -9,7 +9,7 @@ DevScope 提供统一 API Client、`devscope` CLI 和 MCP stdio Server。CLI 与
 - 生产环境仍由 Nginx Basic Auth 保护；CLI/MCP 只是转发对应请求头，不是应用内账号系统。
 - Basic Auth 只允许发送到 `https://` 或本机回环地址；公网 `http://` 会被 Client 拒绝，避免密码明文经过网络。
 - 不支持 `--password` 参数，避免密码出现在 shell history 或进程列表。
-- 技术雷达发现任务使用 PostgreSQL 持久队列与独立 Worker；现有仓库采集和向量化路径仍由 API 调度，不应把二者混为同一可靠性等级。
+- 健康分析、图谱重建和技术雷达发现任务使用 PostgreSQL 持久队列与独立 Worker；现有仓库采集和向量化路径仍由 API 调度，不应把二者混为同一可靠性等级。
 
 ## 连接配置
 

@@ -5,8 +5,29 @@
  */
 
 import { and, asc, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { z } from "zod";
 import type { Db } from "./index";
 import { jobs, type Job } from "./schema";
+
+export const HEALTH_ANALYSIS_JOB = "analysis.health";
+export const GRAPH_REBUILD_JOB = "graph.rebuild";
+
+export const healthAnalysisJobPayloadSchema = z.object({
+  executionId: z.string().uuid(),
+  repoFullName: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+});
+
+export const graphRebuildJobPayloadSchema = z.object({
+  requestedAt: z.string().datetime(),
+});
+
+export function healthAnalysisJobKey(repoFullName: string): string {
+  return `analysis:health:${repoFullName.toLowerCase()}`;
+}
+
+export const GRAPH_REBUILD_JOB_KEY = "graph:rebuild";
+
+type JobStore = Pick<Db, "insert" | "update" | "select">;
 
 export interface EnqueueJobInput {
   userId: number;
@@ -27,6 +48,12 @@ export interface ClaimJobOptions {
 export interface FailJobOptions {
   retryDelayMs?: number;
   now?: Date;
+}
+
+export interface EnqueueRestartableJobResult {
+  job: Job;
+  /** true 表示本次创建或把终态任务重新排队；false 表示已有活跃任务 */
+  enqueued: boolean;
 }
 
 /**
@@ -69,6 +96,98 @@ export async function enqueueJob(db: Db, input: EnqueueJobInput): Promise<Job> {
   }
 
   return existing;
+}
+
+/**
+ * 为同一资源只保留一个活跃任务；已有终态任务时复用该行并重新排队。
+ * 适用于用户可重复触发、但同一时刻只能执行一次的长任务。
+ */
+export async function enqueueRestartableJob(
+  db: JobStore,
+  input: EnqueueJobInput
+): Promise<EnqueueRestartableJobResult> {
+  const now = new Date();
+  const values = {
+    userId: input.userId,
+    type: input.type,
+    idempotencyKey: input.idempotencyKey,
+    payload: input.payload ?? {},
+    priority: input.priority ?? 0,
+    maxAttempts: input.maxAttempts ?? 3,
+    availableAt: input.availableAt ?? now,
+  };
+  const [created] = await db
+    .insert(jobs)
+    .values(values)
+    .onConflictDoNothing({ target: [jobs.userId, jobs.idempotencyKey] })
+    .returning();
+
+  if (created) {
+    return { job: created, enqueued: true };
+  }
+
+  const [restarted] = await db
+    .update(jobs)
+    .set({
+      ...values,
+      status: "queued",
+      attempt: 0,
+      result: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(jobs.userId, input.userId),
+        eq(jobs.idempotencyKey, input.idempotencyKey),
+        inArray(jobs.status, ["succeeded", "dead"])
+      )
+    )
+    .returning();
+
+  if (restarted) {
+    return { job: restarted, enqueued: true };
+  }
+
+  const [existing] = await db
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.userId, input.userId),
+        eq(jobs.idempotencyKey, input.idempotencyKey)
+      )
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("幂等任务冲突后无法读取");
+  }
+
+  return { job: existing, enqueued: false };
+}
+
+export async function getJobByIdempotencyKey(
+  db: JobStore,
+  userId: number,
+  idempotencyKey: string
+): Promise<Job | null> {
+  const [job] = await db
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.userId, userId),
+        eq(jobs.idempotencyKey, idempotencyKey)
+      )
+    )
+    .limit(1);
+
+  return job ?? null;
 }
 
 /**
@@ -155,6 +274,36 @@ export async function completeJob(
   }
 
   return completed;
+}
+
+/** 为仍由当前 Worker 持有的运行中任务延长租约。 */
+export async function renewJobLease(
+  db: Db,
+  jobId: number,
+  workerId: string,
+  leaseDurationMs: number,
+  now: Date = new Date()
+): Promise<Job> {
+  const [renewed] = await db
+    .update(jobs)
+    .set({
+      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.status, "running"),
+        eq(jobs.leaseOwner, workerId)
+      )
+    )
+    .returning();
+
+  if (!renewed) {
+    throw new Error(`任务 ${jobId} 已失去租约，不能续租`);
+  }
+
+  return renewed;
 }
 
 /**

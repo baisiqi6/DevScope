@@ -6,7 +6,13 @@ export interface GraphLayoutPoint {
 
 export type GraphLayoutStore = Record<string, GraphLayoutPoint>;
 
-const STORAGE_KEY = "devscope-graph-layout";
+export type GraphLayoutDimension = "2d" | "3d";
+
+const LEGACY_STORAGE_KEY = "devscope-graph-layout";
+const STORAGE_KEYS: Record<GraphLayoutDimension, string> = {
+  "2d": "devscope-graph-layout-2d",
+  "3d": "devscope-graph-layout-3d",
+};
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -16,10 +22,12 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-export function loadGraphLayout(): GraphLayoutStore {
+export function loadGraphLayout(dimension: GraphLayoutDimension): GraphLayoutStore {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(STORAGE_KEYS[dimension]) ??
+      window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
@@ -46,8 +54,12 @@ interface LayoutNode {
   z?: number;
 }
 
-export function saveGraphLayout(nodes: readonly LayoutNode[], includeZ: boolean): void {
+export function saveGraphLayout(
+  nodes: readonly LayoutNode[],
+  dimension: GraphLayoutDimension,
+): void {
   if (typeof window === "undefined") return;
+  const includeZ = dimension === "3d";
   const store: GraphLayoutStore = {};
   for (const node of nodes) {
     if (!isFiniteNumber(node.x) || !isFiniteNumber(node.y)) continue;
@@ -57,7 +69,7 @@ export function saveGraphLayout(nodes: readonly LayoutNode[], includeZ: boolean)
         : { x: round1(node.x), y: round1(node.y) };
   }
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    window.localStorage.setItem(STORAGE_KEYS[dimension], JSON.stringify(store));
   } catch {
     // localStorage 不可用或配额超限时静默放弃持久化
   }
@@ -66,7 +78,9 @@ export function saveGraphLayout(nodes: readonly LayoutNode[], includeZ: boolean)
 export function clearGraphLayout(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.removeItem(STORAGE_KEYS["2d"]);
+    window.localStorage.removeItem(STORAGE_KEYS["3d"]);
   } catch {
     // 同上
   }

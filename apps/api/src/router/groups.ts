@@ -13,6 +13,8 @@ import {
   repositoryGroups,
   groupMembers,
   repositories,
+  userWatchedRepositories,
+  type Db,
 } from "@devscope/db";
 import { getOrCreateCurrentUserId } from "../current-user";
 import {
@@ -23,10 +25,39 @@ import {
   moveGroupMemberSchema,
   reorderGroupMembersSchema,
   reorderGroupsSchema,
-  repositoryGroupSchema,
-  repositorySchema,
 } from "@devscope/shared";
-import { eq, and, desc, count, inArray, notInArray, or, ilike, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
+
+async function requireOwnedGroup(db: Db, userId: number, groupId: number): Promise<void> {
+  const [group] = await db
+    .select({ id: repositoryGroups.id })
+    .from(repositoryGroups)
+    .where(and(eq(repositoryGroups.id, groupId), eq(repositoryGroups.userId, userId)))
+    .limit(1);
+
+  if (!group) {
+    throw new Error("分组不存在或无权访问");
+  }
+}
+
+async function requireOwnedRepositories(
+  db: Db,
+  userId: number,
+  repoIds: number[],
+): Promise<void> {
+  const uniqueRepoIds = [...new Set(repoIds)];
+  const rows = await db
+    .select({ repoId: userWatchedRepositories.repoId })
+    .from(userWatchedRepositories)
+    .where(and(
+      eq(userWatchedRepositories.userId, userId),
+      inArray(userWatchedRepositories.repoId, uniqueRepoIds),
+    ));
+
+  if (rows.length !== uniqueRepoIds.length) {
+    throw new Error("部分仓库不存在或无权访问");
+  }
+}
 
 // ============================================================================
 // 分组路由
@@ -279,6 +310,9 @@ export const groupMembersRouter = router({
     .input(addGroupMemberSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireOwnedGroup(db, userId, input.groupId);
+      await requireOwnedRepositories(db, userId, [input.repoId]);
 
       // 检查是否已存在
       const [existing] = await db
@@ -325,6 +359,8 @@ export const groupMembersRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireOwnedGroup(db, userId, input.groupId);
 
       await db
         .delete(groupMembers)
@@ -345,6 +381,10 @@ export const groupMembersRouter = router({
     .input(moveGroupMemberSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireOwnedGroup(db, userId, input.fromGroupId);
+      await requireOwnedGroup(db, userId, input.toGroupId);
+      await requireOwnedRepositories(db, userId, [input.repoId]);
 
       // 获取原成员记录
       const [member] = await db
@@ -390,6 +430,9 @@ export const groupMembersRouter = router({
     .input(reorderGroupMembersSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireOwnedGroup(db, userId, input.groupId);
+      await requireOwnedRepositories(db, userId, input.repoIds);
 
       await Promise.all(
         input.repoIds.map((repoId, index) =>
@@ -415,6 +458,9 @@ export const groupMembersRouter = router({
     .input(batchAddGroupMembersSchema)
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
+      const userId = await getOrCreateCurrentUserId(db);
+      await requireOwnedGroup(db, userId, input.groupId);
+      await requireOwnedRepositories(db, userId, input.repoIds);
 
       // 获取最大 orderIndex
       const [maxOrder] = await db
@@ -484,8 +530,9 @@ export const groupsQueryRouter = router({
    */
   getUngroupedRepos: publicProcedure.query(async ({ ctx }) => {
     const db = ctx.db;
+    const userId = await getOrCreateCurrentUserId(db);
 
-    // 单条 LEFT JOIN 查询，排除已分组的仓库，不返回 readme
+    // 用户仓库关联是可见性边界；只排除当前用户已经分组的仓库。
     return db
       .select({
         id: repositories.id,
@@ -500,12 +547,27 @@ export const groupsQueryRouter = router({
         language: repositories.language,
         license: repositories.license,
         lastFetchedAt: repositories.lastFetchedAt,
-        starredAt: repositories.starredAt,
-        note: repositories.note,
+        starredAt: userWatchedRepositories.starredAt,
+        note: userWatchedRepositories.notes,
       })
       .from(repositories)
-      .leftJoin(groupMembers, eq(groupMembers.repoId, repositories.id))
-      .where(and(eq(repositories.isReference, false), sql`${groupMembers.id} IS NULL`))
+      .innerJoin(
+        userWatchedRepositories,
+        and(
+          eq(userWatchedRepositories.repoId, repositories.id),
+          eq(userWatchedRepositories.userId, userId),
+        ),
+      )
+      .where(and(
+        eq(repositories.isReference, false),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM group_members member
+          INNER JOIN repository_groups owned_group ON owned_group.id = member.group_id
+          WHERE member.repo_id = ${repositories.id}
+            AND owned_group.user_id = ${userId}
+        )`,
+      ))
       .orderBy(desc(repositories.stars));
   }),
 

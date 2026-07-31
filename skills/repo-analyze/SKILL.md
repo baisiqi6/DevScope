@@ -39,7 +39,13 @@ printf '%s\n' vercel/next.js facebook/react \
   | npx tsx skills/repo-analyze/index.ts --batch
 ```
 
-当前批量 stdin 格式是每行一个 `owner/repo`，不能直接接收 `repo-fetch` 输出的 JSON。
+stdin 也可以直接接收 `repo-fetch` 输出的 JSON 数组。工具会读取其中的
+`repository.fullName`，并把采集结果作为有长度上限的分析上下文：
+
+```bash
+npx tsx skills/repo-fetch/index.ts vercel/next.js --include-issues \
+  | npx tsx skills/repo-analyze/index.ts
+```
 
 ## 选项
 
@@ -55,7 +61,7 @@ printf '%s\n' vercel/next.js facebook/react \
 | Provider          | 环境变量                                                        |
 | ----------------- | --------------------------------------------------------------- |
 | DeepSeek          | `DEEPSEEK_API_KEY`、可选 `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` |
-| OpenAI-compatible | `OPENAI_COMPATIBLE_API_KEY`、可选 `OPENAI_COMPATIBLE_BASE_URL`  |
+| OpenAI-compatible | `OPENAI_COMPATIBLE_API_KEY`、可选 `OPENAI_COMPATIBLE_BASE_URL` / `OPENAI_COMPATIBLE_MODEL` |
 
 未提供上述任一组 API Key 时，工具会明确报错并退出。
 

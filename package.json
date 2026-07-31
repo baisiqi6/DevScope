@@ -7,15 +7,15 @@
     "dev": "turbo run dev",
     "dev:clean": "node scripts/kill-ports.js && turbo run dev",
     "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck && pnpm exec tsc --noEmit -p skills/tsconfig.typecheck.json",
-    "test": "turbo run test",
+    "typecheck": "turbo run typecheck && tsc --noEmit -p skills/tsconfig.typecheck.json",
+    "test": "turbo run test && vitest --config skills/vitest.config.ts run skills/pipeline.test.ts",
     "clean": "turbo run clean",
     "kill-ports": "node scripts/kill-ports.js",
-    "db:generate": "pnpm --filter @devscope/db db:generate",
-    "db:migrate": "pnpm --filter @devscope/db db:migrate",
-    "db:push": "pnpm --filter @devscope/db db:push",
-    "db:studio": "pnpm --filter @devscope/db studio",
-    "build:check": "echo '验证 API 镜像构建...' && docker build -f apps/api/Dockerfile . -t devscope/api:check --quiet && echo 'API 镜像构建成功' && echo '验证 Worker 镜像构建...' && docker build -f apps/worker/Dockerfile . -t devscope/worker:check --quiet && echo 'Worker 镜像构建成功' && echo '验证 Web 镜像构建...' && docker build -f apps/web/Dockerfile . -t devscope/web:check --quiet && echo 'Web 镜像构建成功' && echo '所有镜像构建验证通过' && echo '清理验证镜像...' && docker rmi devscope/api:check devscope/worker:check devscope/web:check -f > /dev/null 2>&1 && docker builder prune -f > /dev/null 2>&1 && echo '清理完成'"
+    "db:generate": "corepack pnpm --filter @devscope/db db:generate",
+    "db:migrate": "corepack pnpm --filter @devscope/db db:migrate",
+    "db:push": "corepack pnpm --filter @devscope/db db:push",
+    "db:studio": "corepack pnpm --filter @devscope/db db:studio",
+    "build:check": "echo '验证 API 镜像构建...' && docker build -f apps/api/Dockerfile . -t devscope/api:check --quiet && echo 'API 镜像构建成功' && echo '验证 Worker 镜像构建...' && docker build -f apps/worker/Dockerfile . -t devscope/worker:check --quiet && echo 'Worker 镜像构建成功' && echo '验证 Web 镜像构建...' && docker build -f apps/web/Dockerfile . -t devscope/web:check --quiet && echo 'Web 镜像构建成功' && echo '所有镜像构建验证通过' && echo '清理验证镜像...' && docker rmi devscope/api:check devscope/worker:check devscope/web:check -f > /dev/null 2>&1 && echo '清理完成'"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
@@ -23,7 +23,8 @@
     "prettier": "^3.4.2",
     "tsx": "^4.19.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=20.0.0",

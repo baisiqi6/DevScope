@@ -5,7 +5,19 @@ import {
   repoChunks,
   repoRelationships,
   packageRepoMappings,
+  userWatchedRepositories,
 } from "./schema";
+import { detectTechStack, type TechStackNode } from "./tech-stack-catalog";
+
+export { detectTechStack } from "./tech-stack-catalog";
+
+function userRepositoryScope(userId: number) {
+  return sql`EXISTS (
+    SELECT 1 FROM user_watched_repositories user_repo
+    WHERE user_repo.repo_id = ${repositories.id}
+      AND user_repo.user_id = ${userId}
+  )`;
+}
 
 // ============================================================================
 // SBOM 解析
@@ -125,11 +137,11 @@ export async function poolRepoEmbedding(db: Db, repoId: number): Promise<boolean
   return true;
 }
 
-export async function backfillRepoEmbeddings(db: Db): Promise<number> {
+export async function backfillRepoEmbeddings(db: Db, userId: number): Promise<number> {
   const repos = await db
     .select({ id: repositories.id })
     .from(repositories)
-    .where(eq(repositories.isReference, false));
+    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
 
   let pooled = 0;
   for (const repo of repos) {
@@ -150,7 +162,8 @@ export interface SimilarityOptions {
 
 export async function recomputeSimilarityEdges(
   db: Db,
-  opts: SimilarityOptions = {}
+  userId: number,
+  opts: SimilarityOptions = {},
 ): Promise<number> {
   const topK = opts.topK ?? 8;
   const minScore = opts.minScore ?? 0.75;
@@ -161,7 +174,11 @@ export async function recomputeSimilarityEdges(
       embedding: repositories.embedding,
     })
     .from(repositories)
-    .where(and(eq(repositories.isReference, false), isNotNull(repositories.embedding)));
+    .where(and(
+      eq(repositories.isReference, false),
+      isNotNull(repositories.embedding),
+      userRepositoryScope(userId),
+    ));
 
   if (reposWithEmbedding.length === 0) return 0;
 
@@ -201,11 +218,15 @@ export async function recomputeSimilarityEdges(
   await db.transaction(async (tx) => {
     await tx
       .delete(repoRelationships)
-      .where(eq(repoRelationships.edgeType, "similarity"));
+      .where(and(
+        eq(repoRelationships.userId, userId),
+        eq(repoRelationships.edgeType, "similarity"),
+      ));
 
     if (edges.length > 0) {
       await tx.insert(repoRelationships).values(
         edges.map((e) => ({
+          userId,
           sourceRepoId: e.sourceRepoId,
           targetRepoId: e.targetRepoId,
           edgeType: "similarity" as const,
@@ -289,10 +310,10 @@ export interface DependencyEdgeOptions {
   delayMs?: number;
 }
 
-/** 基石依赖候选：外部目标被 ≥2 个采集仓库依赖才进入候选 */
-const REFERENCE_MIN_INDEGREE = 2;
-/** 基石依赖候选按 in-degree 降序封顶 Top N */
-const REFERENCE_TOP_N = 30;
+/** 对公共外部目标做 GitHub 重命名归一时的调用门槛，避免无界 API 请求。 */
+const CANONICALIZATION_MIN_INDEGREE = 2;
+/** 技术栈节点按使用仓库数降序封顶，避免图谱被细粒度框架节点淹没。 */
+const TECH_STACK_TOP_N = 30;
 
 interface BridgingPackage {
   system: string;
@@ -302,7 +323,8 @@ interface BridgingPackage {
 
 export async function recomputeDependencyEdges(
   db: Db,
-  opts: DependencyEdgeOptions = {}
+  userId: number,
+  opts: DependencyEdgeOptions = {},
 ): Promise<number> {
   const resolveMapping = opts.resolveMapping ?? resolveViaDepsDev;
   const delayMs = opts.delayMs ?? 50;
@@ -314,29 +336,37 @@ export async function recomputeDependencyEdges(
       sbomPackages: repositories.sbomPackages,
       isReference: repositories.isReference,
     })
-    .from(repositories);
+    .from(repositories)
+    .where(userRepositoryScope(userId));
 
   // 只有采集仓库（is_reference=false）的 SBOM 作为依赖解析起点
   const collectedRepos = allRepos.filter((r) => !r.isReference);
 
   // fullName(小写) -> { id, isReference }，用于判断依赖目标是否已采集
   const repoByFullName = new Map(
-    allRepos.map((r) => [r.fullName.toLowerCase(), { id: r.id, isReference: r.isReference }])
+    allRepos.map((r) => [r.fullName.toLowerCase(), { id: r.id, isReference: r.isReference }]),
   );
 
-  // ---- 第一步：SBOM 包 → 依赖目标（缓存优先的 deps.dev 映射）----
+  // ---- 第一步：SBOM 包 → 技术栈 + 仓库依赖目标（后者缓存优先走 deps.dev）----
   interface RawDep {
     sourceRepoId: number;
     targetFullName: string;
     pkg: BridgingPackage;
   }
   const rawDeps: RawDep[] = [];
+  const rawStackDeps: Array<{ sourceRepoId: number; stack: TechStackNode; pkg: BridgingPackage }> =
+    [];
 
   for (const repo of collectedRepos) {
     const packages = repo.sbomPackages ?? [];
     for (const pkg of packages) {
       // 历史持久化数据无 system 字段，默认按 npm 处理
       const system = pkg.system ?? "npm";
+      const bridgingPackage = { system, name: pkg.name, version: pkg.version };
+      const stack = detectTechStack(bridgingPackage);
+      if (stack) {
+        rawStackDeps.push({ sourceRepoId: repo.id, stack, pkg: bridgingPackage });
+      }
       let sourceRepo: string | null = null;
 
       const cached = await db
@@ -346,8 +376,8 @@ export async function recomputeDependencyEdges(
           and(
             eq(packageRepoMappings.system, system),
             eq(packageRepoMappings.packageName, pkg.name),
-            eq(packageRepoMappings.packageVersion, pkg.version)
-          )
+            eq(packageRepoMappings.packageVersion, pkg.version),
+          ),
         )
         .limit(1);
 
@@ -359,7 +389,7 @@ export async function recomputeDependencyEdges(
         } catch (err) {
           console.warn(
             `[RepoGraph] deps.dev resolve failed for ${system}:${pkg.name}@${pkg.version}:`,
-            err instanceof Error ? err.message : err
+            err instanceof Error ? err.message : err,
           );
           sourceRepo = null;
         }
@@ -391,7 +421,7 @@ export async function recomputeDependencyEdges(
       rawDeps.push({
         sourceRepoId: repo.id,
         targetFullName: sourceRepo,
-        pkg: { system, name: pkg.name, version: pkg.version },
+        pkg: bridgingPackage,
       });
     }
   }
@@ -417,8 +447,8 @@ export async function recomputeDependencyEdges(
     }
   }
 
-  // ---- 第三步：统计外部目标的 in-degree（依赖它的不同采集仓库数）----
-  const computeIndegree = (): Map<string, Set<number>> => {
+  // ---- 第三步：只为“连接到已采集仓库”保留 SOURCE_REPO 解析结果 ----
+  const computeExternalIndegree = (): Map<string, Set<number>> => {
     const indegree = new Map<string, Set<number>>();
     for (const dep of grouped.values()) {
       const inWorkspace = repoByFullName.get(dep.targetFullNameLower);
@@ -434,15 +464,15 @@ export async function recomputeDependencyEdges(
     return indegree;
   };
 
-  let indegreeByTarget = computeIndegree();
+  const externalIndegreeByTarget = computeExternalIndegree();
 
-  // ---- 第三点半：对 ≥门槛 的候选做重命名归一（有界，最多几十次 API 调用）----
+  // 对公共外部目标做重命名归一（有界），用于识别其是否其实是已采集仓库。
   // deps.dev 可能返回过期 fullName（如 facebook/react），归一后可能与工作区采集行
-  // 合并（react/react）或与其他外部候选合并，需重写目标后重算 in-degree
+  // 合并（react/react）；外部 SOURCE_REPO 本身不再生成“基石依赖”节点。
   if (opts.canonicalize) {
     const renameMap = new Map<string, string>();
-    for (const [targetLower] of [...indegreeByTarget.entries()].filter(
-      ([, sources]) => sources.size >= REFERENCE_MIN_INDEGREE
+    for (const [targetLower] of [...externalIndegreeByTarget.entries()].filter(
+      ([, sources]) => sources.size >= CANONICALIZATION_MIN_INDEGREE,
     )) {
       try {
         const canonical = (await opts.canonicalize(targetLower)).toLowerCase();
@@ -461,62 +491,103 @@ export async function recomputeDependencyEdges(
           dep.targetFullNameLower = renamed;
         }
       }
-      indegreeByTarget = computeIndegree();
     }
   }
 
-  // ---- 第四步：in-degree ≥2 的外部目标按 in-degree 降序取 Top N，upsert 基石轻量行 ----
-  const candidates = [...indegreeByTarget.entries()]
-    .filter(([, sources]) => sources.size >= REFERENCE_MIN_INDEGREE)
-    .sort((a, b) => b[1].size - a[1].size)
-    .slice(0, REFERENCE_TOP_N);
+  // ---- 第四步：按 (源仓库, 技术栈) 聚合，生成稳定的技术栈轻量行 ----
+  interface GroupedStackDep {
+    sourceRepoId: number;
+    stack: TechStackNode;
+    packages: BridgingPackage[];
+  }
+  const groupedStacks = new Map<string, GroupedStackDep>();
+  for (const dep of rawStackDeps) {
+    const key = `${dep.sourceRepoId}->${dep.stack.slug}`;
+    let entry = groupedStacks.get(key);
+    if (!entry) {
+      entry = { sourceRepoId: dep.sourceRepoId, stack: dep.stack, packages: [] };
+      groupedStacks.set(key, entry);
+    }
+    const pkgKey = `${dep.pkg.system}:${dep.pkg.name}@${dep.pkg.version}`;
+    if (!entry.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
+      entry.packages.push(dep.pkg);
+    }
+  }
+
+  const stackUsage = new Map<string, { stack: TechStackNode; sources: Set<number> }>();
+  for (const dep of groupedStacks.values()) {
+    let usage = stackUsage.get(dep.stack.slug);
+    if (!usage) {
+      usage = { stack: dep.stack, sources: new Set() };
+      stackUsage.set(dep.stack.slug, usage);
+    }
+    usage.sources.add(dep.sourceRepoId);
+  }
+  const selectedStacks = [...stackUsage.values()]
+    .sort((a, b) => b.sources.size - a.sources.size || a.stack.name.localeCompare(b.stack.name))
+    .slice(0, TECH_STACK_TOP_N);
 
   const referenceIdByLower = new Map<string, number>();
-  for (const [targetLower] of candidates) {
-    // 统一小写写入，避免 deps.dev 返回大小写差异导致重复行
-    const fullName = targetLower;
-    const slash = fullName.indexOf("/");
-    const owner = slash >= 0 ? fullName.slice(0, slash) : fullName;
-    const name = slash >= 0 ? fullName.slice(slash + 1) : fullName;
+  for (const { stack } of selectedStacks) {
+    const fullName = `tech-stack/${stack.slug}`;
     const [row] = await db
       .insert(repositories)
       .values({
         fullName,
-        name,
-        owner,
-        url: `https://github.com/${fullName}`,
+        name: stack.name,
+        owner: "tech-stack",
+        url: stack.url,
+        description: `${stack.name} 技术栈`,
         isReference: true,
-        // 基石行不参与向量化。现有枚举没有“不适用”，这里选用终态 "completed"
+        // 技术栈行不参与向量化。现有枚举没有“不适用”，这里选用终态 "completed"
         // 作为“不再处理”的哨兵值——调度器仅拾取 embeddingStatus='pending'，
         // 因此该状态不会触发任何 embedding 处理。
         embeddingStatus: "completed",
       })
       .onConflictDoUpdate({
         target: repositories.fullName,
-        set: { isReference: true, updatedAt: new Date() },
+        set: {
+          name: stack.name,
+          owner: "tech-stack",
+          url: stack.url,
+          description: `${stack.name} 技术栈`,
+          isReference: true,
+          updatedAt: new Date(),
+        },
       })
       .returning({ id: repositories.id });
-    referenceIdByLower.set(targetLower, row.id);
+    referenceIdByLower.set(stack.slug, row.id);
+    await db
+      .insert(userWatchedRepositories)
+      .values({
+        userId,
+        repoId: row.id,
+        repoFullName: fullName,
+        enableDailyReport: false,
+      })
+      .onConflictDoUpdate({
+        target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+        set: { repoFullName: fullName, updatedAt: new Date() },
+      });
   }
 
-  // ---- 第五步：写边——目标为采集仓库或入选基石行；in-degree <2 的外部依赖丢弃 ----
+  // ---- 第五步：写边——已采集仓库保持直连；技术栈使用目录解析 ----
   // 重命名归一可能把原本不同的目标合并为同一 fullName，
   // 必须按 (source, target) 二次合并，否则违反唯一约束 (source,target,edgeType)
-  const edgeByPair = new Map<string, {
-    sourceRepoId: number;
-    targetRepoId: number;
-    packages: BridgingPackage[];
-  }>();
+  const edgeByPair = new Map<
+    string,
+    {
+      sourceRepoId: number;
+      targetRepoId: number;
+      packages: BridgingPackage[];
+      resolvedBy: "deps.dev" | "tech-stack-catalog";
+    }
+  >();
 
   for (const dep of grouped.values()) {
     const workspace = repoByFullName.get(dep.targetFullNameLower);
-    let targetRepoId: number | undefined;
-    if (workspace && !workspace.isReference) {
-      targetRepoId = workspace.id;
-    } else {
-      targetRepoId = referenceIdByLower.get(dep.targetFullNameLower);
-    }
-    if (targetRepoId === undefined) continue;
+    if (!workspace || workspace.isReference) continue;
+    const targetRepoId = workspace.id;
     if (targetRepoId === dep.sourceRepoId) continue;
 
     const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
@@ -529,7 +600,37 @@ export async function recomputeDependencyEdges(
         }
       }
     } else {
-      edgeByPair.set(pairKey, { sourceRepoId: dep.sourceRepoId, targetRepoId, packages: [...dep.packages] });
+      edgeByPair.set(pairKey, {
+        sourceRepoId: dep.sourceRepoId,
+        targetRepoId,
+        packages: [...dep.packages],
+        resolvedBy: "deps.dev",
+      });
+    }
+  }
+
+  const selectedStackSlugs = new Set(selectedStacks.map(({ stack }) => stack.slug));
+  for (const dep of groupedStacks.values()) {
+    if (!selectedStackSlugs.has(dep.stack.slug)) continue;
+    const targetRepoId = referenceIdByLower.get(dep.stack.slug);
+    if (targetRepoId === undefined) continue;
+
+    const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
+    const existing = edgeByPair.get(pairKey);
+    if (existing) {
+      for (const pkg of dep.packages) {
+        const pkgKey = `${pkg.system}:${pkg.name}@${pkg.version}`;
+        if (!existing.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
+          existing.packages.push(pkg);
+        }
+      }
+    } else {
+      edgeByPair.set(pairKey, {
+        sourceRepoId: dep.sourceRepoId,
+        targetRepoId,
+        packages: [...dep.packages],
+        resolvedBy: "tech-stack-catalog",
+      });
     }
   }
   const edges = [...edgeByPair.values()];
@@ -538,11 +639,14 @@ export async function recomputeDependencyEdges(
   await db.transaction(async (tx) => {
     await tx
       .delete(repoRelationships)
-      .where(eq(repoRelationships.edgeType, "dependency"));
+      .where(
+        and(eq(repoRelationships.userId, userId), eq(repoRelationships.edgeType, "dependency")),
+      );
 
     if (edges.length > 0) {
       await tx.insert(repoRelationships).values(
         edges.map((e) => ({
+          userId,
           sourceRepoId: e.sourceRepoId,
           targetRepoId: e.targetRepoId,
           edgeType: "dependency" as const,
@@ -550,16 +654,29 @@ export async function recomputeDependencyEdges(
           evidence: {
             kind: "dependency",
             packages: e.packages,
-            resolvedBy: "deps.dev",
+            resolvedBy: e.resolvedBy,
           },
-        }))
+        })),
       );
     }
 
-    // 清理不再被任何边引用的失效基石行（如重命名归一后失去存在意义的旧名行）
+    // 先清理当前用户不再使用的 reference 关联，再清理全局无人引用的轻量实体。
+    await tx.execute(sql`
+      DELETE FROM user_watched_repositories user_repo
+      USING repositories repo
+      WHERE user_repo.repo_id = repo.id
+        AND user_repo.user_id = ${userId}
+        AND repo.is_reference = true
+        AND NOT EXISTS (
+          SELECT 1 FROM repo_relationships edge
+          WHERE edge.user_id = ${userId}
+            AND (edge.source_repo_id = repo.id OR edge.target_repo_id = repo.id)
+        )
+    `);
     await tx.execute(sql`
       DELETE FROM repositories
       WHERE is_reference = true
+        AND id NOT IN (SELECT repo_id FROM user_watched_repositories)
         AND id NOT IN (SELECT source_repo_id FROM repo_relationships)
         AND id NOT IN (SELECT target_repo_id FROM repo_relationships)
     `);
@@ -590,7 +707,7 @@ export interface RepoGraphDataEdge {
   score: number | null;
 }
 
-export async function getRepoGraphData(db: Db): Promise<{
+export async function getRepoGraphData(db: Db, userId: number): Promise<{
   nodes: RepoGraphDataNode[];
   edges: RepoGraphDataEdge[];
 }> {
@@ -604,7 +721,8 @@ export async function getRepoGraphData(db: Db): Promise<{
       description: repositories.description,
       isReference: repositories.isReference,
     })
-    .from(repositories);
+    .from(repositories)
+    .where(userRepositoryScope(userId));
 
   const nodes: RepoGraphDataNode[] = repos.map((r) => ({
     id: String(r.id),
@@ -642,7 +760,8 @@ export async function getRepoGraphData(db: Db): Promise<{
       type: repoRelationships.edgeType,
       score: repoRelationships.score,
     })
-    .from(repoRelationships);
+    .from(repoRelationships)
+    .where(eq(repoRelationships.userId, userId));
 
   const edges: RepoGraphDataEdge[] = storedEdges.map((e) => ({
     source: String(e.source),
@@ -681,14 +800,18 @@ export interface SbomBackfillOptions {
  * 覆盖两类历史数据：sbom_packages 为 null（SBOM 持久化前采集），
  * 以及包元素无 system 字段（多生态解析前的 npm-only 遗留，pypi 等被丢弃）。
  */
-export async function backfillSbomPackages(db: Db, opts: SbomBackfillOptions = {}): Promise<number> {
+export async function backfillSbomPackages(
+  db: Db,
+  userId: number,
+  opts: SbomBackfillOptions = {},
+): Promise<number> {
   if (!opts.fetchSbom) return 0;
   const delayMs = opts.delayMs ?? 100;
 
   const rows = await db
     .select({ id: repositories.id, fullName: repositories.fullName, sbomPackages: repositories.sbomPackages })
     .from(repositories)
-    .where(eq(repositories.isReference, false));
+    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
 
   const missing = rows.filter(
     (r) => r.sbomPackages == null || r.sbomPackages.some((p) => !p.system)
@@ -724,43 +847,22 @@ export async function backfillSbomPackages(db: Db, opts: SbomBackfillOptions = {
 
 export async function rebuildRepoGraph(
   db: Db,
+  userId: number,
   opts: {
     resolveMapping?: ResolveMappingFn;
     canonicalize?: (fullName: string) => Promise<string>;
     fetchSbom?: (fullName: string) => Promise<Record<string, unknown> | null>;
   } = {}
 ): Promise<{ similarityEdges: number; dependencyEdges: number; pooledRepos: number; sbomBackfilled: number }> {
-  const pooledRepos = await backfillRepoEmbeddings(db);
-  const similarityEdges = await recomputeSimilarityEdges(db);
-  const sbomBackfilled = await backfillSbomPackages(db, { fetchSbom: opts.fetchSbom });
-  const dependencyEdges = await recomputeDependencyEdges(db, {
+  const pooledRepos = await backfillRepoEmbeddings(db, userId);
+  const similarityEdges = await recomputeSimilarityEdges(db, userId);
+  const sbomBackfilled = await backfillSbomPackages(db, userId, { fetchSbom: opts.fetchSbom });
+  const dependencyEdges = await recomputeDependencyEdges(db, userId, {
     resolveMapping: opts.resolveMapping,
     canonicalize: opts.canonicalize,
   });
 
   return { similarityEdges, dependencyEdges, pooledRepos, sbomBackfilled };
-}
-
-// ============================================================================
-// 防抖触发器
-// ============================================================================
-
-let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
-const DEBOUNCE_MS = 5 * 60 * 1000;
-
-export function scheduleSimilarityRecompute(db: Db): void {
-  if (recomputeTimer) {
-    clearTimeout(recomputeTimer);
-  }
-  recomputeTimer = setTimeout(async () => {
-    recomputeTimer = null;
-    try {
-      const count = await recomputeSimilarityEdges(db);
-      console.log(`[RepoGraph] Debounced similarity recompute done: ${count} edges`);
-    } catch (err) {
-      console.error("[RepoGraph] Debounced similarity recompute failed:", err);
-    }
-  }, DEBOUNCE_MS);
 }
 
 function sleep(ms: number): Promise<void> {

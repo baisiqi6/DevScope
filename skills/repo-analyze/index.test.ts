@@ -22,6 +22,7 @@ import {
   RepoAnalyzeInputSchema,
   analyzeRepository,
   analyzeRepositories,
+  parseAnalyzeStdin,
   type AnalysisResult,
 } from "./index";
 import { repositoryAnalysisSchema } from "@devscope/shared";
@@ -163,6 +164,33 @@ describe("repo-analyze", () => {
 
       // 空字符串是有效的字符串
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("stdin 管道契约", () => {
+    it("接受 repo-fetch 输出的 JSON 数组并携带采集上下文", () => {
+      const [input] = parseAnalyzeStdin(JSON.stringify([{
+        repository: { fullName: "vercel/next.js", stars: 100 },
+        issues: [{ number: 1, title: "bug" }],
+        fetchedAt: "2026-07-29T00:00:00.000Z",
+      }]));
+
+      expect(input.repo).toBe("vercel/next.js");
+      expect(input.context).toContain("repo-fetch 已获取的数据");
+      expect(input.context).toContain("\"stars\":100");
+    });
+
+    it("继续支持逐行 owner/repo 输入", () => {
+      expect(parseAnalyzeStdin("vercel/next.js\nfacebook/react", "补充上下文"))
+        .toEqual([
+          { repo: "vercel/next.js", context: "补充上下文" },
+          { repo: "facebook/react", context: "补充上下文" },
+        ]);
+    });
+
+    it("拒绝缺少仓库标识的 JSON", () => {
+      expect(() => parseAnalyzeStdin(JSON.stringify([{ healthScore: 80 }])))
+        .toThrow("缺少 repo 或 repository.fullName");
     });
   });
 

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   claimNextJob,
   enqueueJob,
+  enqueueRestartableJob,
   failJob,
   recoverExpiredJobs,
+  renewJobLease,
 } from "./jobs";
 
 describe("持久任务队列", () => {
@@ -49,6 +51,72 @@ describe("持久任务队列", () => {
       type: "radar.discover.github",
       idempotencyKey: "radar:2026-07-16",
     })).resolves.toBe(existing);
+  });
+
+  it("可重启任务在终态时原子重排队", async () => {
+    const restarted = createJob({
+      type: "graph.rebuild",
+      idempotencyKey: "graph:rebuild",
+      status: "queued",
+      payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+    });
+    const insertReturning = vi.fn().mockResolvedValue([]);
+    const updateReturning = vi.fn().mockResolvedValue([restarted]);
+    const db = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({ returning: insertReturning })),
+        })),
+      })),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(() => ({ returning: updateReturning })),
+        })),
+      })),
+    };
+
+    await expect(enqueueRestartableJob(db as any, {
+      userId: 7,
+      type: "graph.rebuild",
+      idempotencyKey: "graph:rebuild",
+      payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+    })).resolves.toEqual({ job: restarted, enqueued: true });
+  });
+
+  it("可重启任务活跃时返回现有任务", async () => {
+    const existing = createJob({
+      type: "analysis.health",
+      idempotencyKey: "analysis:health:owner/repo",
+      status: "running",
+      payload: { executionId: "execution-existing" },
+    });
+    const insertReturning = vi.fn().mockResolvedValue([]);
+    const updateReturning = vi.fn().mockResolvedValue([]);
+    const selectLimit = vi.fn().mockResolvedValue([existing]);
+    const db = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({ returning: insertReturning })),
+        })),
+      })),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(() => ({ returning: updateReturning })),
+        })),
+      })),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: selectLimit })),
+        })),
+      })),
+    };
+
+    await expect(enqueueRestartableJob(db as any, {
+      userId: 7,
+      type: "analysis.health",
+      idempotencyKey: "analysis:health:owner/repo",
+      payload: { executionId: "execution-new" },
+    })).resolves.toEqual({ job: existing, enqueued: false });
   });
 
   it("使用租约领取可执行任务并增加 attempt", async () => {
@@ -138,6 +206,21 @@ describe("持久任务队列", () => {
     await expect(recoverExpiredJobs({ update } as any)).resolves.toBe(3);
     expect(firstSet).toHaveBeenCalledWith(expect.objectContaining({ status: "retry_wait" }));
     expect(secondSet).toHaveBeenCalledWith(expect.objectContaining({ status: "dead" }));
+  });
+
+  it("仅由当前租约持有者续租", async () => {
+    const renewed = createJob({ status: "running", leaseOwner: "worker-1" });
+    const returning = vi.fn().mockResolvedValue([renewed]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const db = { update: vi.fn(() => ({ set })) };
+    const now = new Date("2026-07-16T00:00:00.000Z");
+
+    await expect(renewJobLease(db as any, 1, "worker-1", 60_000, now)).resolves.toBe(renewed);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      leaseExpiresAt: new Date("2026-07-16T00:01:00.000Z"),
+      updatedAt: now,
+    }));
   });
 });
 

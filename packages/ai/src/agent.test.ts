@@ -41,6 +41,21 @@ describe("DevScopeAgent", () => {
     expect(createAgent()).toBeInstanceOf(DevScopeAgent);
   });
 
+  it("Agent 与 AIProvider 使用相同的模型环境变量优先级", async () => {
+    vi.stubEnv("OPENAI_COMPATIBLE_MODEL", "compatible-model");
+    vi.stubEnv("DEEPSEEK_MODEL", "deepseek-model");
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: "ok", tool_calls: undefined } }],
+    });
+
+    await createAgent().run("test");
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "compatible-model" }),
+      undefined,
+    );
+  });
+
   it("返回无工具调用的文本响应", async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [{ message: { content: "你好！", tool_calls: undefined } }],
@@ -86,6 +101,43 @@ describe("DevScopeAgent", () => {
 
     expect(result.output).toBe("结果是 4");
     expect(result.toolCalls).toEqual([{ tool: "custom_tool", input: { value: 2 }, output: { result: 4 } }]);
+  });
+
+  it("达到工具轮次上限后停止", async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_loop",
+            type: "function",
+            function: { name: "loop_tool", arguments: JSON.stringify({}) },
+          }],
+        },
+      }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+
+    const agent = createAgent({ maxToolRounds: 2 });
+    agent.registerTool({
+      name: "loop_tool",
+      description: "始终要求继续调用的测试工具",
+      inputSchema: z.object({}),
+      handler: async () => ({ ok: true }),
+    });
+
+    await expect(agent.run("循环")).rejects.toThrow("exceeded 2 tool rounds");
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("将 AbortSignal 传给模型请求", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(createAgent().run("取消", controller.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });
 

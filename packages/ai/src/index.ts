@@ -10,6 +10,7 @@
 
 import OpenAI from "openai";
 import { z } from "zod";
+import { resolveOpenAICompatibleConfig } from "./config.js";
 
 // ============================================================================
 // 类型定义
@@ -112,18 +113,13 @@ export class AIProvider {
     this.providerType = config.provider || "openai-compatible";
     this.maxTokens = config.maxTokens || 4096;
 
-    // 支持 model 和 defaultModel 两种属性名
-    const model = config.model || config.defaultModel;
+    const resolvedConfig = resolveOpenAICompatibleConfig(config);
 
-    const apiKey = config.apiKey || process.env.OPENAI_COMPATIBLE_API_KEY || process.env.DEEPSEEK_API_KEY;
-    const baseURL = config.baseURL || process.env.OPENAI_COMPATIBLE_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-
-    if (!apiKey) {
-      throw new Error("API Key is required. Set OPENAI_COMPATIBLE_API_KEY or DEEPSEEK_API_KEY environment variable.");
-    }
-
-    this.openaiClient = new OpenAI({ apiKey, baseURL });
-    this.defaultModel = model || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+    this.openaiClient = new OpenAI({
+      apiKey: resolvedConfig.apiKey,
+      baseURL: resolvedConfig.baseURL,
+    });
+    this.defaultModel = resolvedConfig.model;
 
     // 打印初始化信息（使用 stderr 避免污染 stdout）
     console.error(`[AIProvider] Initialized with provider: ${this.providerType}, model: ${this.defaultModel}`);

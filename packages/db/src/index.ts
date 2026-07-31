@@ -109,6 +109,11 @@ export * from "./report-storage";
 export * from "./workflow-reports";
 
 /**
+ * 可由 API 交互请求或持久 Worker 复用的 Agent 工作流执行器
+ */
+export * from "./agent-workflow";
+
+/**
  * 持久任务队列
  */
 export * from "./jobs";

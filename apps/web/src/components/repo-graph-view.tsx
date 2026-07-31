@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 import type { RepoGraphRendererProps } from "@/components/repo-graph-canvas";
+import type { GraphRendererMode } from "@/lib/graph-renderer-mode";
 
 function GraphLoading() {
   return (
@@ -24,36 +24,11 @@ const RepoGraphCanvas3D = dynamic(() => import("@/components/repo-graph-canvas-3
   loading: GraphLoading,
 });
 
-function supportsWebGL(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
+interface RepoGraphViewProps extends RepoGraphRendererProps {
+  mode: GraphRendererMode;
 }
 
-interface RenderEnv {
-  webgl: boolean;
-  coarse: boolean;
-}
-
-/**
- * 渲染器选择：桌面且 WebGL 可用时走 3D 星图；
- * reduced-motion、触摸设备、窄视口或 WebGL 不可用时静默回退 2D。
- */
-export default function RepoGraphView(props: RepoGraphRendererProps) {
-  const [env, setEnv] = useState<RenderEnv | null>(null);
-
-  useEffect(() => {
-    setEnv({
-      webgl: supportsWebGL(),
-      coarse: window.matchMedia("(pointer: coarse)").matches,
-    });
-  }, []);
-
-  if (!env) return <GraphLoading />;
-
-  const use3D = env.webgl && !props.reducedMotion && !props.isMobile && !env.coarse;
-  return use3D ? <RepoGraphCanvas3D {...props} /> : <RepoGraphCanvas {...props} />;
+/** 条件渲染会卸载未使用的渲染器，确保 3D 的 WebGL 与 RAF 不在后台继续运行。 */
+export default function RepoGraphView({ mode, ...props }: RepoGraphViewProps) {
+  return mode === "3d" ? <RepoGraphCanvas3D {...props} /> : <RepoGraphCanvas {...props} />;
 }

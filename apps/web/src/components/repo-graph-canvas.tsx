@@ -100,7 +100,7 @@ export default function RepoGraphCanvas({
 
   useEffect(() => {
     fittedRef.current = false;
-    const stored = loadGraphLayout();
+    const stored = loadGraphLayout("2d");
     for (const node of nodes) {
       const pos = stored[node.fullName];
       if (pos) {
@@ -143,7 +143,7 @@ export default function RepoGraphCanvas({
 
       ctx.globalAlpha = dimmed ? 0.15 : 1;
 
-      // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色
+      // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色
       let fill: string;
       if (node.kind === "reference") {
         fill = oklch(palette.warning, 0.9);
@@ -200,7 +200,7 @@ export default function RepoGraphCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillStyle = oklch(palette.foreground, 0.92);
-        ctx.fillText(node.fullName, x, y + r + 3 / globalScale);
+        ctx.fillText(node.kind === "reference" ? node.name : node.fullName, x, y + r + 3 / globalScale);
       }
 
       ctx.globalAlpha = 1;
@@ -306,13 +306,13 @@ export default function RepoGraphCanvas({
     (node: NodeObject<RepoGraphNode>) => {
       node.fx = node.x;
       node.fy = node.y;
-      saveGraphLayout(nodes, false);
+      saveGraphLayout(nodes, "2d");
     },
     [nodes]
   );
 
   const handleEngineStop = useCallback(() => {
-    saveGraphLayout(nodes, false);
+    saveGraphLayout(nodes, "2d");
     if (fittedRef.current) return;
     fittedRef.current = true;
     fgRef.current?.zoomToFit(reducedMotion ? 0 : 400, 60);

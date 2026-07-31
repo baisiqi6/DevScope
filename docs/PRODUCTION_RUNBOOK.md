@@ -38,6 +38,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 自动部署工作流目前只允许手动触发。推荐过程：
 
+> 根目录 `deploy.sh` 已停用，只保留失败提示。它不是生产入口，也不得绕过本手册恢复旧的一键部署行为。
+
 1. 确认目标提交和镜像已通过 CI；
 2. 备份生产 `.env`、Nginx 配置和必要数据；
 3. 使用 `git pull --ff-only` 更新，不在服务器直接合并；
@@ -53,6 +55,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 `true`。工作流会先把 PostgreSQL custom-format 备份写入
 `/home/devscope/backups/devscope/`，再显式执行 `db:migrate`。未应用迁移时，Worker schema
 检查会阻止部署继续。
+
+迁移 `0004_tidy_giant_man.sql` 会去重并重建用户仓库唯一约束、回填现有仓库关联和图边
+`userId`、迁移备注/star 时间，并移除历史外键列错误的 `serial` defaults/sequences。执行前必须
+确认备份可恢复；执行后抽查仓库列表、备注、图谱和 workflow 历史，再启动 Worker。
 
 ## 访问控制
 

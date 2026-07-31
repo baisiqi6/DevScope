@@ -238,7 +238,7 @@ describe("report-generate", () => {
       });
 
       expect(report.type).toBe("summary");
-      expect(report.title).toBe("Open Source Analysis Report");
+      expect(report.title).toBe("测试报告");
       expect(report.sections).toBeDefined();
       expect(report.generatedAt).toBeDefined();
     });
@@ -252,6 +252,7 @@ describe("report-generate", () => {
       });
 
       expect(report.type).toBe("detailed");
+      expect(report.title).toBe("详细报告");
       // detailed 应该包含额外的详细章节
       const hasDetailSection = report.sections.some(
         (s) => s.title === "详细分析"
@@ -270,6 +271,7 @@ describe("report-generate", () => {
       });
 
       expect(report.type).toBe("comparison");
+      expect(report.title).toBe("对比报告");
       const hasComparisonSection = report.sections.some(
         (s) => s.title === "对比分析"
       );
@@ -326,7 +328,7 @@ describe("report-generate", () => {
         analyses: [],
       });
 
-      expect(report.title).toBe("Empty Report");
+      expect(report.title).toBe("空报告");
       expect(report.summary).toBe("没有可分析的数据");
       expect(report.metadata.totalRepositories).toBe(0);
       expect(report.metadata.averageHealthScore).toBe(0);

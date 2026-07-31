@@ -74,10 +74,10 @@ export interface ReportMetadata {
 /**
  * 生成汇总报告
  */
-function generateSummaryReport(data: any[]): Report {
+function generateSummaryReport(data: any[], title: string): Report {
   if (data.length === 0) {
     return {
-      title: "Empty Report",
+      title,
       type: "summary",
       summary: "没有可分析的数据",
       sections: [],
@@ -140,7 +140,7 @@ function generateSummaryReport(data: any[]): Report {
   }
 
   return {
-    title: "Open Source Analysis Report",
+    title,
     type: "summary",
     summary,
     sections,
@@ -190,13 +190,13 @@ export function generateReport(
 
   switch (parsed.type) {
     case "summary":
-      return generateSummaryReport(parsed.analyses);
+      return generateSummaryReport(parsed.analyses, parsed.title);
     case "detailed":
       return generateDetailedReport(parsed);
     case "comparison":
-      return generateComparisonReport(parsed.analyses);
+      return generateComparisonReport(parsed.analyses, parsed.title);
     default:
-      return generateSummaryReport(parsed.analyses);
+      return generateSummaryReport(parsed.analyses, parsed.title);
   }
 }
 
@@ -204,7 +204,7 @@ export function generateReport(
  * 生成详细报告
  */
 function generateDetailedReport(input: z.infer<typeof ReportInputSchema>): Report {
-  const summary = generateSummaryReport(input.analyses);
+  const summary = generateSummaryReport(input.analyses, input.title);
 
   // 为每个仓库生成详细分析
   const detailedSections: ReportSection[] = [];
@@ -279,8 +279,8 @@ function generateDetailedReport(input: z.infer<typeof ReportInputSchema>): Repor
 /**
  * 生成对比报告
  */
-function generateComparisonReport(data: any[]): Report {
-  const summary = generateSummaryReport(data);
+function generateComparisonReport(data: any[], title: string): Report {
+  const summary = generateSummaryReport(data, title);
 
   return {
     ...summary,

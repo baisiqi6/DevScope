@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeJob, GITHUB_DISCOVERY_JOB } from "./worker";
+import {
+  executeJob,
+  GITHUB_DISCOVERY_JOB,
+} from "./worker";
+import { GRAPH_REBUILD_JOB, HEALTH_ANALYSIS_JOB } from "@devscope/db";
 
 describe("Worker 任务执行", () => {
   it("将 GitHub Search 结果写入用户候选池", async () => {
@@ -51,6 +55,58 @@ describe("Worker 任务执行", () => {
 
     await expect(executeJob({} as any, createJob({ payload: { limit: 0 } })))
       .rejects.toThrow();
+  });
+
+  it("执行持久健康分析并复用既有 execution", async () => {
+    const runHealthAnalysis = vi.fn().mockResolvedValue({
+      executionId: "550e8400-e29b-41d4-a716-446655440000",
+      report: { reportId: "report-1" },
+      reportPath: "",
+    });
+    const job = createJob({
+      type: HEALTH_ANALYSIS_JOB,
+      idempotencyKey: "analysis:health:owner/repo",
+      payload: {
+        executionId: "550e8400-e29b-41d4-a716-446655440000",
+        repoFullName: "owner/repo",
+      },
+    });
+
+    await expect(executeJob({} as any, job, { runHealthAnalysis })).resolves.toEqual({
+      executionId: "550e8400-e29b-41d4-a716-446655440000",
+      reportId: "report-1",
+    });
+    expect(runHealthAnalysis).toHaveBeenCalledWith(
+      expect.anything(),
+      7,
+      { repos: ["owner/repo"], analysisType: "health_report" },
+      {},
+      {
+        executionId: "550e8400-e29b-41d4-a716-446655440000",
+        resumeExecution: true,
+      },
+    );
+  });
+
+  it("执行持久图谱重建", async () => {
+    const rebuildGraph = vi.fn().mockResolvedValue({
+      similarityEdges: 3,
+      dependencyEdges: 4,
+      pooledRepos: 5,
+      sbomBackfilled: 2,
+    });
+    const job = createJob({
+      type: GRAPH_REBUILD_JOB,
+      idempotencyKey: "graph:rebuild",
+      payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+    });
+
+    await expect(executeJob({} as any, job, { rebuildGraph })).resolves.toEqual({
+      similarityEdges: 3,
+      dependencyEdges: 4,
+      pooledRepos: 5,
+      sbomBackfilled: 2,
+    });
   });
 });
 

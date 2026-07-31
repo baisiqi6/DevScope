@@ -115,11 +115,12 @@ cat repos.txt | npx tsx skills/repo-fetch/index.ts --batch
 ### 与分析工具配合
 
 ```bash
-npx tsx skills/repo-fetch/index.ts vercel/next.js --include-issues > repo-data.json
-npx tsx skills/repo-analyze/index.ts vercel/next.js > analysis.json
+npx tsx skills/repo-fetch/index.ts vercel/next.js --include-issues \
+  | npx tsx skills/repo-analyze/index.ts \
+  > analysis.json
 ```
 
-当前 `repo-analyze` 的 stdin 只接受每行一个 `owner/repo`，不能直接消费本工具输出的 JSON。
+`repo-analyze` 会读取本工具输出的 JSON 数组，并把采集结果作为分析上下文。
 
 ## 相关 Skill
 
