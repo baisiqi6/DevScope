@@ -231,9 +231,9 @@ export const repositories = pgTable("repositories", {
   /** 最后采集时间 */
   lastFetchedAt: timestamp("last_fetched_at"),
   /**
-   * 是否为基石依赖（reference）轻量行
-   * @description 当某外部仓库被 ≥2 个采集仓库依赖时，作为依赖目标写入仅含
-   * fullName/name/owner/url 的轻量行（is_reference=true），不参与采集/向量化/列表。
+   * 是否为技术栈（reference）轻量行
+   * @description 从 SBOM 中识别出的框架、运行时和应用平台，以稳定的
+   * tech-stack/<slug> 标识写入轻量行（is_reference=true），不参与采集/向量化/列表。
    */
   isReference: boolean("is_reference").default(false).notNull(),
   /**

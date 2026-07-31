@@ -143,7 +143,7 @@ export default function RepoGraphCanvas({
 
       ctx.globalAlpha = dimmed ? 0.15 : 1;
 
-      // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色
+      // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色
       let fill: string;
       if (node.kind === "reference") {
         fill = oklch(palette.warning, 0.9);
@@ -200,7 +200,7 @@ export default function RepoGraphCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillStyle = oklch(palette.foreground, 0.92);
-        ctx.fillText(node.fullName, x, y + r + 3 / globalScale);
+        ctx.fillText(node.kind === "reference" ? node.name : node.fullName, x, y + r + 3 / globalScale);
       }
 
       ctx.globalAlpha = 1;

@@ -124,6 +124,13 @@ AI 层统一使用 `openai-compatible` provider：优先读取 `OPENAI_COMPATIBL
 
 BGE-M3 生成 1024 维向量，数据库通过 pgvector 保存和检索。服务可使用硅基流动或其他 OpenAI-compatible embedding endpoint。
 
+### 关系图谱
+
+图谱包含仓库、语言和技术栈三类节点。仓库相似边来自仓库级向量，语言边来自仓库主语言；
+依赖重建会从 SBOM 识别 React、Vue、Spring Boot 等稳定技术栈，并写入
+`tech-stack/<slug>` 轻量节点。`deps.dev` 的 `SOURCE_REPO` 只用于连接已经采集的仓库，
+不会再把 lodash 等公共库的源码仓库提升为技术栈节点。技术栈轻量行不参与采集、向量化或仓库列表。
+
 ### CLI Skills
 
 ```bash

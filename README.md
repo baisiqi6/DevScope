@@ -12,7 +12,7 @@ DevScope 是一个面向技术投资人和独立开发者的开源生态智能�
 - BGE-M3 向量嵌入与语义搜索
 - Agent 流式健康分析、PostgreSQL 报告历史与报告重开
 - 统一 API Client、`devscope` CLI 与 MCP stdio Server
-- 按用户隔离的仓库关系图谱与持久重建状态
+- 按用户隔离的仓库关系图谱、SBOM 技术栈节点与持久重建状态
 - PostgreSQL 持久任务、独立 Worker、健康分析与 GitHub Search 技术候选池
 - `repo-fetch`、`repo-analyze`、`report-generate` 三个 CLI Skills
 

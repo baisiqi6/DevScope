@@ -1195,7 +1195,7 @@ export const dependencyEvidenceSchema = z.object({
       version: z.string(),
     })
   ),
-  resolvedBy: z.literal("deps.dev"),
+  resolvedBy: z.enum(["deps.dev", "tech-stack-catalog"]),
 });
 
 export const repoRelationshipEvidenceSchema = z.discriminatedUnion("kind", [

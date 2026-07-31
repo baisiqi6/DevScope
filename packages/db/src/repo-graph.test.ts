@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   parseSbomPackages,
+  detectTechStack,
   recomputeSimilarityEdges,
   recomputeDependencyEdges,
   poolRepoEmbedding,
@@ -391,35 +392,21 @@ describe("recomputeDependencyEdges", () => {
     expect(db._insertedMappings[0].system).toBe("pypi");
   });
 
-  it("in-degree ≥2 的外部目标才成为基石依赖并连边，<2 的被丢弃", async () => {
+  it("只把识别出的技术栈建成 reference，通用库及其 SOURCE_REPO 不进入图谱", async () => {
     const db = createDepMockDb({
       repos: [
         { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
         { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
-        { id: 3, fullName: "org-c/app-c", isReference: false, sbomPackages: [{ name: "solo-pkg", version: "1.0.0", system: "npm" }] },
       ],
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => {
-      if (name === "lodash") return "lodash/lodash";
-      if (name === "solo-pkg") return "solo/solo-pkg";
-      return null;
-    });
+    const resolveMapping = vi.fn().mockResolvedValue("lodash/lodash");
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
-    // lodash/lodash in-degree=2 → 基石行 + 2 条边；solo in-degree=1 → 丢弃
-    expect(count).toBe(2);
-    expect(db._referenceUpserts).toHaveLength(1);
-    expect(db._referenceUpserts[0].fullName).toBe("lodash/lodash");
-    expect(db._referenceUpserts[0].owner).toBe("lodash");
-    expect(db._referenceUpserts[0].name).toBe("lodash");
-    expect(db._referenceUpserts[0].url).toBe("https://github.com/lodash/lodash");
-    expect(db._referenceUpserts[0].isReference).toBe(true);
-    expect(db._referenceUpserts.some((u: any) => u.fullName === "solo/solo-pkg")).toBe(false);
-
-    const lodashId = db._refIdByFullName.get("lodash/lodash");
-    for (const e of db._insertedEdges) expect(e.targetRepoId).toBe(lodashId);
+    expect(count).toBe(0);
+    expect(db._referenceUpserts).toHaveLength(0);
+    expect(db._insertedEdges).toHaveLength(0);
   });
 
   it("重命名归一：deps.dev 过期 fullName 归一后与采集行合并，直接连边", async () => {
@@ -436,11 +423,14 @@ describe("recomputeDependencyEdges", () => {
     const canonicalize = vi.fn().mockResolvedValue("react/react");
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
 
-    // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边，不建基石行
+    // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边；
+    // 两个来源仓库还分别连接到 React 技术栈。
     expect(canonicalize).toHaveBeenCalledWith("facebook/react");
-    expect(count).toBe(2);
-    expect(db._referenceUpserts).toHaveLength(0);
-    expect(db._insertedEdges.map((e: any) => e.targetRepoId)).toEqual([2, 2]);
+    expect(count).toBe(4);
+    expect(db._referenceUpserts).toHaveLength(1);
+    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
+    const repoEdges = db._insertedEdges.filter((e: any) => e.evidence.resolvedBy === "deps.dev");
+    expect(repoEdges.map((e: any) => e.targetRepoId)).toEqual([2, 2]);
   });
 
   it("重命名归一将两个外部目标合并后只产出一条边（防唯一约束冲突）", async () => {
@@ -469,9 +459,11 @@ describe("recomputeDependencyEdges", () => {
     );
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
 
-    // org-a 的两个目标合并为一条边；org-b 一条边——共 2 条，无唯一冲突
-    expect(count).toBe(2);
-    const aEdges = db._insertedEdges.filter((e: any) => e.sourceRepoId === 1);
+    // org-a 的两个仓库目标合并为一条边；org-b 一条边，另有两条 React 技术栈边。
+    expect(count).toBe(4);
+    const aEdges = db._insertedEdges.filter(
+      (e: any) => e.sourceRepoId === 1 && e.evidence.resolvedBy === "deps.dev"
+    );
     expect(aEdges).toHaveLength(1);
     expect(aEdges[0].evidence.packages.length).toBe(2);
   });
@@ -488,35 +480,14 @@ describe("recomputeDependencyEdges", () => {
     const resolveMapping = vi.fn().mockResolvedValue("facebook/react");
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
-    expect(count).toBe(1);
-    expect(db._referenceUpserts).toHaveLength(0);
-    expect(db._insertedEdges[0].sourceRepoId).toBe(1);
-    expect(db._insertedEdges[0].targetRepoId).toBe(2);
+    expect(count).toBe(2);
+    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
+    const repoEdge = db._insertedEdges.find((e: any) => e.evidence.resolvedBy === "deps.dev");
+    expect(repoEdge.sourceRepoId).toBe(1);
+    expect(repoEdge.targetRepoId).toBe(2);
   });
 
-  it("基石依赖候选按 in-degree 降序封顶 Top 30", async () => {
-    const pkgsA: Array<{ name: string; version: string; system: string }> = [];
-    const pkgsB: Array<{ name: string; version: string; system: string }> = [];
-    for (let i = 0; i < 35; i++) {
-      pkgsA.push({ name: `pkg-${i}`, version: "1.0.0", system: "npm" });
-      pkgsB.push({ name: `pkg-${i}`, version: "1.0.0", system: "npm" });
-    }
-    const db = createDepMockDb({
-      repos: [
-        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: pkgsA },
-        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: pkgsB },
-      ],
-      cacheResult: [],
-    });
-
-    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => `owner/${name}`);
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
-
-    expect(db._referenceUpserts).toHaveLength(30);
-    expect(count).toBe(60); // 30 个目标 × 2 个源仓库
-  });
-
-  it("同源多包指向同一目标时只留一条边且 evidence 记录全部桥接包", async () => {
+  it("单个仓库也会展示其 React、Vue、Spring Boot 技术栈", async () => {
     const db = createDepMockDb({
       repos: [
         {
@@ -524,49 +495,94 @@ describe("recomputeDependencyEdges", () => {
           fullName: "org-a/app-a",
           isReference: false,
           sbomPackages: [
-            { name: "lodash", version: "4.17.21", system: "npm" },
-            { name: "lodash-es", version: "4.17.21", system: "npm" },
+            { name: "react", version: "19.2.6", system: "npm" },
+            { name: "vue", version: "3.5.0", system: "npm" },
+            { name: "org.springframework.boot:spring-boot-starter-web", version: "3.5.0", system: "maven" },
           ],
         },
-        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
       ],
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue("lodash/lodash");
+    const resolveMapping = vi.fn().mockResolvedValue(null);
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+
+    expect(count).toBe(3);
+    expect(db._referenceUpserts.map((row: any) => row.fullName).sort()).toEqual([
+      "tech-stack/react",
+      "tech-stack/spring-boot",
+      "tech-stack/vue",
+    ]);
+    expect(db._referenceUpserts.find((row: any) => row.fullName === "tech-stack/react")).toMatchObject({
+      owner: "tech-stack",
+      name: "React",
+      url: "https://react.dev",
+      isReference: true,
+    });
+    expect(db._insertedEdges.every((e: any) => e.evidence.resolvedBy === "tech-stack-catalog")).toBe(true);
+  });
+
+  it("同源多个 React 包只留一条技术栈边且 evidence 记录全部桥接包", async () => {
+    const db = createDepMockDb({
+      repos: [
+        {
+          id: 1,
+          fullName: "org-a/app-a",
+          isReference: false,
+          sbomPackages: [
+            { name: "react", version: "19.2.6", system: "npm" },
+            { name: "react-dom", version: "19.2.6", system: "npm" },
+          ],
+        },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+      ],
+      cacheResult: [],
+    });
+
+    const resolveMapping = vi.fn().mockResolvedValue(null);
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     expect(count).toBe(2);
     const edgeFrom1 = db._insertedEdges.find((e: any) => e.sourceRepoId === 1);
     expect(edgeFrom1.evidence.kind).toBe("dependency");
-    expect(edgeFrom1.evidence.resolvedBy).toBe("deps.dev");
+    expect(edgeFrom1.evidence.resolvedBy).toBe("tech-stack-catalog");
     expect(edgeFrom1.evidence.packages).toHaveLength(2);
-    expect(edgeFrom1.evidence.packages.map((p: any) => p.name).sort()).toEqual(["lodash", "lodash-es"]);
+    expect(edgeFrom1.evidence.packages.map((p: any) => p.name).sort()).toEqual(["react", "react-dom"]);
   });
 
-  it("基石依赖行（is_reference=true）的 SBOM 不作为解析起点", async () => {
+  it("技术栈行（is_reference=true）的 SBOM 不作为解析起点", async () => {
     const db = createDepMockDb({
       repos: [
-        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
-        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "lodash", version: "4.17.21", system: "npm" }] },
-        { id: 3, fullName: "lodash/lodash", isReference: true, sbomPackages: [{ name: "some-dep", version: "1.0.0", system: "npm" }] },
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+        { id: 2, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+        { id: 3, fullName: "tech-stack/react", isReference: true, sbomPackages: [{ name: "some-dep", version: "1.0.0", system: "npm" }] },
       ],
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockImplementation(async (_s: string, name: string) => {
-      if (name === "lodash") return "lodash/lodash";
-      if (name === "some-dep") return "other/dep";
-      return null;
-    });
+    const resolveMapping = vi.fn().mockResolvedValue(null);
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
 
     // reference 行的 SBOM 不参与解析
     expect(resolveMapping).not.toHaveBeenCalledWith("npm", "some-dep", "1.0.0");
-    // lodash/lodash 已存在（id=3），upsert 复用同一行
-    expect(db._referenceUpserts[0].fullName).toBe("lodash/lodash");
-    expect(db._refIdByFullName.get("lodash/lodash")).toBe(3);
+    // tech-stack/react 已存在（id=3），upsert 复用同一行
+    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
+    expect(db._refIdByFullName.get("tech-stack/react")).toBe(3);
     expect(count).toBe(2);
+  });
+});
+
+describe("detectTechStack", () => {
+  it.each([
+    [{ system: "npm", name: "react" }, "React"],
+    [{ system: "npm", name: "@vue/runtime-core" }, "Vue"],
+    [{ system: "maven", name: "org.springframework.boot:spring-boot-starter-web" }, "Spring Boot"],
+  ])("识别 %o 为 %s", (pkg, expectedName) => {
+    expect(detectTechStack(pkg)).toMatchObject({ name: expectedName });
+  });
+
+  it("不把通用库误判为技术栈", () => {
+    expect(detectTechStack({ system: "npm", name: "lodash" })).toBeNull();
   });
 });
 
@@ -600,7 +616,7 @@ describe("getRepoGraphData", () => {
   it("返回 repo/reference/language 节点与 similarity/dependency/written_in 边", async () => {
     const repos = [
       { id: 1, fullName: "org-a/app-a", name: "app-a", language: "TypeScript", stars: 100, description: "desc", isReference: false },
-      { id: 2, fullName: "lodash/lodash", name: "lodash", language: null, stars: null, description: null, isReference: true },
+      { id: 2, fullName: "tech-stack/react", name: "React", language: null, stars: null, description: "React 技术栈", isReference: true },
     ];
     const edges = [{ source: 1, target: 2, type: "dependency", score: null }];
     const db = createGraphMockDb(repos, edges);

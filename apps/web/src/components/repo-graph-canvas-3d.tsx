@@ -120,8 +120,8 @@ function toThreeColor(css: string): THREE.Color {
 }
 
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
-  // 按节点类型着色：仓库=语言色，基石依赖=琥珀色，语言=主色。
-  // 基石用全饱和琥珀（无光照材质下 bloom 只加琥珀辉光，不会洗白）；语言节点略压暗避免喧宾夺主
+  // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色。
+  // 技术栈用全饱和琥珀（无光照材质下 bloom 只加琥珀辉光，不会洗白）；语言节点略压暗避免喧宾夺主
   if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 1));
   if (node.kind === "language") return toThreeColor(oklch(palette.primary, 1)).multiplyScalar(0.65);
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
@@ -335,7 +335,10 @@ export default function RepoGraphCanvas3D({
       } else {
         entry.mesh.material.color.copy(entry.baseColor);
       }
-      const fresh = createLabelSprite(entry.node.fullName, palette);
+      const fresh = createLabelSprite(
+        entry.node.kind === "reference" ? entry.node.name : entry.node.fullName,
+        palette
+      );
       entry.label.material.map?.dispose();
       entry.label.material.dispose();
       entry.label.material = fresh.material;
@@ -513,7 +516,7 @@ export default function RepoGraphCanvas3D({
     };
   }, [pauseAutoRotate]);
 
-  // 标签距离自适应：相机靠近时显示 fullName，聚焦节点常显
+  // 标签距离自适应：仓库显示 fullName，技术栈显示产品名，聚焦节点常显
   useEffect(() => {
     let frame = 0;
     let last = 0;
@@ -572,7 +575,7 @@ export default function RepoGraphCanvas3D({
     const pal = paletteRef.current;
     const baseColor = nodeBaseColor(node, pal);
     const radius = nodeRadius3D(node, degreeById.get(node.id) ?? 0);
-    // 按节点类型选择几何体：仓库=球体，基石依赖=八面体，语言=黑洞（漆黑核心+吸积环）
+    // 按节点类型选择几何体：仓库=球体，技术栈=八面体，语言=黑洞（漆黑核心+吸积环）
     let geometry: THREE.BufferGeometry;
     let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
     let ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | undefined;
@@ -611,7 +614,7 @@ export default function RepoGraphCanvas3D({
       });
     }
     const mesh = new THREE.Mesh(geometry, material);
-    const label = createLabelSprite(node.fullName, pal);
+    const label = createLabelSprite(node.kind === "reference" ? node.name : node.fullName, pal);
     label.position.y = (ring ? radius * 2.3 : radius) + LABEL_HEIGHT / 2 + 2;
     const group = new THREE.Group();
     group.add(mesh, label);
