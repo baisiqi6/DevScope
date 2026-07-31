@@ -6,11 +6,13 @@ import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
 import {
   ArrowUpRight,
+  Box,
   Loader2,
   Network,
   RefreshCw,
   Search,
   Shuffle,
+  Square,
   Star,
   X,
 } from "lucide-react";
@@ -22,6 +24,15 @@ import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { languageColor } from "@/lib/language-colors";
 import { clearGraphLayout } from "@/lib/graph-layout";
+import {
+  canRender3D,
+  detectGraphRendererCapabilities,
+  loadGraphRendererMode,
+  resolveGraphRendererMode,
+  saveGraphRendererMode,
+  type GraphRendererCapabilities,
+  type GraphRendererMode,
+} from "@/lib/graph-renderer-mode";
 import { cn } from "@/lib/utils";
 import type { GraphLinkDatum, GraphNodeDatum } from "@/components/repo-graph-canvas";
 
@@ -204,6 +215,33 @@ export default function GraphPage() {
 
   const reduceMotion = useReducedMotion() ?? false;
   const isMobile = useMediaQuery("(max-width: 767px)");
+  const [rendererPreference, setRendererPreference] = useState<GraphRendererMode>("2d");
+  const [rendererCapabilities, setRendererCapabilities] =
+    useState<GraphRendererCapabilities | null>(null);
+
+  useEffect(() => {
+    setRendererPreference(loadGraphRendererMode());
+    setRendererCapabilities(detectGraphRendererCapabilities());
+  }, []);
+
+  const rendererMode = resolveGraphRendererMode(
+    rendererPreference,
+    rendererCapabilities,
+    reduceMotion,
+    isMobile,
+  );
+  const threeDEnabled = canRender3D(rendererCapabilities, reduceMotion, isMobile);
+  const threeDUnavailableReason =
+    rendererCapabilities == null
+      ? "正在检测 3D 支持"
+      : reduceMotion
+        ? "系统已开启减少动态效果"
+        : "当前设备不支持 3D 模式";
+
+  const changeRendererMode = useCallback((mode: GraphRendererMode) => {
+    setRendererPreference(mode);
+    saveGraphRendererMode(mode);
+  }, []);
 
   const [showSimilarity, setShowSimilarity] = useState(true);
   const [showDependency, setShowDependency] = useState(true);
@@ -360,6 +398,31 @@ export default function GraphPage() {
           <p className="text-xs text-muted-foreground">
             {repoNodeCount} 仓库 · {links.length} 条可见关系
           </p>
+        </div>
+
+        <div role="group" aria-label="图谱渲染模式" className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant={rendererMode === "2d" ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={rendererMode === "2d"}
+            onClick={() => changeRendererMode("2d")}
+          >
+            <Square aria-hidden="true" data-icon="inline-start" />
+            2D
+          </Button>
+          <Button
+            type="button"
+            variant={rendererMode === "3d" ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={rendererMode === "3d"}
+            disabled={!threeDEnabled}
+            title={!threeDEnabled ? threeDUnavailableReason : "切换到 3D 图谱"}
+            onClick={() => changeRendererMode("3d")}
+          >
+            <Box aria-hidden="true" data-icon="inline-start" />
+            3D
+          </Button>
         </div>
 
         <form onSubmit={handleSearch} className="flex items-center gap-1.5">
@@ -580,6 +643,7 @@ export default function GraphPage() {
     content = (
       <div className="relative min-h-0 flex-1" onMouseMove={handleTooltipMove}>
         <RepoGraphView
+          mode={rendererMode}
           nodes={nodes}
           links={links}
           reducedMotion={reduceMotion}

@@ -100,7 +100,7 @@ export default function RepoGraphCanvas({
 
   useEffect(() => {
     fittedRef.current = false;
-    const stored = loadGraphLayout();
+    const stored = loadGraphLayout("2d");
     for (const node of nodes) {
       const pos = stored[node.fullName];
       if (pos) {
@@ -306,13 +306,13 @@ export default function RepoGraphCanvas({
     (node: NodeObject<RepoGraphNode>) => {
       node.fx = node.x;
       node.fy = node.y;
-      saveGraphLayout(nodes, false);
+      saveGraphLayout(nodes, "2d");
     },
     [nodes]
   );
 
   const handleEngineStop = useCallback(() => {
-    saveGraphLayout(nodes, false);
+    saveGraphLayout(nodes, "2d");
     if (fittedRef.current) return;
     fittedRef.current = true;
     fgRef.current?.zoomToFit(reducedMotion ? 0 : 400, 60);

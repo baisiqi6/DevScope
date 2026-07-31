@@ -305,7 +305,10 @@ export default function RepoGraphCanvas3D({
       const isFocus = id === focus;
       const dimmed = focus != null && !isFocus && neighbors?.has(id) !== true;
       material.opacity = dimmed ? 0.12 : 1;
-      if (material instanceof THREE.MeshStandardMaterial) {
+      if (entry.node.kind === "language") {
+        // 黑洞核心不参与主题/聚焦染色，颜色变化只由吸积环承担。
+        material.color.set("#000000");
+      } else if (material instanceof THREE.MeshStandardMaterial) {
         material.emissiveIntensity = isFocus ? 1.1 : dimmed ? 0.1 : 0.4;
       } else {
         // 无光照材质：用颜色明暗表达聚焦/常态
@@ -329,7 +332,9 @@ export default function RepoGraphCanvas3D({
     paletteRef.current = palette;
     for (const entry of objectsRef.current.values()) {
       entry.baseColor.copy(nodeBaseColor(entry.node, palette));
-      if (entry.mesh.material instanceof THREE.MeshStandardMaterial) {
+      if (entry.node.kind === "language") {
+        entry.mesh.material.color.set("#000000");
+      } else if (entry.mesh.material instanceof THREE.MeshStandardMaterial) {
         entry.mesh.material.color.copy(entry.baseColor).multiplyScalar(0.35);
         entry.mesh.material.emissive.copy(entry.baseColor);
       } else {
@@ -367,7 +372,7 @@ export default function RepoGraphCanvas3D({
 
   useEffect(() => {
     fittedRef.current = false;
-    const stored = loadGraphLayout();
+    const stored = loadGraphLayout("3d");
     for (const node of nodes) {
       const pos = stored[node.fullName];
       if (pos) {
@@ -736,7 +741,7 @@ export default function RepoGraphCanvas3D({
       node.fx = node.x;
       node.fy = node.y;
       node.fz = node.z;
-      saveGraphLayout(nodes, true);
+      saveGraphLayout(nodes, "3d");
     },
     [nodes]
   );
@@ -744,7 +749,7 @@ export default function RepoGraphCanvas3D({
   const handleEngineStop = useCallback(() => {
     const fg = fgRef.current;
     if (!fg) return;
-    saveGraphLayout(nodes, true);
+    saveGraphLayout(nodes, "3d");
     if (fittedRef.current) return;
     fittedRef.current = true;
     fg.zoomToFit(0, 80);
