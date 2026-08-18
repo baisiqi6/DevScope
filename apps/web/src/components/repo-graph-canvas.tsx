@@ -10,6 +10,7 @@ import type { RepoGraphEdge, RepoGraphNode } from "@devscope/shared";
 import { languageColor } from "@/lib/language-colors";
 import { loadGraphLayout, saveGraphLayout } from "@/lib/graph-layout";
 import { oklch, useThemePalette } from "@/lib/theme-palette";
+import { isTechnologyStackGraphNode } from "@/lib/repo-graph-node";
 
 type FGExtraLink = Pick<RepoGraphEdge, "type" | "score">;
 
@@ -41,7 +42,7 @@ function nodeRadius(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
   if (node.kind === "language") return 5;
   // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库节点同量级
-  if (node.kind === "reference") return 5 + Math.log10(degree + 1) * 4.2;
+  if (isTechnologyStackGraphNode(node)) return 5 + Math.log10(degree + 1) * 4.2;
   return 2 + Math.log10((node.stars ?? 0) + 1) * 2.4;
 }
 
@@ -145,7 +146,7 @@ export default function RepoGraphCanvas({
 
       // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色
       let fill: string;
-      if (node.kind === "reference") {
+      if (isTechnologyStackGraphNode(node)) {
         fill = oklch(palette.warning, 0.9);
       } else if (node.kind === "language") {
         fill = oklch(palette.primary, 0.9);
@@ -159,7 +160,7 @@ export default function RepoGraphCanvas({
       }
       ctx.fillStyle = fill;
       ctx.beginPath();
-      if (node.kind === "reference") {
+      if (isTechnologyStackGraphNode(node)) {
         ctx.moveTo(x, y - r);
         ctx.lineTo(x + r, y);
         ctx.lineTo(x, y + r);
@@ -200,7 +201,7 @@ export default function RepoGraphCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillStyle = oklch(palette.foreground, 0.92);
-        ctx.fillText(node.kind === "reference" ? node.name : node.fullName, x, y + r + 3 / globalScale);
+        ctx.fillText(isTechnologyStackGraphNode(node) ? node.name : node.fullName, x, y + r + 3 / globalScale);
       }
 
       ctx.globalAlpha = 1;

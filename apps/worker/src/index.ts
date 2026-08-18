@@ -4,8 +4,18 @@
 
 import "./env";
 import { hostname } from "node:os";
-import { closeDb, createDb } from "@devscope/db";
+import {
+  assertTechnologyStackStorageModeSupported,
+  closeDb,
+  createDb,
+  parseTechnologyStackStorageMode,
+} from "@devscope/db";
 import { runWorker } from "./worker";
+
+assertTechnologyStackStorageModeSupported(
+  parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+  ["legacy_shadow_dual_write"],
+);
 
 const db = createDb();
 const workerId = process.env.WORKER_ID || `${hostname()}:${process.pid}`;

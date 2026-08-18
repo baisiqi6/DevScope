@@ -14,8 +14,13 @@ import {
   healthAnalysisJobPayloadSchema,
   recoverExpiredJobs,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
+  TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
   repositoryIdentityBackfillJobPayloadSchema,
+  technologyStackEntitiesBackfillJobPayloadSchema,
   executeRepositoryIdentityBackfill,
+  executeTechnologyStackEntitiesBackfill,
+  compareTechnologyStackProjection,
+  parseTechnologyStackStorageMode,
   rebuildRepoGraph,
   renewJobLease,
   runAgentWorkflow,
@@ -68,6 +73,7 @@ export interface WorkerDependencies {
   workerId?: string;
   resolveRepositoryIdentity?: ResolveGitHubRepositoryIdentity;
   runRepositoryIdentityBackfill?: typeof executeRepositoryIdentityBackfill;
+  runTechnologyStackEntitiesBackfill?: typeof executeTechnologyStackEntitiesBackfill;
 }
 
 /**
@@ -120,7 +126,10 @@ export async function runWorker(
         ...dependencies,
         workerId: options.workerId,
       });
-      if (job.type !== REPOSITORY_IDENTITY_BACKFILL_JOB) {
+      if (
+        job.type !== REPOSITORY_IDENTITY_BACKFILL_JOB
+        && job.type !== TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB
+      ) {
         await completeJob(db, job.id, options.workerId, result, now());
       }
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
@@ -223,6 +232,16 @@ export async function executeJob(
     );
   }
 
+  if (job.type === TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB) {
+    technologyStackEntitiesBackfillJobPayloadSchema.parse(job.payload);
+    if (!dependencies.workerId) {
+      throw new Error("Technology stack entities backfill 缺少 workerId");
+    }
+    const runBackfill = dependencies.runTechnologyStackEntitiesBackfill
+      ?? executeTechnologyStackEntitiesBackfill;
+    return runBackfill(db, job, dependencies.workerId, now);
+  }
+
   if (job.type !== GITHUB_DISCOVERY_JOB) {
     throw new Error(`不支持的任务类型: ${job.type}`);
   }
@@ -303,10 +322,21 @@ function startLeaseHeartbeat(
 
 async function defaultRebuildGraph(db: Db, userId: number) {
   const github = new GitHubClient(process.env.GITHUB_TOKEN || undefined);
-  return rebuildRepoGraph(db, userId, {
+  const result = await rebuildRepoGraph(db, userId, {
     canonicalize: (fullName) => github.getCanonicalFullName(fullName),
     fetchSbom: (fullName) => github.getSbom(fullName),
   });
+  if (parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE)
+    === "legacy_shadow_dual_write") {
+    const comparison = await compareTechnologyStackProjection(db, userId);
+    if (!comparison.equal) {
+      throw new Error(`Technology stack shadow mismatch: ${JSON.stringify(comparison)}`);
+    }
+    console.log(
+      `[Worker] Technology stack shadow 一致: legacy=${comparison.legacyCount}, new=${comparison.newCount}`,
+    );
+  }
+  return result;
 }
 
 async function defaultSearchRepositories(

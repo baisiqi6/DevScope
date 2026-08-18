@@ -6,6 +6,7 @@ import {
   GRAPH_REBUILD_JOB,
   HEALTH_ANALYSIS_JOB,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
+  TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
 } from "@devscope/db";
 
 describe("Worker 任务执行", () => {
@@ -204,6 +205,33 @@ describe("Worker 任务执行", () => {
       "worker-1",
       resolveRepositoryIdentity,
       new Date("2026-08-18T00:01:00.000Z"),
+    );
+  });
+
+  it("technology stack backfill 将 worker lease authority 传给专用执行器", async () => {
+    const runTechnologyStackEntitiesBackfill = vi.fn().mockResolvedValue({
+      outcome: "succeeded",
+      processedSources: 1,
+    });
+    const job = createJob({
+      type: TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
+      idempotencyKey: "technology-stack:entities:backfill:v1",
+      payload: {
+        requestedAt: "2026-08-18T00:00:00.000Z",
+        version: "v1",
+      },
+    });
+
+    await expect(executeJob({} as any, job, {
+      workerId: "worker-1",
+      runTechnologyStackEntitiesBackfill,
+      now: () => new Date("2026-08-18T00:01:00.000Z"),
+    })).resolves.toEqual({ outcome: "succeeded", processedSources: 1 });
+    expect(runTechnologyStackEntitiesBackfill).toHaveBeenCalledWith(
+      expect.anything(),
+      job,
+      "worker-1",
+      expect.any(Function),
     );
   });
 });

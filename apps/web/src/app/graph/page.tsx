@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { languageColor } from "@/lib/language-colors";
 import { clearGraphLayout } from "@/lib/graph-layout";
+import { isTechnologyStackGraphNode } from "@/lib/repo-graph-node";
 import {
   canRender3D,
   detectGraphRendererCapabilities,
@@ -167,7 +168,7 @@ interface NeighborEntry {
 }
 
 function nodeDisplayName(node: Pick<RepoGraphNode, "kind" | "name" | "fullName">): string {
-  return node.kind === "reference" ? node.name : node.fullName;
+  return isTechnologyStackGraphNode(node) ? node.name : node.fullName;
 }
 
 export default function GraphPage() {
@@ -668,7 +669,7 @@ export default function GraphPage() {
           {hoveredNode && (
             <>
               <p className="font-mono text-[13px] font-semibold">{nodeDisplayName(hoveredNode)}</p>
-              {hoveredNode.kind === "reference" && (
+              {isTechnologyStackGraphNode(hoveredNode) && (
                 <p className="mt-0.5 text-[11px] text-warning">技术栈</p>
               )}
               {hoveredNode.kind === "language" && (
@@ -733,7 +734,7 @@ export default function GraphPage() {
               <header className="flex items-start justify-between gap-2 border-b border-border/80 p-4">
                 <div className="min-w-0">
                   <p className="truncate font-mono text-sm font-semibold">{nodeDisplayName(selectedNode)}</p>
-                  {selectedNode.kind === "reference" && (
+                  {isTechnologyStackGraphNode(selectedNode) && (
                     <p className="mt-0.5 text-xs text-warning">技术栈</p>
                   )}
                   {selectedNode.kind === "language" && (
@@ -893,7 +894,7 @@ function NeighborSection({
               onClick={() => onPick(node.id)}
               className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs transition-colors duration-150 hover:border-border/80 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {node.kind === "reference" ? (
+              {isTechnologyStackGraphNode(node) ? (
                 <span aria-hidden="true" className="h-2 w-2 shrink-0 rotate-45 bg-warning" />
               ) : node.kind === "language" ? (
                 <span aria-hidden="true" className="h-2.5 w-1.5 shrink-0 rotate-45 rounded-[1px] bg-primary" />

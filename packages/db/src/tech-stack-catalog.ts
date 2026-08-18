@@ -165,3 +165,9 @@ export function detectTechStack(pkg: { system: string; name: string }): TechStac
   if (!definition) return null;
   return { slug: definition.slug, name: definition.name, url: definition.url };
 }
+
+export function getTechStackBySlug(slug: string): TechStackNode | null {
+  const definition = TECH_STACK_DEFINITIONS.find((candidate) => candidate.slug === slug);
+  if (!definition) return null;
+  return { slug: definition.slug, name: definition.name, url: definition.url };
+}

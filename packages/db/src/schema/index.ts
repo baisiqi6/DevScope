@@ -134,6 +134,16 @@ export const jobs = pgTable("jobs", {
   )
     .on(table.type)
     .where(sql`${table.type} = 'repository.identity.backfill' AND ${table.status} IN ('queued', 'running', 'retry_wait')`),
+  activeTechnologyStackEntitiesBackfillUnique: uniqueIndex(
+    "jobs_technology_stack_entities_backfill_active_unique"
+  )
+    .on(table.type)
+    .where(sql`${table.type} = 'technology_stack.entities.backfill' AND ${table.status} IN ('queued', 'running', 'retry_wait')`),
+  technologyStackEntitiesBackfillVersionUnique: uniqueIndex(
+    "jobs_technology_stack_entities_backfill_version_unique"
+  )
+    .on(table.type, table.idempotencyKey)
+    .where(sql`${table.type} = 'technology_stack.entities.backfill'`),
 }));
 
 /**
@@ -770,6 +780,50 @@ export type NewGroupMember = typeof groupMembers.$inferInsert;
 // ============================================================================
 
 /**
+ * 技术栈实体表
+ * @description React、Vue、Spring Boot 等产品语义技术栈；不复用 repository 行。
+ */
+export const technologyStacks = pgTable("technology_stacks", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  slugUnique: uniqueIndex("technology_stacks_slug_unique").on(table.slug),
+}));
+
+/**
+ * 仓库—技术栈事实表
+ * @description 全局 repository fact；用户范围在查询时通过 watched source repository 限定。
+ */
+export const repositoryTechnologyStacks = pgTable("repository_technology_stacks", {
+  id: serial("id").primaryKey(),
+  repositoryId: integer("repository_id")
+    .references(() => repositories.id, { onDelete: "cascade" })
+    .notNull(),
+  technologyStackId: integer("technology_stack_id")
+    .references(() => technologyStacks.id, { onDelete: "cascade" })
+    .notNull(),
+  packages: jsonb("packages").$type<Array<{
+    system: string;
+    name: string;
+    version: string;
+  }>>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueRepositoryStack: uniqueIndex("repository_technology_stacks_repository_stack_unique")
+    .on(table.repositoryId, table.technologyStackId),
+  repositoryIdIdx: index("repository_technology_stacks_repository_id_idx")
+    .on(table.repositoryId),
+  technologyStackIdIdx: index("repository_technology_stacks_technology_stack_id_idx")
+    .on(table.technologyStackId),
+}));
+
+/**
  * 仓库关系边表
  * @description 存储仓库间的相似度和依赖关系
  */
@@ -821,6 +875,11 @@ export const packageRepoMappings = pgTable("package_repo_mappings", {
 
 export type RepoRelationship = typeof repoRelationships.$inferSelect;
 export type NewRepoRelationship = typeof repoRelationships.$inferInsert;
+
+export type TechnologyStack = typeof technologyStacks.$inferSelect;
+export type NewTechnologyStack = typeof technologyStacks.$inferInsert;
+export type RepositoryTechnologyStack = typeof repositoryTechnologyStacks.$inferSelect;
+export type NewRepositoryTechnologyStack = typeof repositoryTechnologyStacks.$inferInsert;
 export type PackageRepoMapping = typeof packageRepoMappings.$inferSelect;
 export type NewPackageRepoMapping = typeof packageRepoMappings.$inferInsert;
 

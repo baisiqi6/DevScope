@@ -26,7 +26,7 @@ import {
   type Release,
 } from "./schema";
 
-type CollectionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type CollectionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const COLLECTION_ADVISORY_LOCK_NAMESPACE = 0x4453_5643;
 
@@ -81,7 +81,7 @@ function nextCollectionVersion() {
   )`;
 }
 
-async function lockRepositoryIdentity(
+export async function lockRepositoryIdentity(
   tx: CollectionTransaction,
   githubRepositoryId: string,
 ): Promise<void> {
