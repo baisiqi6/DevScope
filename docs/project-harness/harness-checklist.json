@@ -130,7 +130,7 @@
     },
     {
       "id": "data-architecture-3-technology-stack-entities",
-      "title": "将技术栈节点从伪仓库和伪收藏关系中分离",
+      "title": "技术栈实体分离 Phase A 生产收口",
       "status": "todo",
       "priority": "p1",
       "owner": null,
@@ -142,9 +142,9 @@
       ],
       "blocked_by": [],
       "blocked_reason": "",
-      "acceptance": "仓库列表和收藏关系只包含真实 GitHub 仓库；Vue、React、Spring Boot 等技术栈作为独立实体保留完整、可验证的图节点与依赖边。",
+      "acceptance": "expand/backfill/dual-write/shadow compatibility 的生产证据经独立 closeout 复核；new/legacy 投影保持零差异，系统仍处于 legacy_shadow_dual_write，未提前进入 Phase B。",
       "verification": "",
-      "handoff": "Phase A 生产 backfill/shadow/MCP 已验证；先完成 data-correctness-4-deps-cache-recovery，再由 Reviewer 做 production closeout，批准前不得进入 Phase B。",
+      "handoff": "先完成 data-correctness-4-deps-cache-recovery，再做 Phase A 独立 production closeout；批准后进入正式 PostgreSQL 门禁，不得直接切 Phase B。",
       "workflow": {
         "status": "handoff_requested",
         "updated_at": "2026-08-18",
@@ -212,21 +212,19 @@
       "selected_in_session": "",
       "updated_at": "2026-08-17",
       "dependencies": [
-        "data-correctness-1a-release-id-bigint",
-        "data-correctness-1b-repository-identity",
-        "data-correctness-2-atomic-replacement",
         "data-architecture-3-technology-stack-entities",
         "data-correctness-4-deps-cache-recovery"
       ],
       "blocked_by": [],
       "blocked_reason": "",
-      "acceptance": "独立 test:integration 覆盖空库迁移、历史基线升级、稳定身份、大 ID、原子回滚、并发竞争、技术栈回填、缓存状态和 jobs 租约；不连接开发库或生产库。",
+      "acceptance": "root test:integration 在隔离 PostgreSQL 16 + pgvector 与 CI service 中覆盖 migration、constraint、transaction、advisory lock、lease 和真实双连接交错；危险连接 fail closed，不接触开发/生产库。",
       "verification": "",
-      "handoff": "每个前置 item 同步添加其集成用例，本 item 负责补齐和固化最终门禁。",
+      "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
         "status": "todo"
       },
-      "review": null
+      "review": null,
+      "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md"
     },
     {
       "id": "product-6-public-multi-user-hardening",
@@ -237,7 +235,8 @@
       "selected_in_session": "",
       "updated_at": "2026-08-17",
       "dependencies": [
-        "data-quality-5-postgres-integration-gates"
+        "data-quality-5-postgres-integration-gates",
+        "data-architecture-3c-technology-stack-legacy-cleanup"
       ],
       "blocked_by": [],
       "blocked_reason": "",
@@ -291,6 +290,60 @@
         "ttl_minutes": 120,
         "released_at": "2026-08-18T10:15:41Z"
       }
+    },
+    {
+      "id": "data-architecture-3b-technology-stack-read-cutover",
+      "title": "技术栈实体分离 Phase B：切换新模型读取",
+      "status": "todo",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-18",
+      "dependencies": [
+        "data-architecture-3-technology-stack-entities",
+        "data-correctness-4-deps-cache-recovery",
+        "data-quality-5-postgres-integration-gates"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-write 在明确 rollback window 内保持零差异，真实仓库业务路径不依赖伪仓库过滤。",
+      "verification": "",
+      "handoff": "三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。",
+      "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md"
+    },
+    {
+      "id": "data-architecture-3c-technology-stack-legacy-cleanup",
+      "title": "技术栈实体分离 Phase C：停止旧写入并清理伪数据",
+      "status": "todo",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-18",
+      "dependencies": [
+        "data-architecture-3b-technology-stack-read-cutover"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "new_only 观察、显式 cleanup workflow、备份恢复演练和生产 closeout 通过；伪仓库/伪收藏/legacy stack edges/is_reference 安全移除，真实业务数据不变。",
+      "verification": "",
+      "handoff": "Phase B closeout 后领取；实现与演练不等于生产删除授权，真实 cleanup 需用户再次明确授权。",
+      "plan_path": "docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md"
+    },
+    {
+      "id": "platform-ai-7-minimax-m3-default",
+      "title": "将分析模型默认切换到 MiniMax M3",
+      "status": "todo",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-18",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "通过现有 OpenAI-compatible seam 将 API/Worker 切到 MiniMax-M3；complete/stream/structured/tool/cancel 真实探针和自动测试通过，secret 不落盘，DeepSeek rollback 可用，BGE-M3 embedding 不变。",
+      "verification": "",
+      "handoff": "可与数据库整改并行；先用 Token Plan key 做脱敏 contract probe，再做最小兼容修复与 canary，不能只改环境变量直接全量生产切换。",
+      "plan_path": "docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md"
     }
   ]
 }

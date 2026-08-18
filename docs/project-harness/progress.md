@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-18
-> 基线：`main@ceb1d1c`
+> 基线：`main@a5824cf`
 > 部署形态：Standalone
-> 当前状态：前四项 correctness 整改已关闭；技术栈实体分离 Phase A expand 已部署，生产 backfill fail closed 暴露微秒 token 精度问题，最小修复已通过本地门禁与独立审查
+> 当前状态：技术栈实体分离 Phase A 已完成生产 backfill/shadow 验证，等待 deps.dev cache recovery 后独立收口；Phase B/C、PostgreSQL 持续门禁与 MiniMax M3 迁移均已形成可独立交接的 canonical plan
 
 ## 已完成
 
@@ -59,6 +59,9 @@
 - precision fix PR #36 与 CI 已通过并合并为 `main@3fa0d9c`；无迁移 deploy run `32146784184` 成功，生产三类 image revision 一致，migration rows 保持 9，mode/health/auth/MCP 正常。
 - backfill job #28、version `phase-a-token-ms-v2` 已以 `succeeded 40/40` 完成；graph job #9 attempt 1 成功，new/legacy 技术栈投影均为 79 relations、25 sources、379 packages，认证 MCP 只列出 40 个真实仓库。
 - graph job #9 的冷缓存生产运行耗时约 70 分 44 秒，暴露约 6000 个 deps.dev miss、3053 个串行 GitHub canonicalization、缺少外呼 timeout/budget/freshness/progress 的 P1；已把现有 item 4 前置并形成唯一 canonical plan，Phase B 在该 P1 closeout 前暂停。
+- 已把原技术栈大 item 拆为 Phase A production closeout、Phase B `new_read_dual_write` 与 Phase C `new_only -> legacy_cleaned` 三个独立 checklist item；每阶段有唯一 plan、独立 review 和明确 rollback/生产权限边界。
+- 已为 `data-quality-5-postgres-integration-gates` 补齐 canonical plan：统一现有真实 PostgreSQL tests 为 root `test:integration`，接入 PostgreSQL 16 + pgvector CI service，并要求真实双连接强制交错和危险数据库 fail closed。
+- 已登记 `platform-ai-7-minimax-m3-default`。计划复用 `OPENAI_COMPATIBLE_*`，先验证 Token Plan endpoint、`MiniMax-M3` 的 stream/tool/structured/cancel 契约，再做最小参数兼容、canary 和 DeepSeek rollback；BGE-M3 embedding 不变。
 
 ## 已验证基线
 
@@ -96,6 +99,8 @@
 - Canonical plan：`tasks/data-architecture-3-technology-stack-entities/plan.md`；
 - Verification：`tasks/data-architecture-3-technology-stack-entities/verification.md`；
 - Phase A expand、precision fix、versioned backfill、shadow zero-diff 与生产 MCP/health/auth 证据均已完成；独立 production closeout 尚未执行。下一步先完成 `data-correctness-4-deps-cache-recovery` 的恢复语义和外呼预算，再由 Reviewer 复核，不能提前进入 Phase B 或标记 done。
+- 可并行 item：`platform-ai-7-minimax-m3-default`；其 provider 迁移与数据整改使用独立 PR、部署和 closeout。
+- 后续串行 item：Phase A closeout -> `data-quality-5-postgres-integration-gates` -> Phase B -> Phase C。
 
 ## Harness 初始化验证
 
