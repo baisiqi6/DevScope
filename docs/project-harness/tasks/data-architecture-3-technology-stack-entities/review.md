@@ -61,3 +61,13 @@ Verdict：`APPROVE`。
 Reviewer 确认两阶段提交窗口、evidence multiplicity、空库 lease freshness 与 SQL `NULL` 语义均已闭环；事务锁内没有网络调用，lost lease/stale snapshot 均 fail closed。独立复跑 DB focused 53/53、Worker 7/7、DB/Worker typecheck 和 `git diff --check` 通过，并核对隔离 PostgreSQL 13/13 的反例与实现一致。未发现剩余 P0–P3 finding。
 
 该批准只覆盖 Phase A 本地实现与 expand migration；PR/CI、生产显式迁移、one-shot backfill、shadow rebuild 和生产 closeout 仍未验证。
+
+## Phase A Production Fix Review
+
+Verdict：`APPROVE`。
+
+`main@eae3127433280831f4f30467f583e0dfe6aaaa98` 部署并应用 `0008` 后，生产 version `phase-a-eae3127-v1` 的 backfill 在第一个 source 后 fail closed：历史 `repositories.updated_at` 保留微秒，而 JavaScript `Date` 与 canonical collection token 只有毫秒，严格等值复核把未发生业务变化的 repository 判为 stale。job 27 最终进入 `dead`，只保留 `1/40` checkpoint，没有伪造成功 receipt，也没有绕过 lease 或 stable-ID/SBOM 护栏。
+
+最小修复把 repository token 的数据库侧比较限定到 canonical 毫秒精度；不放宽 stable GitHub ID、SBOM baseline、lease owner/status/expiry 或 legacy evidence digest。新增真实 PostgreSQL 用例写入微秒时间戳并验证 prepare/apply；隔离 PostgreSQL 14/14、全仓 lint/typecheck/test/build 和 migration drift 检查通过。
+
+Reviewer 复核确认：截断的只是 JavaScript 无法表达的微秒尾数，UTC ISO timestamp cast 不受 session timezone 转换影响，collection writer 的严格单调毫秒 token 语义保持不变；未发现 P0–P3 finding。该批准覆盖 precision fix 本地实现，生产新版本 backfill、shadow rebuild 与 closeout 仍待验证。

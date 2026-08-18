@@ -3,7 +3,7 @@
 > 更新时间：2026-08-18
 > 基线：`main@ceb1d1c`
 > 部署形态：Standalone
-> 当前状态：前四项 correctness 整改已关闭；技术栈实体分离 Phase A 本地实现与独立审查已通过，下一步进入 PR/CI 和生产 shadow 部署
+> 当前状态：前四项 correctness 整改已关闭；技术栈实体分离 Phase A expand 已部署，生产 backfill fail closed 暴露微秒 token 精度问题，最小修复已通过本地门禁与独立审查
 
 ## 已完成
 
@@ -53,6 +53,9 @@
 - 技术栈实体分离 Phase A 已完成纯 expand migration、versioned lease-authoritative backfill、全量 catalog dual-write、shadow compare 和 Web 2D/3D contract compatibility；API 仍保持 legacy read/output。
 - 实现审查发现并关闭 stale lease、graph/backfill 双提交窗口、legacy evidence race/multiplicity、空库 terminal lease 与 SQL `NULL`/JSONB `null` 问题；真实 PostgreSQL 13/13 强制交错和全仓 lint/typecheck/test/build 通过。
 - Phase A continuity implementation review 最终 verdict 为 `APPROVE`；当前尚未提交实现 PR，也未执行生产 `0008`、one-shot backfill 或 shadow rebuild，整个 item 仍为 `doing`。
+- Phase A PR #35 与 CI 已通过并合并为 `main@eae3127`；deploy run `32144833809` 已完成可恢复备份、显式 `0008` expand migration 和 shadow dual-write 服务发布，revision、health、401 access control 与认证 MCP health 均通过。
+- 首次生产 backfill version `phase-a-eae3127-v1` 在第一个 source 后 fail closed：历史 PostgreSQL 微秒 `updated_at` 无法与 JavaScript 毫秒 token 严格等值，job 27 重试后 `dead` 并保留 `1/40` checkpoint，没有伪成功或旧读路径破坏。
+- 最小 precision fix 只把数据库 token 比较规范为毫秒，保留 stable-ID/SBOM/lease/evidence 护栏；隔离 PostgreSQL 14/14、全仓门禁与独立 review 已通过。下一步提交修复 PR、无迁移部署，并用新 version 重跑 backfill 与 shadow rebuild。
 
 ## 已验证基线
 
@@ -89,7 +92,7 @@
 - 当前 item：`data-architecture-3-technology-stack-entities`；
 - Canonical plan：`tasks/data-architecture-3-technology-stack-entities/plan.md`；
 - Verification：`tasks/data-architecture-3-technology-stack-entities/verification.md`；
-- Phase A 本地实现、隔离 PostgreSQL 13/13、全仓门禁和独立 implementation review 已批准；下一步为 PR/CI、生产显式 expand migration、versioned backfill 与 shadow zero-diff，不能提前进入 Phase B 或标记 done。
+- Phase A expand 已合并并部署；首次 backfill 的 fail-closed 证据与微秒 precision fix 已落盘，修复通过隔离 PostgreSQL 14/14、全仓门禁和独立审查。下一步为修复 PR/CI、无迁移部署、新 version backfill receipt 与 shadow zero-diff；不能提前进入 Phase B 或标记 done。
 
 ## Harness 初始化验证
 
