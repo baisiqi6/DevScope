@@ -197,10 +197,10 @@
     {
       "id": "data-correctness-1c-group-count-contract",
       "title": "修复分组仓库计数的运行时契约",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260818-group-count",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-18",
       "dependencies": [
         "data-correctness-1b-repository-identity"
@@ -208,31 +208,33 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "groups.list 在 PostgreSQL 真实 count 返回 string 时仍输出安全 number，CLI/MCP 分组列表可用且不改变分组数据。",
-      "verification": "RED/GREEN API 25 tests, API typecheck, full lint/typecheck/test/build, diff/Harness validation and independent implementation review pass.",
-      "handoff": "Commit, push, PR/CI, deploy with apply_database_migration=false, then verify MCP groups and unchanged migration/group invariants.",
+      "verification": "PR #31 merged at 7245b5d; CI and no-migration deploy passed; migration rows stayed 8; authenticated MCP group list returns numeric counts matching live data; independent closeout APPROVE.",
+      "handoff": "Closed after independent production review. Continue with data-correctness-2-atomic-replacement.",
       "plan_path": "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-18",
         "branch": "codex/data-correctness-1c-group-count"
       },
       "artifacts": {
         "branch": "codex/data-correctness-1c-group-count",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
         "decision": "approved",
         "reviewer": "release_id_migration_reviewer",
-        "phase": "review_approved",
+        "phase": "closeout_requested",
         "updated_at": "2026-08-18",
-        "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings."
+        "summary": "Production closeout verified PR/CI/deploy SHA, no-migration invariant, services/auth and seven numeric MCP group counts matching 63 live memberships; concurrent dogfood writes predated deployment and are not a regression."
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260818-group-count",
         "acquired_at": "2026-08-18T09:51:09Z",
         "expires_at": "2026-08-18T11:51:09Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-18T10:15:41Z"
       }
     }
   ]

@@ -1,60 +1,21 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T09:59:46Z",
+  "generated_at": "2026-08-18T10:15:41Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "f8fee5504436323751e1bf951a70ba388b5f327aad2d669c1e55be7475e939bf"
+    "checklist_sha256": "f976ce9f56f7c05c362745866c77f429ba9e647cc57ca2b5f4a3e66a1d4ce1f3"
   },
   "current_status": "",
-  "current_item": {
-    "id": "data-correctness-1c-group-count-contract",
-    "title": "修复分组仓库计数的运行时契约",
-    "status": "doing",
-    "owner": "codex",
-    "selected_in_session": "codex-20260818-group-count",
-    "updated_at": "2026-08-18",
-    "workflow": {
-      "status": "review_approved",
-      "updated_at": "2026-08-18",
-      "branch": "codex/data-correctness-1c-group-count"
-    },
-    "lease": {
-      "owner": "codex",
-      "session": "codex-20260818-group-count",
-      "acquired_at": "2026-08-18T09:51:09Z",
-      "expires_at": "2026-08-18T11:51:09Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "codex",
-      "session": "codex-20260818-group-count",
-      "acquired_at": "2026-08-18T09:51:09Z",
-      "expires_at": "2026-08-18T11:51:09Z",
-      "ttl_minutes": 120
-    },
-    "artifacts": {
-      "branch": "codex/data-correctness-1c-group-count",
-      "review_packet": "docs/project-harness/current/review-packet.md"
-    },
-    "review": {
-      "decision": "approved",
-      "reviewer": "release_id_migration_reviewer",
-      "phase": "review_approved",
-      "updated_at": "2026-08-18",
-      "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings."
-    },
-    "plan_path": "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 5,
-    "doing": 1,
-    "done": 2,
+    "doing": 0,
+    "done": 3,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 2,
-    "review_approved": 1,
+    "closed": 3,
     "todo": 5
   },
   "paths": {
@@ -94,70 +55,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:37:07Z",
-      "id": "evt-20260818T093707Z-2877ab81",
-      "idempotency_key": "RESULT:data-correctness-1b-repository-identity:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for data-correctness-1b-repository-identity",
-      "target": "release_id_migration_reviewer",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260818T093707Z-2877ab81 task=data-correctness-1b-repository-identity actor=codex target=release_id_migration_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:42:52Z",
-      "id": "evt-20260818T094252Z-181540de",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Production closeout verified PR/CI/deploy SHA, readable backups, explicit 0007 migration and indexes, 22 stable IDs, Radar dedupe, immutable applied job result, association invariants, cutover, services and auth; pre-existing groups repoCount runtime type drift is a separate non-blocking P2 follow-up.",
-      "target": "codex",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T094252Z-181540de task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:42:52Z",
-      "id": "evt-20260818T094252Z-efdb2899",
-      "idempotency_key": "CLOSE:data-correctness-1b-repository-identity:done:codex",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "done",
-      "summary": "codex closed data-correctness-1b-repository-identity",
-      "target": null,
-      "task": "data-correctness-1b-repository-identity",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260818T094252Z-efdb2899 task=data-correctness-1b-repository-identity actor=codex status=done"
-    },
     {
       "actor": "operator",
       "artifacts": [
@@ -267,6 +164,70 @@
       "task": "data-correctness-1c-group-count-contract",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260818T095946Z-505b7ac6 task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T10:11:55Z",
+      "id": "evt-20260818T101155Z-ebb0772d",
+      "idempotency_key": "RESULT:data-correctness-1c-group-count-contract:closeout_requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for data-correctness-1c-group-count-contract",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20260818T101155Z-ebb0772d task=data-correctness-1c-group-count-contract actor=codex target=release_id_migration_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T10:15:41Z",
+      "id": "evt-20260818T101541Z-7a112fb5",
+      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Production closeout verified PR/CI/deploy SHA, no-migration invariant, services/auth and seven numeric MCP group counts matching 63 live memberships; concurrent dogfood writes predated deployment and are not a regression.",
+      "target": "codex",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T101541Z-7a112fb5 task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T10:15:41Z",
+      "id": "evt-20260818T101541Z-dc7b7a75",
+      "idempotency_key": "CLOSE:data-correctness-1c-group-count-contract:done:codex",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "codex closed data-correctness-1c-group-count-contract",
+      "target": null,
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20260818T101541Z-dc7b7a75 task=data-correctness-1c-group-count-contract actor=codex status=done"
     }
   ]
 }
