@@ -4,8 +4,8 @@
 
 - Item：`data-correctness-1b-repository-identity`
 - 日期：2026-08-18
-- 当前阶段：实现与 PostgreSQL 迁移演练完成，准备全量门禁与独立实现审查
-- 生产 mutation：尚未执行
+- 当前阶段：PR、显式迁移、生产回填与 cutover 完成，等待独立 closeout review
+- 生产 mutation：已按三阶段计划执行并逐阶段验收
 
 ## 生产只读基线
 
@@ -79,11 +79,44 @@
 
 PR #29 的首次干净 CI 发现 `skills/repo-fetch/index.test.ts` 中共用的 GitHub API fixture 缺少新增的真实 `id` 字段；本地首次全仓测试命中了 Turbo 缓存，因此没有暴露这个跨包 fixture 漂移。补齐 fixture 并断言十进制 `githubRepositoryId` 后，repo-fetch 18 tests、全仓 Turbo tests `--force`（0 cached）、Skill pipeline 21 tests 与全仓 typecheck 全部通过。
 
-## 待验证
+## PR 与 CI
 
-- PR/CI；
-- 生产备份、compatibility 部署、迁移、backfill/cutover 与业务验收。
+- PR [#29](https://github.com/baisiqi6/DevScope/pull/29) 在第二轮 CI `quality` 通过后以 squash merge 合入 `main@647dc6251bd1fe9234dd5df56a4387ed49470101`；
+- 首轮 CI 失败仅暴露 repo-fetch fixture 漂移，修复后 Actions run `32120610497` 用干净环境完成全流程；
+- 实现 PR 不包含并行 dogfood 会话的文档改动。
+
+## 生产三阶段验收
+
+手动部署 Actions run `32121157975` 使用 `apply_database_migration=true`，build 与 deploy 均成功。
+
+### Stage 1：compatibility 与显式迁移
+
+- 部署前服务器 `main@2b18ebf`、工作树干净、约 30 GB 可用空间、无超过 30 秒的长事务，`REPOSITORY_IDENTITY_CUTOVER` 未启用；
+- 工作流创建 `/home/devscope/backups/devscope/pre-migration-20260818-172731.dump`，大小 72,218,529 bytes、权限 `600`，并通过容器内 `pg_restore --list` 可读性检查；
+- 生产代码与 API/Web/Worker 镜像统一为 `647dc6251bd1fe9234dd5df56a4387ed49470101`；
+- Drizzle migration rows 从 7 增至 8，`repositories.github_repository_id` 与 3 个目标 partial unique indexes 均存在；
+- Radar 从 119 行确定性合并为 118 行，非空同 ID 重复组从 1 变为 0；API、Web、Worker 均健康，Nginx 未认证访问仍为 `401`，cutover 保持关闭。
+
+### Stage 2：one-shot backfill
+
+- 通过生产 loopback tRPC 启动 version `prod-20260818-647dc62-v1`，创建 job 26，未复用 active run；
+- 终态为 `succeeded` / `outcome=applied`：22 个真实 GitHub 仓库更新稳定 ID，`unresolved=0`、`conflicts=0`，无 active identity job；
+- 32 个 repository rows 中 22 个真实 GitHub 仓库全部带稳定 ID；剩余 10 个均为按设计不迁移的 `tech-stack/*` reference rows；非 reference 无 ID 行为 0，稳定 ID 重复组为 0；
+- `user_watched_repositories` 仍为 32 行且冗余名称 mismatch 为 0，`group_members` 仍为 16，Radar 仍为 118 且无重复组。
+
+### Stage 3：cutover 与访问验收
+
+- 启用前把生产 `.env` 备份为 `/home/devscope/backups/devscope/env-pre-identity-cutover-20260818-173427`，大小 2,607 bytes、权限 `600`；
+- 只把 `REPOSITORY_IDENTITY_CUTOVER` 设为 `enabled` 并重建 API，没有重启 PostgreSQL、Web、Worker 或共享 Nginx；Nginx 仅在 `nginx -t` 通过后 reload；
+- API 容器内开关为 enabled，镜像 revision 仍为 `647dc625...`，API/Web 健康，未认证入口为 `401`；
+- Keychain 注入的 DevScope MCP 经 SSH tunnel 调用 `devscope_health` 返回 `status=ok`，证明认证操作者路径可用。
+
+额外 dogfood 检查中，`devscope_list_repositories` 正常，但 `devscope_list_groups` 暴露既有 `repoCount` 类型漂移：PostgreSQL `count` 返回 string，client schema 要求 number。在线分组和成员行数未受影响，此缺陷与 repository identity 迁移无因果关系，也不改变本 item 的数据不变量；它必须作为独立 correctness item 修复，不能在 closeout 文档批次顺带改生产代码。
+
+## Closeout Review
+
+独立 Reviewer 对照 plan、PR/CI、两份备份、迁移与索引、job result、数据库不变量、容器 revision、访问控制和认证 MCP 实测给出 `APPROVE`。`groups.list` 的既有 `repoCount` 类型漂移被列为独立 P2 follow-up，不阻塞本 item。Harness 已归档 [完整审查记录](review.md) 并将本 item 标记为 `done`。
 
 ## 计划审查
 
-独立 Reviewer 经首轮与两次 continuity review 确认所有 P1/P2 finding 已闭环，最终 verdict 为 `APPROVE`。已授权进入 RED tests；详细 finding 与响应以 [当前审查记录](../../current/review.md) 为准，item 关闭时将审查记录归档到本目录。
+独立 Reviewer 经首轮、两次 continuity review、实现 review 与 production closeout review 确认所有阻塞 finding 已闭环，最终 verdict 为 `APPROVE`。详细 finding、修订响应和生产 closeout 结论见 [审查记录](review.md)。

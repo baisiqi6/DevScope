@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-18
-> 基线：`main@f3184d3`
+> 基线：`main@647dc62`
 > 部署形态：Standalone
-> 当前状态：Release ID item 已关闭；Repository stable identity 实现与独立审查通过，进入 PR/CI
+> 当前状态：Release ID 与 Repository stable identity items 已关闭；下一步先修复 dogfood 暴露的 group count 契约，再进入原子替换整改
 
 ## 已完成
 
@@ -19,6 +19,12 @@
 - 生产 `releases.id` 已变为 `bigint`，迁移前备份与在线库 191 条有序 `(id, repo_id)` 行集哈希一致；
 - 生产 API/Web/Worker/PostgreSQL/Nginx 健康，未认证访问为 401，Keychain + SSH tunnel 的认证 health 为 `ok`。
 - 独立 closeout reviewer 再次核对 Git、Actions、两份备份、在线数据库和服务证据后给出 `APPROVE`；Harness 已将 item 标记为 `done`。
+- PR #29 已通过修订后的干净 CI 并合并，手动部署 workflow run 32121157975 完成生产备份、显式 `0007` 迁移和 compatibility 发布；
+- 生产 Radar 重复组从 1 降为 0；one-shot job 26 以 `applied` 终态为 22 个真实 GitHub 仓库回填稳定 ID，`unresolved=0`、`conflicts=0`；
+- 10 个 `tech-stack/*` reference rows 保持无 GitHub ID，正式仓库 ID、关注名称、分组成员和 Radar 不变量复核通过；
+- `REPOSITORY_IDENTITY_CUTOVER=enabled` 已只在 API 生效，生产 API/Web/Worker、Nginx 访问控制及 Keychain + SSH tunnel MCP health 均验证通过。
+- Repository stable identity 的独立 production closeout review 为 `APPROVE`，Harness 已将 `data-correctness-1b-repository-identity` 标记为 `done`；
+- 认证 MCP dogfood 暴露 `groups.list` 的 `repoCount` string/number 类型漂移，已确认是早于本次迁移的独立 P2 correctness follow-up。
 
 ## 已验证基线
 
@@ -40,14 +46,14 @@
 - Canonical plan：`tasks/data-correctness-1a-release-id-bigint/plan.md`；
 - Verification：`tasks/data-correctness-1a-release-id-bigint/verification.md`；
 - 独立 correctness/迁移 review 与生产 closeout review 均已批准，生产验收已经落盘；
-- 当前 item：`data-correctness-1b-repository-identity`；
+- 最近完成 item：`data-correctness-1b-repository-identity`；
 - Canonical plan：`tasks/data-correctness-1b-repository-identity/plan.md`；
 - Production baseline：`tasks/data-correctness-1b-repository-identity/verification.md`；
 - 生产只读预检发现 22 个真实仓库中 19 个可解析稳定 ID、3 个 unresolved；Radar 有 1 组可确定性合并的同 ID 重复；
 - 两轮 continuity review 已关闭 compatibility/backfill 窗口、lease 原子授权、不可变审计、Radar 全序 tie-break 与 active singleton 风险，最终 verdict 为 `APPROVE`；
 - 稳定 ID 边界、ID-first repository/Radar 写入、one-shot backfill、lease 原子 apply、`0007` 合并迁移与 compatibility/cutover 已完成；
 - 首轮实现审查发现的 Radar ID 擦除、following 错误关联和终态 version 伪报问题均已修复，continuity verdict 为 `APPROVE`；
-- 全仓 lint/typecheck/test/build、真实 PostgreSQL 演练与迁移再生成检查通过；下一步为 PR/CI 和分阶段生产上线，不扩大到原子替换、技术栈实体迁移或公开鉴权。
+- 全仓 lint/typecheck/test/build、真实 PostgreSQL 演练与迁移再生成检查通过；PR/CI、显式迁移、one-shot backfill、cutover 与独立 closeout 已完成；下一步先用独立小 item 修复 dogfood 暴露的 group count 契约，再进入 `data-correctness-2-atomic-replacement`。
 
 ## Harness 初始化验证
 

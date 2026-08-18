@@ -1,61 +1,21 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T09:04:21Z",
+  "generated_at": "2026-08-18T09:45:45Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "847d7d22ad8dbe2e4a41b00c1aeb91df6d98226eb0f6bf9c22a85b077688407e"
+    "checklist_sha256": "5701cce9250b5b1f0d44a3a015ca96e1fed723bfbc7f17ba65f67a84dd4fbda0"
   },
   "current_status": "",
-  "current_item": {
-    "id": "data-correctness-1b-repository-identity",
-    "title": "以 GitHub 稳定 ID 统一仓库身份",
-    "status": "doing",
-    "owner": "codex",
-    "selected_in_session": "codex-20260818-repository-identity",
-    "updated_at": "2026-08-18",
-    "workflow": {
-      "status": "review_approved",
-      "updated_at": "2026-08-18",
-      "branch": "codex/data-correctness-1b-repository-identity"
-    },
-    "lease": {
-      "owner": "codex",
-      "session": "codex-20260818-repository-identity",
-      "acquired_at": "2026-08-18T08:12:37Z",
-      "expires_at": "2026-08-18T10:12:37Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "codex",
-      "session": "codex-20260818-repository-identity",
-      "acquired_at": "2026-08-18T08:12:37Z",
-      "expires_at": "2026-08-18T10:12:37Z",
-      "ttl_minutes": 120
-    },
-    "artifacts": {
-      "plan": "docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md",
-      "branch": "codex/data-correctness-1b-repository-identity",
-      "review_packet": "docs/project-harness/current/review-packet.md"
-    },
-    "review": {
-      "decision": "approved",
-      "reviewer": "release_id_migration_reviewer",
-      "phase": "changes_requested",
-      "updated_at": "2026-08-18",
-      "summary": "Continuity implementation review closed all three findings: Radar fallback preserves stable identity and user state, following identity conflicts fail closed, and terminal one-shot versions are rejected; focused DB/API tests, API typecheck, and diff check pass."
-    },
-    "plan_path": "docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 5,
-    "doing": 1,
-    "done": 1,
+    "doing": 0,
+    "done": 2,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 1,
-    "review_approved": 1,
+    "closed": 2,
     "todo": 5
   },
   "paths": {
@@ -95,73 +55,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T07:55:29Z",
-      "id": "evt-20260818T075529Z-06f2c454",
-      "idempotency_key": "REVIEW:data-correctness-1a-release-id-bigint:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "生产 closeout APPROVE：PR/提交/镜像一致，两份迁移前备份与在线库 191 条 (id, repo_id) 行集哈希一致，迁移历史、服务健康、认证边界与临时库清理均通过。",
-      "target": "codex",
-      "task": "data-correctness-1a-release-id-bigint",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T075529Z-06f2c454 task=data-correctness-1a-release-id-bigint actor=release_id_migration_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T07:55:29Z",
-      "id": "evt-20260818T075529Z-c29e4f04",
-      "idempotency_key": "CLOSE:data-correctness-1a-release-id-bigint:done:codex",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "done",
-      "summary": "codex closed data-correctness-1a-release-id-bigint",
-      "target": null,
-      "task": "data-correctness-1a-release-id-bigint",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260818T075529Z-c29e4f04 task=data-correctness-1a-release-id-bigint actor=codex status=done"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md"
-      ],
-      "branch": "codex/data-correctness-1b-repository-identity",
-      "causation_id": null,
-      "created_at": "2026-08-18T08:12:37Z",
-      "id": "evt-20260818T081237Z-8243cea4",
-      "idempotency_key": "ACCEPT:data-correctness-1b-repository-identity:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260818-repository-identity"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex started data-correctness-1b-repository-identity",
-      "target": "codex",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260818T081237Z-8243cea4 task=data-correctness-1b-repository-identity actor=codex target=codex status=running branch=codex/data-correctness-1b-repository-identity artifacts=docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -265,6 +158,70 @@
       "task": "data-correctness-1b-repository-identity",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260818T090421Z-3ccc0808 task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:37:07Z",
+      "id": "evt-20260818T093707Z-2877ab81",
+      "idempotency_key": "RESULT:data-correctness-1b-repository-identity:closeout_requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for data-correctness-1b-repository-identity",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-1b-repository-identity",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20260818T093707Z-2877ab81 task=data-correctness-1b-repository-identity actor=codex target=release_id_migration_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:42:52Z",
+      "id": "evt-20260818T094252Z-181540de",
+      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Production closeout verified PR/CI/deploy SHA, readable backups, explicit 0007 migration and indexes, 22 stable IDs, Radar dedupe, immutable applied job result, association invariants, cutover, services and auth; pre-existing groups repoCount runtime type drift is a separate non-blocking P2 follow-up.",
+      "target": "codex",
+      "task": "data-correctness-1b-repository-identity",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T094252Z-181540de task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:42:52Z",
+      "id": "evt-20260818T094252Z-efdb2899",
+      "idempotency_key": "CLOSE:data-correctness-1b-repository-identity:done:codex",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "codex closed data-correctness-1b-repository-identity",
+      "target": null,
+      "task": "data-correctness-1b-repository-identity",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20260818T094252Z-efdb2899 task=data-correctness-1b-repository-identity actor=codex status=done"
     }
   ]
 }
