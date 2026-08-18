@@ -3,7 +3,7 @@
 > 更新时间：2026-08-18
 > 基线：`main@647dc62`
 > 部署形态：Standalone
-> 当前状态：Release ID、Repository stable identity 与 group count contract items 已关闭；下一步进入采集子数据原子替换整改
+> 当前状态：Release ID、Repository stable identity、group count contract 与采集原子替换均已关闭；下一步进入技术栈实体分离
 
 ## 已完成
 
@@ -42,6 +42,10 @@
 - 定向 DB/API 单元测试、真实 PostgreSQL 10 个事务与双连接竞争场景、全仓 lint/typecheck/test/build 均通过；未新增 migration，下一步进行独立 implementation review。
 - 独立 implementation review 首轮发现 reconcile 撤销活跃 claim、malformed SBOM 误清空与并发证据不足；已完成最小修复并把真实 PostgreSQL 定向场景扩展为 10 个，等待 continuity 复核。
 - continuity implementation review 确认四项 finding 均已关闭，未发现剩余 P0–P3 finding，最终 verdict 为 `APPROVE`；下一步提交 PR 并等待 CI。
+- PR #33 与 CI 已通过并合并为 `main@de3b917`；无迁移 deploy run `32137164791` 的 attempt 2 成功，API/Web/Worker 镜像 revision 一致，migration rows 保持 8，服务与公网 401 访问控制正常。
+- 通过 Keychain + SSH tunnel 的认证 MCP 对 `deepseek-ai/deepseek-harness` 完成正常采集 dogfood：token 严格前进，chunk/Release/HN 快照一致，成功空 SBOM 规范化为 `[]`，后台 embedding 完成 `1/1`；全库 40 个真实仓库均为 `completed`，三类一致性冲突为 0。
+- Hacker News 外部 API 本次返回 400，按 optional source warning 降级并保留旧快照，未破坏主采集；下一步仅进行独立 production closeout review 与 Harness 关闭。
+- 独立 production closeout review 最终 verdict 为 `APPROVE`；显式 verification、Harness `mark-done`、state refresh、validator 与 doctor 均通过，`data-correctness-2-atomic-replacement` 已关闭。
 
 ## 已验证基线
 
@@ -71,6 +75,10 @@
 - 稳定 ID 边界、ID-first repository/Radar 写入、one-shot backfill、lease 原子 apply、`0007` 合并迁移与 compatibility/cutover 已完成；
 - 首轮实现审查发现的 Radar ID 擦除、following 错误关联和终态 version 伪报问题均已修复，continuity verdict 为 `APPROVE`；
 - 全仓 lint/typecheck/test/build、真实 PostgreSQL 演练与迁移再生成检查通过；PR/CI、显式迁移、one-shot backfill、cutover 与独立 closeout 已完成；下一步先用独立小 item 修复 dogfood 暴露的 group count 契约，再进入 `data-correctness-2-atomic-replacement`。
+- 最近完成 item：`data-correctness-2-atomic-replacement`；
+- Canonical plan：`tasks/data-correctness-2-atomic-replacement/plan.md`；
+- Verification：`tasks/data-correctness-2-atomic-replacement/verification.md`；
+- 原子快照、版本安全 embedding、PR/CI、无迁移部署、生产 MCP dogfood 与独立 closeout 均已完成；下一 item 为 `data-architecture-3-technology-stack-entities`。
 
 ## Harness 初始化验证
 
