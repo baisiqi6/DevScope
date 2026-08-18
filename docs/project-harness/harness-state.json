@@ -1,60 +1,21 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T07:28:54Z",
+  "generated_at": "2026-08-18T07:56:10Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "9dc484e2d469a95c656308b65f83a07c1a927662c309d24e9d8624d9f07fef54"
+    "checklist_sha256": "f247090da2d647eb93f6671028d09f55df969bcb7a6f676a1a73608780268263"
   },
   "current_status": "",
-  "current_item": {
-    "id": "data-correctness-1a-release-id-bigint",
-    "title": "将 GitHub Release ID 迁移为无损 bigint",
-    "status": "doing",
-    "owner": "codex",
-    "selected_in_session": "codex-20260817-release-id-bigint",
-    "updated_at": "2026-08-18",
-    "workflow": {
-      "status": "review_approved",
-      "updated_at": "2026-08-18",
-      "branch": "main"
-    },
-    "lease": {
-      "owner": "codex",
-      "session": "codex-20260817-release-id-bigint",
-      "acquired_at": "2026-08-18T06:55:17Z",
-      "expires_at": "2026-08-18T08:55:17Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "codex",
-      "session": "codex-20260817-release-id-bigint",
-      "acquired_at": "2026-08-18T06:55:17Z",
-      "expires_at": "2026-08-18T08:55:17Z",
-      "ttl_minutes": 120
-    },
-    "artifacts": {
-      "plan": "docs/project-harness/tasks/data-correctness-1a-release-id-bigint/plan.md",
-      "branch": "main",
-      "review_packet": "docs/project-harness/current/review-packet.md"
-    },
-    "review": {
-      "decision": "approved",
-      "reviewer": "release_id_migration_reviewer",
-      "phase": "changes_requested",
-      "updated_at": "2026-08-18",
-      "summary": "P1/P2 修订均已关闭；本地代码、测试、迁移锁门禁与回滚证据通过。生产仍 UNVERIFIED，批准不授予部署权限。"
-    },
-    "plan_path": "docs/project-harness/tasks/data-correctness-1a-release-id-bigint/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 6,
-    "doing": 1,
-    "done": 0,
+    "doing": 0,
+    "done": 1,
     "blocked": 0
   },
   "workflow_summary": {
-    "review_approved": 1,
+    "closed": 1,
     "todo": 6
   },
   "paths": {
@@ -94,24 +55,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "id": "evt-20260817-harness-init",
-      "type": "HARNESS_INITIALIZED",
-      "task": null,
-      "actor": "codex",
-      "status": "initialized",
-      "publish_status": "local_only",
-      "artifact": "docs/project-harness/scope.md"
-    },
-    {
-      "id": "evt-20260817-harness-validated",
-      "type": "HARNESS_VALIDATED",
-      "task": null,
-      "actor": "codex",
-      "status": "verified",
-      "publish_status": "local_only",
-      "artifact": "docs/project-harness/progress.md"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -221,6 +164,70 @@
       "task": "data-correctness-1a-release-id-bigint",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260818T072354Z-ccf4f4c2 task=data-correctness-1a-release-id-bigint actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T07:48:58Z",
+      "id": "evt-20260818T074858Z-e2cb1eb0",
+      "idempotency_key": "RESULT:data-correctness-1a-release-id-bigint:closeout_requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for data-correctness-1a-release-id-bigint",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-1a-release-id-bigint",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20260818T074858Z-e2cb1eb0 task=data-correctness-1a-release-id-bigint actor=codex target=release_id_migration_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T07:55:29Z",
+      "id": "evt-20260818T075529Z-06f2c454",
+      "idempotency_key": "REVIEW:data-correctness-1a-release-id-bigint:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "生产 closeout APPROVE：PR/提交/镜像一致，两份迁移前备份与在线库 191 条 (id, repo_id) 行集哈希一致，迁移历史、服务健康、认证边界与临时库清理均通过。",
+      "target": "codex",
+      "task": "data-correctness-1a-release-id-bigint",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T075529Z-06f2c454 task=data-correctness-1a-release-id-bigint actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T07:55:29Z",
+      "id": "evt-20260818T075529Z-c29e4f04",
+      "idempotency_key": "CLOSE:data-correctness-1a-release-id-bigint:done:codex",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "codex closed data-correctness-1a-release-id-bigint",
+      "target": null,
+      "task": "data-correctness-1a-release-id-bigint",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20260818T075529Z-c29e4f04 task=data-correctness-1a-release-id-bigint actor=codex status=done"
     }
   ]
 }

@@ -77,3 +77,22 @@ Reviewer 重新读取当前代码、diff 和证据后确认：
 - 生产仍为 `UNVERIFIED`，批准不授予迁移或部署权限。
 
 采用 continuity 是因为本轮仅验证同一 reviewer 上轮两个明确 finding 的局部修订，同时仍重新核对了最新事实。
+
+## 生产 Closeout Review
+
+- Reviewer：`release_id_migration_reviewer`
+- Context mode：`continuity`
+- 日期：2026-08-18
+- Final verdict：`APPROVE`
+- Findings：无实质性或阻塞性 finding
+
+Reviewer 在生产发布后重新独立核验，而不是沿用先前 verdict：
+
+- PR #27、`main`、`origin/main`、生产工作树及 API/Web/Worker 镜像 revision 均指向 `2b18ebfb1220062524d272e90e8bace12d92cac3`；
+- Actions run 32112032164 的 build/deploy 成功，迁移、容器重建、PostgreSQL health 与 `nginx -t` 证据完整；
+- 两份迁移前 custom-format 备份均有效、权限为 `0600`、大小为 `72218486` bytes，且备份 schema 中 `releases.id` 为 `integer`；
+- Reviewer 直接从两份备份流式提取并排序 `(id, repo_id)`，MD5 均为 `e3fef7531cab411153a32948f8b7a5ad`；在线 `bigint` 表的 191 行、21 个仓库得到相同哈希；
+- 临时验证数据库不存在，没有超过 30 秒的活动长事务；API、Web、Worker、认证边界和 Keychain-backed MCP health 均通过；
+- 当前未提交变更只包含 Harness closeout 状态与证据，没有部署后产品代码变化；Harness validation 为 0 warnings，`git diff --check` 通过。
+
+Reviewer 明确确认 acceptance 已覆盖、verification 足以从 `doing` 进入 `done`，可由 Operator 先记录 `review-result approved`，再执行规范的 Harness `mark-done`。

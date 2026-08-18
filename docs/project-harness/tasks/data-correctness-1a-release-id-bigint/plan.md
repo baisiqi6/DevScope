@@ -53,7 +53,7 @@
 5. 在隔离 PostgreSQL 中验证空库迁移、历史 fixture 升级、大 ID 往返与失败回滚。
 6. 运行 focused tests，再运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`。
 7. 生成 review packet，进行独立 correctness/迁移审查；修正后记录 verdict 和验证证据。
-8. 更新 checklist、progress 和 handoff。生产演练与部署仍作为单独授权动作。
+8. 在单独授权后完成生产备份、迁移、数据一致性核验与访问控制抽查，再更新 checklist、progress 和 handoff。
 
 ## Verification
 
@@ -62,7 +62,7 @@
 - Focused tests：DB collector/schema/API ID contract；
 - Full gates：`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
 - Review：独立 reviewer 明确给出 `approved | changes_requested | blocked`；
-- Production：未授权，当前保持 `UNVERIFIED`。
+- Production：PR #27 与 workflow run 32112032164 已成功；迁移前备份和在线库的 191 条有序 `(id, repo_id)` 行集哈希一致，服务健康及认证边界通过。
 
 ## Exit Criteria
 
@@ -75,4 +75,4 @@
 
 若本轮未完成，下一 session 从最后一个已记录 verification artifact 继续；先重新运行 Harness 校验并确认 lease，没有有效 lease 时不得假定仍由旧 session 持有任务。
 
-当前实现与验证证据见 [verification.md](verification.md)。生产数据库仍未连接或修改。
+当前实现、本地演练与生产验收证据见 [verification.md](verification.md)。独立 closeout review 已批准，Harness 已关闭本 item。

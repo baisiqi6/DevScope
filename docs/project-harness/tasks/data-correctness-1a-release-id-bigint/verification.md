@@ -5,7 +5,7 @@
 - Item：`data-correctness-1a-release-id-bigint`
 - 日期：2026-08-18
 - 环境：本地工作树与本地 `devscope-postgres` 容器
-- 生产：只读预检已完成；迁移与部署仍为 `UNVERIFIED`
+- 生产：备份、迁移、部署与独立验收已完成
 
 ## RED
 
@@ -63,10 +63,6 @@ ALTER TABLE "releases" ALTER COLUMN "id" SET DATA TYPE bigint;
 
 ID `2147483648` 写入和读取成功，数据库类型为 `bigint`，`repo_id=1`。
 
-## 待完成
-
-- 生产备份、迁移、业务抽查与部署需要单独授权。
-
 ## 独立 review 修订
 
 首轮独立 reviewer 给出 `CHANGES_REQUESTED`，原始结论见
@@ -107,6 +103,31 @@ ID `2147483648` 写入和读取成功，数据库类型为 `bigint`，`repo_id=1
 
 该数字比 2026-08-17 的 188 条审计快照增加 3 条，属于运行中数据变化。因此生产验收以本次迁移前即时行集为准，不再把 188 写成永久 acceptance。此预检没有修改生产数据库。
 
+## 生产发布与验收
+
+2026-08-18 经显式授权完成发布：
+
+- PR [#27](https://github.com/baisiqi6/DevScope/pull/27) 的 `quality` 检查通过，随后 squash merge 到 `main@2b18ebfb1220062524d272e90e8bace12d92cac3`；
+- 手动 `Build and Deploy` workflow [run 32112032164](https://github.com/baisiqi6/DevScope/actions/runs/32112032164) 以 `apply_database_migration=true` 成功完成 build 与 deploy；
+- mutation 前的人工备份为 `/home/devscope/backups/devscope/manual-pre-release-id-bigint-20260818-153326.dump`，大小 `72218486` bytes，`pg_restore --list` 校验通过；workflow 另生成 `/home/devscope/backups/devscope/pre-migration-20260818-154139.dump`，大小同为 `72218486` bytes；
+- 服务器工作树干净且 HEAD 为目标提交；API、Web、Worker 正常运行，PostgreSQL 保持 healthy，既有 Nginx 容器未被重建，`nginx -t` 通过；
+- 生产 `drizzle.__drizzle_migrations` 最新记录的 hash 为 `87089e28b06447bf39d1ea7f22d6d0b1563d5825485731bf957c50ef1c1e2963`，与仓库 `0006_release_id_bigint.sql` 的 SHA-256 一致；
+- 内部 API/Web health 均为 HTTP 200，最近 15 分钟 Worker 日志没有匹配到 `error|fatal|panic|uncaught`；
+- 公网与 SSH tunnel 的未认证请求均为 HTTP 401；通过 macOS Keychain 注入 Basic Auth 后，`devscope health` 返回 `status: ok`。
+
+生产数据核验结果：
+
+| 检查 | 迁移前备份 | 迁移后在线库 |
+| ---- | ---------- | ------------ |
+| `releases.id` 类型 | `integer` | `bigint` |
+| 行数 | 191 | 191 |
+| 最小 ID | 56476495 | 56476495 |
+| 最大 ID | 1761925622 | 1761925622 |
+| `repo_id` 数量 | 21 | 21 |
+| 有序 `(id, repo_id)` MD5 | `e3fef7531cab411153a32948f8b7a5ad` | `e3fef7531cab411153a32948f8b7a5ad` |
+
+核验时将人工备份恢复到专用临时数据库 `devscope_release_verify_20260818`，对备份与在线库分别计算有序 `(id, repo_id)` 行集哈希；两侧完全一致。核验结束后已删除临时数据库，并确认同名数据库数量为 0。在线库没有超过 30 秒的活跃事务。
+
 ## 全仓门禁
 
 2026-08-18 本地运行结果：
@@ -118,3 +139,7 @@ ID `2147483648` 写入和读取成功，数据库类型为 `bigint`，`repo_id=1
 - `pnpm db:generate` 复查：`No schema changes, nothing to migrate`；
 - `.github/workflows/deploy.yml`：YAML 解析通过；
 - `git diff --check`：通过。
+
+## 结论
+
+代码、迁移、本地门禁和生产 acceptance 均已满足。独立 closeout reviewer 复核 Git、Actions、两份备份、在线数据库和服务证据后给出 `APPROVE`，无阻塞 finding；Harness 已规范记录 review result 并将 item 标记为 `done`。
