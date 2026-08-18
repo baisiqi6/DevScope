@@ -46,6 +46,10 @@
 - 通过 Keychain + SSH tunnel 的认证 MCP 对 `deepseek-ai/deepseek-harness` 完成正常采集 dogfood：token 严格前进，chunk/Release/HN 快照一致，成功空 SBOM 规范化为 `[]`，后台 embedding 完成 `1/1`；全库 40 个真实仓库均为 `completed`，三类一致性冲突为 0。
 - Hacker News 外部 API 本次返回 400，按 optional source warning 降级并保留旧快照，未破坏主采集；下一步仅进行独立 production closeout review 与 Harness 关闭。
 - 独立 production closeout review 最终 verdict 为 `APPROVE`；显式 verification、Harness `mark-done`、state refresh、validator 与 doctor 均通过，`data-correctness-2-atomic-replacement` 已关闭。
+- `data-architecture-3-technology-stack-entities` 已领取并完成源码/生产只读基线：10 个技术栈伪仓库、10 条伪收藏、34 条 stack dependency edges 与 203 条 packages evidence；已形成 expand、shadow validation、read cutover、legacy cleanup 的分阶段 canonical plan，等待独立 plan review。
+- 技术栈实体计划首轮独立 review 要求补齐全局 per-source writer/token 护栏、严格 evidence 折叠、可兑现的 rollback 状态机与 consumer-first contract rollout；计划已按四项 finding 修订，等待 continuity review。
+- continuity plan review 确认首轮四项基本闭环，但要求把 one-shot backfill 收紧为 lease-authoritative versioned singleton job，并把 cleanup 门禁真正实现到 deploy workflow/runbook；第二版计划已补齐专用 job 事务 authority 和显式 stop/drain/backup/migrate/restart 路径，等待再次复核。
+- 第三次 continuity plan review 未发现剩余 P0–P3 finding，最终 verdict 为 `APPROVE`；第三项允许进入 RED tests，后续每个 phase 仍分别接受实现 review、真实 PostgreSQL 与生产门禁。
 
 ## 已验证基线
 
