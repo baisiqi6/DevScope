@@ -3,7 +3,7 @@
 > 更新时间：2026-08-18
 > 基线：`main@647dc62`
 > 部署形态：Standalone
-> 当前状态：Release ID 与 Repository stable identity items 已关闭；下一步先修复 dogfood 暴露的 group count 契约，再进入原子替换整改
+> 当前状态：Release ID 与 Repository stable identity items 已关闭；正在修复 dogfood 暴露的 group count 契约
 
 ## 已完成
 
@@ -25,6 +25,12 @@
 - `REPOSITORY_IDENTITY_CUTOVER=enabled` 已只在 API 生效，生产 API/Web/Worker、Nginx 访问控制及 Keychain + SSH tunnel MCP health 均验证通过。
 - Repository stable identity 的独立 production closeout review 为 `APPROVE`，Harness 已将 `data-correctness-1b-repository-identity` 标记为 `done`；
 - 认证 MCP dogfood 暴露 `groups.list` 的 `repoCount` string/number 类型漂移，已确认是早于本次迁移的独立 P2 correctness follow-up。
+
+## 当前小项
+
+- `data-correctness-1c-group-count-contract` 已独立登记并通过 plan review；
+- RED tests 已复现 PostgreSQL `count` string 泄漏到 API 输出，最小实现改为严格 runtime normalization；
+- 未修改 schema、migration 或分组数据；focused API tests 与 typecheck 已通过，下一步为全仓门禁与独立 implementation review。
 
 ## 已验证基线
 

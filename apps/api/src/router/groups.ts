@@ -28,6 +28,27 @@ import {
 } from "@devscope/shared";
 import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
 
+const INVALID_GROUP_COUNT_MESSAGE =
+  "Repository group count must be a non-negative safe integer";
+
+export function normalizeRepositoryGroupCount(value: unknown): number {
+  if (typeof value === "number") {
+    if (Number.isSafeInteger(value) && value >= 0) {
+      return value;
+    }
+    throw new TypeError(INVALID_GROUP_COUNT_MESSAGE);
+  }
+
+  if (typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)) {
+    const count = Number(value);
+    if (Number.isSafeInteger(count)) {
+      return count;
+    }
+  }
+
+  throw new TypeError(INVALID_GROUP_COUNT_MESSAGE);
+}
+
 async function requireOwnedGroup(db: Db, userId: number, groupId: number): Promise<void> {
   const [group] = await db
     .select({ id: repositoryGroups.id })
@@ -84,7 +105,7 @@ export const groupsRouter = router({
           orderIndex: repositoryGroups.orderIndex,
           createdAt: repositoryGroups.createdAt,
           updatedAt: repositoryGroups.updatedAt,
-          repoCount: sql<number>`count(distinct ${groupMembers.repoId})`,
+          repoCount: sql<unknown>`count(distinct ${groupMembers.repoId})`,
         })
         .from(repositoryGroups)
         .leftJoin(groupMembers, eq(groupMembers.groupId, repositoryGroups.id))
@@ -92,7 +113,10 @@ export const groupsRouter = router({
         .groupBy(repositoryGroups.id)
         .orderBy(repositoryGroups.orderIndex);
 
-      return rows;
+      return rows.map((row) => ({
+        ...row,
+        repoCount: normalizeRepositoryGroupCount(row.repoCount),
+      }));
     }),
 
   /**
