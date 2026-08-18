@@ -193,6 +193,47 @@
         "status": "todo"
       },
       "review": null
+    },
+    {
+      "id": "data-correctness-1c-group-count-contract",
+      "title": "修复分组仓库计数的运行时契约",
+      "status": "doing",
+      "priority": "p1",
+      "owner": "codex",
+      "selected_in_session": "codex-20260818-group-count",
+      "updated_at": "2026-08-18",
+      "dependencies": [
+        "data-correctness-1b-repository-identity"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "groups.list 在 PostgreSQL 真实 count 返回 string 时仍输出安全 number，CLI/MCP 分组列表可用且不改变分组数据。",
+      "verification": "RED/GREEN API 25 tests, API typecheck, full lint/typecheck/test/build, diff/Harness validation and independent implementation review pass.",
+      "handoff": "Commit, push, PR/CI, deploy with apply_database_migration=false, then verify MCP groups and unchanged migration/group invariants.",
+      "plan_path": "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md",
+      "workflow": {
+        "status": "review_approved",
+        "updated_at": "2026-08-18",
+        "branch": "codex/data-correctness-1c-group-count"
+      },
+      "artifacts": {
+        "branch": "codex/data-correctness-1c-group-count",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "release_id_migration_reviewer",
+        "phase": "review_approved",
+        "updated_at": "2026-08-18",
+        "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings."
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260818-group-count",
+        "acquired_at": "2026-08-18T09:51:09Z",
+        "expires_at": "2026-08-18T11:51:09Z",
+        "ttl_minutes": 120
+      }
     }
   ]
 }

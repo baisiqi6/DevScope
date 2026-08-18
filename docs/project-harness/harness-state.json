@@ -1,21 +1,60 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T09:45:45Z",
+  "generated_at": "2026-08-18T09:59:46Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "5701cce9250b5b1f0d44a3a015ca96e1fed723bfbc7f17ba65f67a84dd4fbda0"
+    "checklist_sha256": "f8fee5504436323751e1bf951a70ba388b5f327aad2d669c1e55be7475e939bf"
   },
   "current_status": "",
-  "current_item": null,
+  "current_item": {
+    "id": "data-correctness-1c-group-count-contract",
+    "title": "修复分组仓库计数的运行时契约",
+    "status": "doing",
+    "owner": "codex",
+    "selected_in_session": "codex-20260818-group-count",
+    "updated_at": "2026-08-18",
+    "workflow": {
+      "status": "review_approved",
+      "updated_at": "2026-08-18",
+      "branch": "codex/data-correctness-1c-group-count"
+    },
+    "lease": {
+      "owner": "codex",
+      "session": "codex-20260818-group-count",
+      "acquired_at": "2026-08-18T09:51:09Z",
+      "expires_at": "2026-08-18T11:51:09Z",
+      "ttl_minutes": 120
+    },
+    "active_lease": {
+      "owner": "codex",
+      "session": "codex-20260818-group-count",
+      "acquired_at": "2026-08-18T09:51:09Z",
+      "expires_at": "2026-08-18T11:51:09Z",
+      "ttl_minutes": 120
+    },
+    "artifacts": {
+      "branch": "codex/data-correctness-1c-group-count",
+      "review_packet": "docs/project-harness/current/review-packet.md"
+    },
+    "review": {
+      "decision": "approved",
+      "reviewer": "release_id_migration_reviewer",
+      "phase": "review_approved",
+      "updated_at": "2026-08-18",
+      "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings."
+    },
+    "plan_path": "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
+  },
   "checklist_summary": {
     "todo": 5,
-    "doing": 0,
+    "doing": 1,
     "done": 2,
     "blocked": 0
   },
   "workflow_summary": {
     "closed": 2,
+    "review_approved": 1,
     "todo": 5
   },
   "paths": {
@@ -55,110 +94,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/review-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T08:15:43Z",
-      "id": "evt-20260818T081543Z-d7583d77",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "requested",
-      "summary": "Review requested for data-correctness-1b-repository-identity",
-      "target": "release_id_migration_reviewer",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T081543Z-d7583d77 task=data-correctness-1b-repository-identity actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T08:29:39Z",
-      "id": "evt-20260818T082939Z-5d75cca0",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Plan and boundary review approved after closing compatibility window, lease-atomic apply, immutable audit, Radar tie-break, and global active-singleton findings; RED tests authorized.",
-      "target": "codex",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T082939Z-5d75cca0 task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/review-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T08:51:35Z",
-      "id": "evt-20260818T085135Z-c435df6c",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "requested",
-      "summary": "Review requested for data-correctness-1b-repository-identity",
-      "target": "release_id_migration_reviewer",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T085135Z-c435df6c task=data-correctness-1b-repository-identity actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T08:57:59Z",
-      "id": "evt-20260818T085759Z-3d96d991",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:changes_requested:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "changes_requested",
-      "summary": "Implementation review found Radar no-ID stable-ID erasure, getFollowing split identity misassociation, and terminal one-shot version misreported as running; fixes and regression tests required.",
-      "target": "codex",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T085759Z-3d96d991 task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=changes_requested"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:04:21Z",
-      "id": "evt-20260818T090421Z-3ccc0808",
-      "idempotency_key": "REVIEW:data-correctness-1b-repository-identity:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Continuity implementation review closed all three findings: Radar fallback preserves stable identity and user state, following identity conflicts fail closed, and terminal one-shot versions are rejected; focused DB/API tests, API typecheck, and diff check pass.",
-      "target": "codex",
-      "task": "data-correctness-1b-repository-identity",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T090421Z-3ccc0808 task=data-correctness-1b-repository-identity actor=release_id_migration_reviewer target=codex status=approved"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -222,6 +157,116 @@
       "task": "data-correctness-1b-repository-identity",
       "type": "CLOSE",
       "visible_header": "[CLOSE] id=evt-20260818T094252Z-efdb2899 task=data-correctness-1b-repository-identity actor=codex status=done"
+    },
+    {
+      "actor": "operator",
+      "artifacts": [
+        "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
+      ],
+      "branch": "codex/data-correctness-1c-group-count",
+      "causation_id": null,
+      "created_at": "2026-08-18T09:51:08Z",
+      "id": "evt-20260818T095108Z-14bfa393",
+      "idempotency_key": "ASSIGN:data-correctness-1c-group-count-contract:assigned:operator",
+      "metadata": {
+        "force_reason": null,
+        "session": "codex-20260818-group-count"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "assigned",
+      "summary": "operator assigned data-correctness-1c-group-count-contract to codex",
+      "target": "codex",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "ASSIGN",
+      "visible_header": "[ASSIGN] id=evt-20260818T095108Z-14bfa393 task=data-correctness-1c-group-count-contract actor=operator target=codex status=assigned branch=codex/data-correctness-1c-group-count artifacts=docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": "codex/data-correctness-1c-group-count",
+      "causation_id": null,
+      "created_at": "2026-08-18T09:51:09Z",
+      "id": "evt-20260818T095109Z-5bfde1fd",
+      "idempotency_key": "ACCEPT:data-correctness-1c-group-count-contract:running:codex",
+      "metadata": {
+        "force_reason": null,
+        "session": "codex-20260818-group-count"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "codex accepted data-correctness-1c-group-count-contract",
+      "target": "codex",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20260818T095109Z-5bfde1fd task=data-correctness-1c-group-count-contract actor=codex target=codex status=running branch=codex/data-correctness-1c-group-count"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:54:08Z",
+      "id": "evt-20260818T095408Z-28079b09",
+      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for data-correctness-1c-group-count-contract",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T095408Z-28079b09 task=data-correctness-1c-group-count-contract actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:54:09Z",
+      "id": "evt-20260818T095409Z-2e724dba",
+      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Plan approved: normalize PostgreSQL count at the API runtime boundary with strict canonical decimal and safe nonnegative integer checks; avoid SQL casts; cover invalid matrix and no-migration production invariants.",
+      "target": "codex",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T095409Z-2e724dba task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T09:59:46Z",
+      "id": "evt-20260818T095946Z-505b7ac6",
+      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings.",
+      "target": "codex",
+      "task": "data-correctness-1c-group-count-contract",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T095946Z-505b7ac6 task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
     }
   ]
 }
