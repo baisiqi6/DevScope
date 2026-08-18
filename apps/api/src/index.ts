@@ -18,13 +18,24 @@ import { registerAgentWorkflowSSE } from "./routes/sse/agent-workflow";
 import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
-import { closeDb, createDb, reconcileStaleExecutions } from "@devscope/db";
+import {
+  assertTechnologyStackStorageModeSupported,
+  closeDb,
+  createDb,
+  parseTechnologyStackStorageMode,
+  reconcileStaleExecutions,
+} from "@devscope/db";
 import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
 import { fastifyOptions } from "./server-options";
 
 // ============================================================================
 // 服务器初始化
 // ============================================================================
+
+assertTechnologyStackStorageModeSupported(
+  parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+  ["legacy_shadow_dual_write"],
+);
 
 /**
  * 创建 Fastify 服务器实例

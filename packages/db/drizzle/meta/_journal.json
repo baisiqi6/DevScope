@@ -57,6 +57,13 @@
       "when": 1787042369745,
       "tag": "0007_square_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787058502349,
+      "tag": "0008_round_peter_parker",
+      "breakpoints": true
     }
   ]
 }

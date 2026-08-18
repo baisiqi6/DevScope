@@ -7,6 +7,7 @@ import {
   userWatchedRepositories,
 } from "./schema";
 import { detectTechStack, type TechStackNode } from "./tech-stack-catalog";
+import { replaceRepositoryTechnologyStacksForCurrentSnapshots } from "./technology-stack-entities";
 import {
   applySbomBackfillIfCurrent,
   poolRepositoryEmbeddingForCurrentVersion,
@@ -273,6 +274,8 @@ export interface DependencyEdgeOptions {
   /** 解析 GitHub 重命名后的规范 fullName（缺省为恒等，测试可不传） */
   canonicalize?: (fullName: string) => Promise<string>;
   delayMs?: number;
+  /** 仅用于确定性并发测试：DB-only 原子提交开始前暂停。 */
+  beforeAtomicCommit?: () => Promise<void>;
 }
 
 /** 对公共外部目标做 GitHub 重命名归一时的调用门槛，避免无界 API 请求。 */
@@ -297,7 +300,9 @@ export async function recomputeDependencyEdges(
   const allRepos = await db
     .select({
       id: repositories.id,
+      githubRepositoryId: repositories.githubRepositoryId,
       fullName: repositories.fullName,
+      updatedAt: repositories.updatedAt,
       sbomPackages: repositories.sbomPackages,
       isReference: repositories.isReference,
     })
@@ -492,49 +497,35 @@ export async function recomputeDependencyEdges(
     .sort((a, b) => b.sources.size - a.sources.size || a.stack.name.localeCompare(b.stack.name))
     .slice(0, TECH_STACK_TOP_N);
 
-  const referenceIdByLower = new Map<string, number>();
-  for (const { stack } of selectedStacks) {
-    const fullName = `tech-stack/${stack.slug}`;
-    const [row] = await db
-      .insert(repositories)
-      .values({
-        fullName,
-        name: stack.name,
-        owner: "tech-stack",
-        url: stack.url,
-        description: `${stack.name} 技术栈`,
-        isReference: true,
-        // 技术栈行不参与向量化。现有枚举没有“不适用”，这里选用终态 "completed"
-        // 作为“不再处理”的哨兵值——调度器仅拾取 embeddingStatus='pending'，
-        // 因此该状态不会触发任何 embedding 处理。
-        embeddingStatus: "completed",
-      })
-      .onConflictDoUpdate({
-        target: repositories.fullName,
-        set: {
-          name: stack.name,
-          owner: "tech-stack",
-          url: stack.url,
-          description: `${stack.name} 技术栈`,
-          isReference: true,
-          updatedAt: new Date(),
-        },
-      })
-      .returning({ id: repositories.id });
-    referenceIdByLower.set(stack.slug, row.id);
-    await db
-      .insert(userWatchedRepositories)
-      .values({
-        userId,
-        repoId: row.id,
-        repoFullName: fullName,
-        enableDailyReport: false,
-      })
-      .onConflictDoUpdate({
-        target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
-        set: { repoFullName: fullName, updatedAt: new Date() },
-      });
+  // 新表持久化全部 catalog detection；top-N 只影响 legacy/UI projection。
+  const stackRelationsByRepository = new Map<number, GroupedStackDep[]>();
+  for (const repo of collectedRepos) stackRelationsByRepository.set(repo.id, []);
+  for (const dep of groupedStacks.values()) {
+    stackRelationsByRepository.get(dep.sourceRepoId)?.push(dep);
   }
+  const repositoriesByStableId = [...collectedRepos].sort((left, right) => {
+    const leftId = left.githubRepositoryId ?? "";
+    const rightId = right.githubRepositoryId ?? "";
+    return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+  });
+  const technologyStackSnapshots = repositoriesByStableId.map((repo) => {
+    if (!repo.githubRepositoryId) {
+      throw new Error(`Repository ${repo.fullName} 缺少 GitHub stable ID，拒绝写入全局技术栈事实`);
+    }
+    return {
+      repositoryId: repo.id,
+      githubRepositoryId: repo.githubRepositoryId,
+      expectedVersion: repo.updatedAt,
+      expectedSbomPackages: repo.sbomPackages,
+      relations: (stackRelationsByRepository.get(repo.id) ?? []).map((relation) => ({
+        slug: relation.stack.slug,
+        name: relation.stack.name,
+        url: relation.stack.url,
+        description: `${relation.stack.name} 技术栈`,
+        packages: relation.packages,
+      })),
+    };
+  });
 
   // ---- 第五步：写边——已采集仓库保持直连；技术栈使用目录解析 ----
   // 重命名归一可能把原本不同的目标合并为同一 fullName，
@@ -574,34 +565,86 @@ export async function recomputeDependencyEdges(
     }
   }
 
-  const selectedStackSlugs = new Set(selectedStacks.map(({ stack }) => stack.slug));
-  for (const dep of groupedStacks.values()) {
-    if (!selectedStackSlugs.has(dep.stack.slug)) continue;
-    const targetRepoId = referenceIdByLower.get(dep.stack.slug);
-    if (targetRepoId === undefined) continue;
-
-    const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
-    const existing = edgeByPair.get(pairKey);
-    if (existing) {
-      for (const pkg of dep.packages) {
-        const pkgKey = `${pkg.system}:${pkg.name}@${pkg.version}`;
-        if (!existing.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
-          existing.packages.push(pkg);
-        }
-      }
-    } else {
-      edgeByPair.set(pairKey, {
-        sourceRepoId: dep.sourceRepoId,
-        targetRepoId,
-        packages: [...dep.packages],
-        resolvedBy: "tech-stack-catalog",
-      });
-    }
-  }
-  const edges = [...edgeByPair.values()];
-
   // ---- 第六步：事务内全量替换 dependency 边 ----
+  await opts.beforeAtomicCommit?.();
+  let persistedEdgeCount = 0;
   await db.transaction(async (tx) => {
+    const outcome = await replaceRepositoryTechnologyStacksForCurrentSnapshots(
+      tx,
+      technologyStackSnapshots,
+      new Date(),
+    );
+    if (outcome === "stale") {
+      throw new Error("Repository 在图重建期间已更新，拒绝提交旧技术栈事实");
+    }
+
+    const referenceIdBySlug = new Map<string, number>();
+    for (const { stack } of selectedStacks) {
+      const fullName = `tech-stack/${stack.slug}`;
+      const [row] = await tx
+        .insert(repositories)
+        .values({
+          fullName,
+          name: stack.name,
+          owner: "tech-stack",
+          url: stack.url,
+          description: `${stack.name} 技术栈`,
+          isReference: true,
+          // 技术栈行不参与向量化；completed 是现有枚举中的“不再处理”哨兵值。
+          embeddingStatus: "completed",
+        })
+        .onConflictDoUpdate({
+          target: repositories.fullName,
+          set: {
+            name: stack.name,
+            owner: "tech-stack",
+            url: stack.url,
+            description: `${stack.name} 技术栈`,
+            isReference: true,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ id: repositories.id });
+      referenceIdBySlug.set(stack.slug, row.id);
+      await tx
+        .insert(userWatchedRepositories)
+        .values({
+          userId,
+          repoId: row.id,
+          repoFullName: fullName,
+          enableDailyReport: false,
+        })
+        .onConflictDoUpdate({
+          target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+          set: { repoFullName: fullName, updatedAt: new Date() },
+        });
+    }
+
+    const selectedStackSlugs = new Set(selectedStacks.map(({ stack }) => stack.slug));
+    for (const dep of groupedStacks.values()) {
+      if (!selectedStackSlugs.has(dep.stack.slug)) continue;
+      const targetRepoId = referenceIdBySlug.get(dep.stack.slug);
+      if (targetRepoId === undefined) continue;
+      const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
+      const existing = edgeByPair.get(pairKey);
+      if (existing) {
+        for (const pkg of dep.packages) {
+          const pkgKey = `${pkg.system}:${pkg.name}@${pkg.version}`;
+          if (!existing.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
+            existing.packages.push(pkg);
+          }
+        }
+      } else {
+        edgeByPair.set(pairKey, {
+          sourceRepoId: dep.sourceRepoId,
+          targetRepoId,
+          packages: [...dep.packages],
+          resolvedBy: "tech-stack-catalog",
+        });
+      }
+    }
+    const edges = [...edgeByPair.values()];
+    persistedEdgeCount = edges.length;
     await tx
       .delete(repoRelationships)
       .where(
@@ -647,7 +690,7 @@ export async function recomputeDependencyEdges(
     `);
   });
 
-  return edges.length;
+  return persistedEdgeCount;
 }
 
 // ============================================================================

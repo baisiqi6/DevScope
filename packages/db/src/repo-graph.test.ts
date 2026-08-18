@@ -16,14 +16,24 @@ import {
 import sbomFixture from "./__fixtures__/sbom-tailwindcss.json";
 import sbomPypiFixture from "./__fixtures__/sbom-pypi-minimal.json";
 
-const { mockPoolRepositoryEmbedding, mockApplySbomBackfill } = vi.hoisted(() => ({
+const {
+  mockPoolRepositoryEmbedding,
+  mockApplySbomBackfill,
+  mockApplyTechnologyStacks,
+} = vi.hoisted(() => ({
   mockPoolRepositoryEmbedding: vi.fn(),
   mockApplySbomBackfill: vi.fn(),
+  mockApplyTechnologyStacks: vi.fn().mockResolvedValue("applied"),
 }));
 
 vi.mock("./collection", () => ({
   poolRepositoryEmbeddingForCurrentVersion: mockPoolRepositoryEmbedding,
   applySbomBackfillIfCurrent: mockApplySbomBackfill,
+}));
+
+vi.mock("./technology-stack-entities", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./technology-stack-entities")>()),
+  replaceRepositoryTechnologyStacksForCurrentSnapshots: mockApplyTechnologyStacks,
 }));
 
 // ============================================================================
@@ -271,6 +281,8 @@ describe("recomputeDependencyEdges", () => {
     repos: Array<{ id: number; fullName: string; sbomPackages: unknown; isReference?: boolean }>;
     cacheResult?: Array<{ sourceRepo: string | null }>;
   }) {
+    mockApplyTechnologyStacks.mockReset();
+    mockApplyTechnologyStacks.mockResolvedValue("applied");
     const cacheResult = opts.cacheResult ?? [];
     const insertedMappings: any[] = [];
     const referenceUpserts: any[] = [];
@@ -291,7 +303,13 @@ describe("recomputeDependencyEdges", () => {
           limit: vi.fn().mockImplementation(() => builder),
           then: (resolve: any, reject: any) => {
             let result: unknown = [];
-            if (table === repositories) result = opts.repos;
+            if (table === repositories) {
+              result = opts.repos.map((repo) => ({
+                githubRepositoryId: repo.isReference ? null : String(repo.id),
+                updatedAt: new Date("2026-08-18T00:00:00.000Z"),
+                ...repo,
+              }));
+            }
             else if (table === packageRepoMappings) result = cacheResult;
             return Promise.resolve(result).then(resolve, reject);
           },
@@ -336,15 +354,42 @@ describe("recomputeDependencyEdges", () => {
         return { values: vi.fn().mockResolvedValue(undefined) };
       }),
       transaction: vi.fn().mockImplementation(async (fn: any) => {
-        await fn({
-          execute: vi.fn().mockResolvedValue(undefined),
-          delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-          insert: vi.fn().mockReturnValue({
+        const txInsert = vi.fn().mockImplementation((table: unknown) => {
+          if (table === repositories) {
+            return {
+              values: vi.fn().mockImplementation((v: any) => ({
+                onConflictDoUpdate: vi.fn().mockImplementation(() => ({
+                  returning: vi.fn().mockImplementation(() => {
+                    let id = refIdByFullName.get(v.fullName);
+                    if (id === undefined) {
+                      id = nextRefId++;
+                      refIdByFullName.set(v.fullName, id);
+                    }
+                    referenceUpserts.push(v);
+                    return Promise.resolve([{ id }]);
+                  }),
+                })),
+              })),
+            };
+          }
+          if (table === userWatchedRepositories) {
+            return {
+              values: vi.fn().mockReturnValue({
+                onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+              }),
+            };
+          }
+          return {
             values: vi.fn().mockImplementation((vals: any) => {
               if (Array.isArray(vals)) insertedEdges.push(...vals);
               return Promise.resolve();
             }),
-          }),
+          };
+        });
+        await fn({
+          execute: vi.fn().mockResolvedValue(undefined),
+          delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+          insert: txInsert,
         });
       }),
       _insertedMappings: insertedMappings,
@@ -515,6 +560,37 @@ describe("recomputeDependencyEdges", () => {
       isReference: true,
     });
     expect(db._insertedEdges.every((e: any) => e.evidence.resolvedBy === "tech-stack-catalog")).toBe(true);
+    expect(mockApplyTechnologyStacks).toHaveBeenCalledWith(
+      expect.anything(),
+      [expect.objectContaining({
+        repositoryId: 1,
+        githubRepositoryId: "1",
+        relations: expect.arrayContaining([
+          expect.objectContaining({ slug: "react" }),
+          expect.objectContaining({ slug: "spring-boot" }),
+          expect.objectContaining({ slug: "vue" }),
+        ]),
+      })],
+      expect.any(Date),
+    );
+    expect(mockApplyTechnologyStacks.mock.calls[0][1][0].relations).toHaveLength(3);
+  });
+
+  it("collection token 变旧时不替换 legacy 图快照并要求任务重试", async () => {
+    const db = createDepMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
+      ],
+      cacheResult: [],
+    });
+    mockApplyTechnologyStacks.mockResolvedValueOnce("stale");
+
+    await expect(recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn().mockResolvedValue(null),
+      delayMs: 0,
+    })).rejects.toThrow(/已更新/);
+    expect(db._referenceUpserts).toHaveLength(0);
+    expect(db._insertedEdges).toHaveLength(0);
   });
 
   it("同源多个 React 包只留一条技术栈边且 evidence 记录全部桥接包", async () => {

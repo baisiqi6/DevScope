@@ -1,10 +1,10 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T13:05:39Z",
+  "generated_at": "2026-08-18T13:46:36Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "717b58fe1ceb220f68daa7c8f6b36b19449bf92ea51901b4d69eeb1dd5ddd208"
+    "checklist_sha256": "610b6817ad7081a6f5e2b6a1568b9dd8338be251235a8fc5e78dc60738343610"
   },
   "current_status": "",
   "current_item": {
@@ -41,9 +41,9 @@
     "review": {
       "decision": "approved",
       "reviewer": "release_id_migration_reviewer",
-      "phase": "review_requested",
+      "phase": "changes_requested",
       "updated_at": "2026-08-18",
-      "summary": "Third continuity plan review confirms per-source global writer authority, versioned lease-authoritative backfill, strict evidence folding, rollout state machine, consumer compatibility, and explicit cleanup deployment gates; no remaining P0-P3 findings."
+      "summary": "Phase A continuity implementation review closed all lease, dual-write atomicity, evidence baseline, SQL NULL and interleaving findings; isolated PostgreSQL 13/13 and full repository gates pass, with production still unverified."
     },
     "plan_path": "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md"
   },
@@ -95,54 +95,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md"
-      ],
-      "branch": "codex/data-architecture-3-technology-stack-entities",
-      "causation_id": null,
-      "created_at": "2026-08-18T12:51:15Z",
-      "id": "evt-20260818T125115Z-70670a54",
-      "idempotency_key": "ASSIGN:data-architecture-3-technology-stack-entities:assigned:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260818-technology-stack-entities"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "assigned",
-      "summary": "codex assigned data-architecture-3-technology-stack-entities to codex",
-      "target": "codex",
-      "task": "data-architecture-3-technology-stack-entities",
-      "type": "ASSIGN",
-      "visible_header": "[ASSIGN] id=evt-20260818T125115Z-70670a54 task=data-architecture-3-technology-stack-entities actor=codex target=codex status=assigned branch=codex/data-architecture-3-technology-stack-entities artifacts=docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": "codex/data-architecture-3-technology-stack-entities",
-      "causation_id": null,
-      "created_at": "2026-08-18T12:51:15Z",
-      "id": "evt-20260818T125115Z-59b1c821",
-      "idempotency_key": "ACCEPT:data-architecture-3-technology-stack-entities:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260818-technology-stack-entities"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex accepted data-architecture-3-technology-stack-entities",
-      "target": "codex",
-      "task": "data-architecture-3-technology-stack-entities",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260818T125115Z-59b1c821 task=data-architecture-3-technology-stack-entities actor=codex target=codex status=running branch=codex/data-architecture-3-technology-stack-entities"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -268,6 +220,46 @@
       "task": "data-architecture-3-technology-stack-entities",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260818T130518Z-36552560 task=data-architecture-3-technology-stack-entities actor=release_id_migration_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T13:45:42Z",
+      "id": "evt-20260818T134542Z-8e86a138",
+      "idempotency_key": "REVIEW:data-architecture-3-technology-stack-entities:changes_requested:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "changes_requested",
+      "summary": "Phase A implementation review found stale now lease reuse, non-atomic new/legacy dual-write windows, legacy evidence race/multiplicity loss, and empty terminal lease freshness gaps; fixes and real PostgreSQL interleavings required.",
+      "target": "codex",
+      "task": "data-architecture-3-technology-stack-entities",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T134542Z-8e86a138 task=data-architecture-3-technology-stack-entities actor=release_id_migration_reviewer target=codex status=changes_requested"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T13:45:42Z",
+      "id": "evt-20260818T134542Z-6ee1180e",
+      "idempotency_key": "REVIEW:data-architecture-3-technology-stack-entities:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Phase A continuity implementation review closed all lease, dual-write atomicity, evidence baseline, SQL NULL and interleaving findings; isolated PostgreSQL 13/13 and full repository gates pass, with production still unverified.",
+      "target": "codex",
+      "task": "data-architecture-3-technology-stack-entities",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T134542Z-6ee1180e task=data-architecture-3-technology-stack-entities actor=release_id_migration_reviewer target=codex status=approved"
     }
   ]
 }

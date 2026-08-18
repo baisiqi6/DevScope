@@ -2,11 +2,15 @@ import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
 import {
   enqueueRestartableJob,
+  enqueueTechnologyStackEntitiesBackfillJob,
   getJobByIdempotencyKey,
+  getLatestTechnologyStackEntitiesBackfillJob,
   getRepoGraphData,
   GRAPH_REBUILD_JOB,
   GRAPH_REBUILD_JOB_KEY,
   graphRebuildJobPayloadSchema,
+  technologyStackEntitiesBackfillJobPayloadSchema,
+  technologyStackEntitiesBackfillJobResultSchema,
 } from "@devscope/db";
 import {
   rebuildGraphStatusSchema,
@@ -93,6 +97,91 @@ export const graphRouter = router({
         startedAt,
         finishedAt: null,
         result: null,
+        error: null,
+      };
+    }),
+
+  startTechnologyStackEntitiesBackfill: publicProcedure
+    .input(z.object({
+      version: z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+    }).default({}))
+    .output(z.object({
+      jobId: z.number().int().positive(),
+      version: z.string(),
+      status: z.literal("running"),
+      alreadyRunning: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const requestedAt = new Date();
+      const version = input.version ?? requestedAt.toISOString().replace(/[-:.]/g, "");
+      const { job, enqueued } = await enqueueTechnologyStackEntitiesBackfillJob(ctx.db, {
+        userId,
+        version,
+        requestedAt,
+      });
+      const payload = technologyStackEntitiesBackfillJobPayloadSchema.parse(job.payload);
+      return {
+        jobId: job.id,
+        version: payload.version,
+        status: "running" as const,
+        alreadyRunning: !enqueued,
+      };
+    }),
+
+  getTechnologyStackEntitiesBackfillStatus: publicProcedure
+    .output(z.object({
+      status: z.enum(["idle", "running", "completed", "failed"]),
+      version: z.string().nullable(),
+      startedAt: z.string().nullable(),
+      finishedAt: z.string().nullable(),
+      result: technologyStackEntitiesBackfillJobResultSchema.nullable(),
+      error: z.string().nullable(),
+    }))
+    .query(async ({ ctx }) => {
+      const job = await getLatestTechnologyStackEntitiesBackfillJob(ctx.db);
+      if (!job) {
+        return {
+          status: "idle" as const,
+          version: null,
+          startedAt: null,
+          finishedAt: null,
+          result: null,
+          error: null,
+        };
+      }
+      const payload = technologyStackEntitiesBackfillJobPayloadSchema.parse(job.payload);
+      const startedAt = (job.startedAt ?? new Date(payload.requestedAt)).toISOString();
+      if (job.status === "succeeded") {
+        return {
+          status: "completed" as const,
+          version: payload.version,
+          startedAt,
+          finishedAt: job.completedAt?.toISOString() ?? job.updatedAt.toISOString(),
+          result: technologyStackEntitiesBackfillJobResultSchema.parse(job.result),
+          error: null,
+        };
+      }
+      if (job.status === "dead" || job.status === "cancelled") {
+        return {
+          status: "failed" as const,
+          version: payload.version,
+          startedAt,
+          finishedAt: job.completedAt?.toISOString() ?? job.updatedAt.toISOString(),
+          result: job.result
+            ? technologyStackEntitiesBackfillJobResultSchema.parse(job.result)
+            : null,
+          error: job.lastError ?? "Technology stack entities backfill failed",
+        };
+      }
+      return {
+        status: "running" as const,
+        version: payload.version,
+        startedAt,
+        finishedAt: null,
+        result: job.result
+          ? technologyStackEntitiesBackfillJobResultSchema.parse(job.result)
+          : null,
         error: null,
       };
     }),

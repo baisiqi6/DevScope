@@ -13,6 +13,7 @@ import type { RepoGraphEdge, RepoGraphNode } from "@devscope/shared";
 import { languageColor } from "@/lib/language-colors";
 import { loadGraphLayout, saveGraphLayout } from "@/lib/graph-layout";
 import { oklch, useThemePalette, type ThemePalette } from "@/lib/theme-palette";
+import { isTechnologyStackGraphNode } from "@/lib/repo-graph-node";
 import type {
   GraphLinkDatum,
   GraphNodeDatum,
@@ -54,7 +55,7 @@ function nodeRadius3D(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
   if (node.kind === "language") return 4.2;
   // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库球体同量级
-  if (node.kind === "reference") return 4.5 + Math.log10(degree + 1) * 4;
+  if (isTechnologyStackGraphNode(node)) return 4.5 + Math.log10(degree + 1) * 4;
   return 1.6 + Math.log10((node.stars ?? 0) + 1) * 2.2;
 }
 
@@ -122,7 +123,7 @@ function toThreeColor(css: string): THREE.Color {
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
   // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色。
   // 技术栈用全饱和琥珀（无光照材质下 bloom 只加琥珀辉光，不会洗白）；语言节点略压暗避免喧宾夺主
-  if (node.kind === "reference") return toThreeColor(oklch(palette.warning, 1));
+  if (isTechnologyStackGraphNode(node)) return toThreeColor(oklch(palette.warning, 1));
   if (node.kind === "language") return toThreeColor(oklch(palette.primary, 1)).multiplyScalar(0.65);
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
 }
@@ -341,7 +342,7 @@ export default function RepoGraphCanvas3D({
         entry.mesh.material.color.copy(entry.baseColor);
       }
       const fresh = createLabelSprite(
-        entry.node.kind === "reference" ? entry.node.name : entry.node.fullName,
+        isTechnologyStackGraphNode(entry.node) ? entry.node.name : entry.node.fullName,
         palette
       );
       entry.label.material.map?.dispose();
@@ -584,7 +585,7 @@ export default function RepoGraphCanvas3D({
     let geometry: THREE.BufferGeometry;
     let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
     let ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | undefined;
-    if (node.kind === "reference") {
+    if (isTechnologyStackGraphNode(node)) {
       geometry = new THREE.OctahedronGeometry(radius * 1.5);
       // 基石/语言用无光照材质：默认方向光的白色高光会把小节点洗成白点
       material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
@@ -619,7 +620,7 @@ export default function RepoGraphCanvas3D({
       });
     }
     const mesh = new THREE.Mesh(geometry, material);
-    const label = createLabelSprite(node.kind === "reference" ? node.name : node.fullName, pal);
+    const label = createLabelSprite(isTechnologyStackGraphNode(node) ? node.name : node.fullName, pal);
     label.position.y = (ring ? radius * 2.3 : radius) + LABEL_HEIGHT / 2 + 2;
     const group = new THREE.Group();
     group.add(mesh, label);

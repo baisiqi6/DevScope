@@ -152,9 +152,9 @@
       "review": {
         "decision": "approved",
         "reviewer": "release_id_migration_reviewer",
-        "phase": "review_requested",
+        "phase": "changes_requested",
         "updated_at": "2026-08-18",
-        "summary": "Third continuity plan review confirms per-source global writer authority, versioned lease-authoritative backfill, strict evidence folding, rollout state machine, consumer compatibility, and explicit cleanup deployment gates; no remaining P0-P3 findings."
+        "summary": "Phase A continuity implementation review closed all lease, dual-write atomicity, evidence baseline, SQL NULL and interleaving findings; isolated PostgreSQL 13/13 and full repository gates pass, with production still unverified."
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md",

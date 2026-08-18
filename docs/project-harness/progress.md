@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-18
-> 基线：`main@647dc62`
+> 基线：`main@ceb1d1c`
 > 部署形态：Standalone
-> 当前状态：Release ID、Repository stable identity、group count contract 与采集原子替换均已关闭；下一步进入技术栈实体分离
+> 当前状态：前四项 correctness 整改已关闭；技术栈实体分离 Phase A 本地实现与独立审查已通过，下一步进入 PR/CI 和生产 shadow 部署
 
 ## 已完成
 
@@ -50,6 +50,9 @@
 - 技术栈实体计划首轮独立 review 要求补齐全局 per-source writer/token 护栏、严格 evidence 折叠、可兑现的 rollback 状态机与 consumer-first contract rollout；计划已按四项 finding 修订，等待 continuity review。
 - continuity plan review 确认首轮四项基本闭环，但要求把 one-shot backfill 收紧为 lease-authoritative versioned singleton job，并把 cleanup 门禁真正实现到 deploy workflow/runbook；第二版计划已补齐专用 job 事务 authority 和显式 stop/drain/backup/migrate/restart 路径，等待再次复核。
 - 第三次 continuity plan review 未发现剩余 P0–P3 finding，最终 verdict 为 `APPROVE`；第三项允许进入 RED tests，后续每个 phase 仍分别接受实现 review、真实 PostgreSQL 与生产门禁。
+- 技术栈实体分离 Phase A 已完成纯 expand migration、versioned lease-authoritative backfill、全量 catalog dual-write、shadow compare 和 Web 2D/3D contract compatibility；API 仍保持 legacy read/output。
+- 实现审查发现并关闭 stale lease、graph/backfill 双提交窗口、legacy evidence race/multiplicity、空库 terminal lease 与 SQL `NULL`/JSONB `null` 问题；真实 PostgreSQL 13/13 强制交错和全仓 lint/typecheck/test/build 通过。
+- Phase A continuity implementation review 最终 verdict 为 `APPROVE`；当前尚未提交实现 PR，也未执行生产 `0008`、one-shot backfill 或 shadow rebuild，整个 item 仍为 `doing`。
 
 ## 已验证基线
 
@@ -83,6 +86,10 @@
 - Canonical plan：`tasks/data-correctness-2-atomic-replacement/plan.md`；
 - Verification：`tasks/data-correctness-2-atomic-replacement/verification.md`；
 - 原子快照、版本安全 embedding、PR/CI、无迁移部署、生产 MCP dogfood 与独立 closeout 均已完成；下一 item 为 `data-architecture-3-technology-stack-entities`。
+- 当前 item：`data-architecture-3-technology-stack-entities`；
+- Canonical plan：`tasks/data-architecture-3-technology-stack-entities/plan.md`；
+- Verification：`tasks/data-architecture-3-technology-stack-entities/verification.md`；
+- Phase A 本地实现、隔离 PostgreSQL 13/13、全仓门禁和独立 implementation review 已批准；下一步为 PR/CI、生产显式 expand migration、versioned backfill 与 shadow zero-diff，不能提前进入 Phase B 或标记 done。
 
 ## Harness 初始化验证
 

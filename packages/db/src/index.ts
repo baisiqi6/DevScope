@@ -124,6 +124,11 @@ export * from "./jobs";
 export * from "./repository-identity";
 
 /**
+ * 技术栈实体、兼容回填与 per-source 原子写入
+ */
+export * from "./technology-stack-entities";
+
+/**
  * 技术雷达候选池
  */
 export * from "./radar";
