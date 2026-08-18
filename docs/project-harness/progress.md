@@ -3,7 +3,7 @@
 > 更新时间：2026-08-18
 > 基线：`main@647dc62`
 > 部署形态：Standalone
-> 当前状态：Release ID 与 Repository stable identity items 已关闭；正在修复 dogfood 暴露的 group count 契约
+> 当前状态：Release ID、Repository stable identity 与 group count contract items 已关闭；下一步进入采集子数据原子替换整改
 
 ## 已完成
 
@@ -31,6 +31,10 @@
 - `data-correctness-1c-group-count-contract` 已独立登记并通过 plan review；
 - RED tests 已复现 PostgreSQL `count` string 泄漏到 API 输出，最小实现改为严格 runtime normalization；
 - 未修改 schema、migration 或分组数据；focused API tests 与 typecheck 已通过，下一步为全仓门禁与独立 implementation review。
+- 全仓四项门禁与独立 implementation review 已通过，PR #31 合并为 `main@7245b5d`；
+- 无迁移 deploy run 32124923912 成功，migration rows 保持 8；认证 MCP 分组列表已恢复，7 个 `repoCount` 均为 number；
+- 部署期间并行 dogfood 会话把 group members 从 16 增至 63，本修复无 group mutation，保留全部业务写入；下一步仅做独立 closeout。
+- 独立 production closeout review 确认上述并发写入早于部署、线上数值计数与 63 条关系一致，最终 verdict 为 `APPROVE`；Harness 已将 1C 标记为 `done`。
 
 ## 已验证基线
 
