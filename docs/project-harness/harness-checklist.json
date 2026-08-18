@@ -152,9 +152,9 @@
       "review": {
         "decision": "approved",
         "reviewer": "release_id_migration_reviewer",
-        "phase": "changes_requested",
+        "phase": "review_approved",
         "updated_at": "2026-08-18",
-        "summary": "Phase A continuity implementation review closed all lease, dual-write atomicity, evidence baseline, SQL NULL and interleaving findings; isolated PostgreSQL 13/13 and full repository gates pass, with production still unverified."
+        "summary": "Production backfill fail-closed exposed legacy microsecond updated_at versus JavaScript millisecond token precision; minimal date_trunc(milliseconds) fix preserves stable-ID/SBOM stale guards, PostgreSQL 14/14 and full gates pass, production retry remains pending."
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md",

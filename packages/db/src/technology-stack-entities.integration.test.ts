@@ -159,6 +159,28 @@ describeIntegration("technology stack facts on PostgreSQL", () => {
     ]);
   });
 
+  it("历史微秒 updated_at 按 canonical 毫秒 collection token 复核", async () => {
+    const committed = await commitRepositoryCollectionSnapshot(db, snapshot("920003", "18.3.1"));
+    await pool.query(
+      "update repositories set updated_at = $1::timestamp where id = $2",
+      ["2026-08-18 10:04:52.387753", committed.repository.id],
+    );
+    const plan = await prepareTechnologyStackEntitiesBackfill(db);
+    expect(plan.sources[0].expectedVersion.toISOString()).toBe("2026-08-18T10:04:52.387Z");
+    const job = await runningBackfillJob("v-microsecond-token");
+
+    await expect(applyTechnologyStackBackfillSource(
+      db,
+      job.id,
+      "worker-1",
+      "v-microsecond-token",
+      plan,
+      plan.sources[0],
+      () => new Date("2026-08-18T00:10:00.000Z"),
+    )).resolves.toBe("applied");
+    expect(await db.select().from(schema.repositoryTechnologyStacks)).toHaveLength(1);
+  });
+
   it("每个 source 的 relation、checkpoint 与最终 receipt 在租约事务中提交", async () => {
     await commitRepositoryCollectionSnapshot(db, snapshot("920010", "18.3.1"));
     await commitRepositoryCollectionSnapshot(db, snapshot("920011", "19.0.0"));

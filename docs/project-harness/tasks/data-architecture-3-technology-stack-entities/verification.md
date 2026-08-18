@@ -52,12 +52,28 @@ pnpm build
 
 `pnpm db:generate` 报告无 schema drift；lint 保留 16 条既有 Web warnings、0 errors。Phase A implementation continuity review 最终为 `APPROVE`，未发现剩余 P0–P3 finding。
 
+## Phase A 首次生产部署与 fail-closed 证据
+
+PR #35 的 CI 通过并 squash merge 为 `main@eae3127433280831f4f30467f583e0dfe6aaaa98`；deploy workflow run `32144833809` 成功完成构建、生产备份、显式 `0008` migration 和服务发布。生产证据如下：
+
+- 迁移前备份为 `/home/devscope/backups/devscope/pre-migration-20260818-215751.dump`，大小 133875886 bytes，`pg_restore --list` 可读取 221 个目录项；
+- API、Web、Worker image revision 与服务器 HEAD 均为 `eae3127433280831f4f30467f583e0dfe6aaaa98`，API/Worker 模式均为 `legacy_shadow_dual_write`；
+- migration rows 从 8 增至 9；两张新表与 6 个新索引存在；旧基线保持 40 个真实仓库、10 个 reference rows、40+10 条 watched relations、34 条技术栈边和 203 条 evidence；
+- API/Web 内网 health 为 200，未认证 tunnel 请求为 401；Keychain 注入的本地 MCP launcher 返回 `status: ok`，没有读取或输出凭据。
+
+随后启动 version `phase-a-eae3127-v1`、job 27。任务只处理第一个 source 后便把历史微秒 `updated_at` 与 JavaScript 毫秒 token 判为 stale；重试耗尽后进入 `dead`，result 保留 `1/40` checkpoint，没有成功 receipt。旧 API read path 和业务基线不受影响，因此无需回滚 expand migration；失败 job 保留为不可变审计证据。
+
+## 微秒 collection token 修复证据
+
+在 `codex/technology-stack-token-precision` 上将数据库侧 repository token 比较规范为 `date_trunc('milliseconds', updated_at)` 对 canonical UTC 毫秒 timestamp；stable GitHub ID、SBOM baseline、lease authority 和 evidence digest 仍分别复核。新增真实 PostgreSQL 场景直接写入 `2026-08-18 10:04:52.387753`，prepare 得到 `2026-08-18T10:04:52.387Z`，apply 成功。
+
+隔离 PostgreSQL 场景由 13 增至 14，14/14 通过；`pnpm db:generate` 无 schema drift，`git diff --check`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。独立 precision fix review verdict 为 `APPROVE`，未发现 P0–P3 finding。
+
 ## 尚未验证
 
-- PR 与 GitHub CI；
-- 生产备份和显式 `0008` migration；
-- 生产 versioned one-shot backfill receipt；
+- precision fix 的 PR/CI 与无迁移生产部署；
+- 新 version 的生产 one-shot backfill 成功 receipt；
 - 生产 graph rebuild 的 shadow zero-diff；
-- 认证 MCP/UI dogfood、服务 revision/health/auth 和独立 production closeout。
+- backfill 后认证 MCP/UI dogfood、服务 revision/health/auth 和独立 production closeout。
 
 Phase B `new_read_dual_write` 与 Phase C `new_only → legacy_cleaned` 不属于本次批准范围，整个 item 仍保持 `doing`。

@@ -118,6 +118,13 @@ function sbomBaselineMatches(expectedSbomPackages: unknown) {
     : sql`${repositories.sbomPackages} IS NOT DISTINCT FROM ${JSON.stringify(expectedSbomPackages)}::jsonb`;
 }
 
+function collectionVersionMatches(expectedVersion: Date) {
+  // PostgreSQL legacy/default timestamps may retain microseconds, while JavaScript Date and
+  // the canonical collection token both use milliseconds. Compare at the token's precision.
+  const expectedTimestamp = expectedVersion.toISOString().replace("T", " ").replace("Z", "");
+  return sql`date_trunc('milliseconds', ${repositories.updatedAt}) = ${expectedTimestamp}::timestamp`;
+}
+
 async function replaceRepositoryTechnologyStacks(
   tx: CollectionTransaction,
   repositoryId: number,
@@ -197,7 +204,7 @@ export async function replaceRepositoryTechnologyStacksForCurrentSnapshots(
       .where(and(
         eq(repositories.id, input.repositoryId),
         eq(repositories.githubRepositoryId, input.githubRepositoryId),
-        eq(repositories.updatedAt, input.expectedVersion),
+        collectionVersionMatches(input.expectedVersion),
         sbomBaselineMatches(input.expectedSbomPackages),
       ))
       .for("update");
@@ -523,7 +530,7 @@ export async function applyTechnologyStackBackfillSource(
     const [repository] = await tx.select({ id: repositories.id }).from(repositories).where(and(
       eq(repositories.id, source.repositoryId),
       eq(repositories.githubRepositoryId, source.githubRepositoryId),
-      eq(repositories.updatedAt, source.expectedVersion),
+      collectionVersionMatches(source.expectedVersion),
       sbomBaselineMatches(source.expectedSbomPackages),
     )).for("update");
     if (!repository) return "stale";
