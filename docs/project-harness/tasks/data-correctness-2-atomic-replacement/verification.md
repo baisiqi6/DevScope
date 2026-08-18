@@ -39,10 +39,31 @@
 - `pnpm build`：通过，Next.js 14 pages 成功生成，仅保留同一组既有 warnings；
 - `git diff --check` 与 Harness validator：通过。
 
-## 待完成
+## PR、CI 与生产部署
 
-- PR、CI 与无迁移部署；
-- 生产正常采集 dogfood、版本/子快照/embedding 不变量复核与独立 closeout review。
+- 产品提交 `c8647fd8f35b19d8fca846c900245e6218b0f7a7` 经 PR #33 合并为 `main@de3b91722d0b9b120bd6ae7308bbf92af5dc0bdf`；
+- CI run `32136772754` 的 `quality` job 通过；
+- 手动部署 run `32137164791` 明确使用 `apply_database_migration=false`。首次尝试仅在 GHCR 登录阶段收到瞬时 `denied`，deploy job 未启动，生产未变化；同一 run 的 attempt 2 构建并推送 API/Web/Worker 后成功部署；
+- 服务器 `/home/devscope/DevScope` 工作树干净且 HEAD 为 `de3b917...`，三个应用容器的 `org.opencontainers.image.revision` 均为同一 SHA；
+- `REPOSITORY_IDENTITY_CUTOVER=enabled`，API `/trpc/health` 与 Web 内部访问为 `200`，公网未认证首页与 tRPC 均为 `401`；Nginx 与 PostgreSQL 未重建；
+- `drizzle.__drizzle_migrations` 仍为 8 条，本 item 没有执行或隐式引入迁移。
+
+## 生产 MCP dogfood
+
+通过 macOS Keychain 注入 Basic Auth、SSH tunnel 和 `devscope-operator` MCP launcher 对已关注仓库 `deepseek-ai/deepseek-harness` 执行正常完整采集：
+
+- 采集前 token 为 `2026-08-18 09:30:18.325`，采集提交后的 token 为 `2026-08-18 12:39:04.922`，严格前进；
+- MCP quick result 为 `status=completed`、`chunksCollected=1`、`embeddingInBackground=true`；后台 embedding 在 `12:39:04.964` 开始、`12:39:05.219` 完成，最终 `1/1`、`100%`、`error=null`；
+- chunk 有序摘要保持 `d7fd95d2a58579df5da1907072711384`，1 个 chunk 的 embedding 非空；Release 有序摘要保持 `547b7d24fba0b660e231f2d7ce59e927`；HN 仍为合法空快照；
+- SBOM 从旧 `NULL` 规范化为本次成功返回的 `[]`，验证 `success([])` 的清空语义；
+- Hacker News 外部 API 返回 400，产品将其报告为可选源 warning，并保留既有空 HN 快照；主采集、Release、SBOM 与 embedding 均未被连带判失败；
+- 全库复核为 40 个真实仓库全部 `embedding_status=completed`，重复 chunk natural key 为 0，Release ID 跨仓库冲突为 0，真实仓库缺失 GitHub stable ID 为 0，migration rows 仍为 8。
+
+以上 dogfood 仅通过公开 MCP 产品路径触发采集；生产 SQL 检查全部只读，没有故障注入或直接数据修复。
+
+## Closeout
+
+独立 production closeout review 核对 GitHub、部署、生产运行态、认证 MCP dogfood 与全库不变量后给出 `APPROVE`。Reviewer 指出的唯一 P3 是 Harness 派生材料尚未同步；已通过显式 verification、`mark-done`、state refresh、validator 与 doctor 收口。item 状态现为 `done`，无需再次部署。
 
 ## Implementation Review
 

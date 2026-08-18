@@ -76,3 +76,13 @@ Reviewer 在完整 diff 与 focused tests 中发现四项需要关闭的缺口�
 Verdict：`APPROVE`。
 
 Reviewer 重新读取最新 diff、verification 与 Harness state，确认首轮四项均已闭环，未发现剩余 P0–P3 finding。独立复跑 DB focused 97 tests、API focused 40 tests、DB/API typecheck、`git diff --check`、Harness validate/doctor 均通过；真实 PostgreSQL 10 项证据由最新测试源码与 verification 核对。允许继续 commit、push 与 PR。
+
+## Production Closeout Review
+
+Verdict：`APPROVE`。
+
+Reviewer 独立核对 PR #33、CI run `32136772754`、deploy run `32137164791` 两次尝试、生产 Git/镜像、migration rows、服务与访问控制，确认产品版本统一为 `main@de3b91722d0b9b120bd6ae7308bbf92af5dc0bdf`。attempt 1 在 GHCR login 即失败且没有运行 deploy；attempt 2 明确 `apply_database_migration=false` 并成功，生产 migration rows 保持 8。
+
+认证 MCP dogfood 的 token、chunk/Release/HN/SBOM 快照、embedding `1/1` 终态和 API 日志均与 verification 一致。HN 400 被隔离为 optional source warning；全库 40 个真实仓库全部完成 embedding，重复 chunk key、Release 跨仓库冲突、缺失 stable ID、embedding 不一致和 active collection jobs 均为 0。
+
+唯一 finding 为 P3：closeout 时 checklist、state、current review 和 verification 派生材料尚未同步。这不阻塞产品验收，应由本次显式 `mark-done --verification`、`harnessctl state` 和 validator 收口，无需重新部署或 dogfood。上述命令已执行并通过，允许进入下一 item。

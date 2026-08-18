@@ -88,10 +88,10 @@
     {
       "id": "data-correctness-2-atomic-replacement",
       "title": "使采集子数据整体原子替换",
-      "status": "doing",
+      "status": "done",
       "priority": "p0",
-      "owner": "codex",
-      "selected_in_session": "codex-20260818-atomic-replacement",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-18",
       "dependencies": [
         "data-correctness-1b-repository-identity"
@@ -99,31 +99,33 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事务整体替换，失败保留旧快照，并发采集不产生空集、半份快照或交叉覆盖。",
-      "verification": "",
+      "verification": "PR #33 merged at de3b917; CI and no-migration deploy run 32137164791 attempt 2 passed; production revisions, services/auth and 8 migration rows verified; authenticated MCP dogfood advanced token, preserved valid snapshots, completed embedding 1/1, and global invariants remained clean; independent closeout APPROVE.",
       "handoff": "复用现有 jobs 或最小 PostgreSQL 锁，不新增第二套队列。",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-18",
         "branch": "codex/data-correctness-2-atomic-replacement"
       },
       "review": {
         "decision": "approved",
         "reviewer": "release_id_migration_reviewer",
-        "phase": "review_requested",
+        "phase": "closeout_requested",
         "updated_at": "2026-08-18",
-        "summary": "Continuity implementation review closed reconcile authority, malformed SBOM, stale-writer concurrency evidence and Harness state findings; no remaining P0-P3 findings."
+        "summary": "Production closeout verified PR #33, CI, no-migration deploy attempt 2, matching production revisions, services/auth, MCP collection token and snapshot invariants, applied embedding, and zero global conflicts; derivative Harness state must be refreshed during mark-done."
       },
       "plan_path": "docs/project-harness/tasks/data-correctness-2-atomic-replacement/plan.md",
       "artifacts": {
         "branch": "codex/data-correctness-2-atomic-replacement",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260818-atomic-replacement",
         "acquired_at": "2026-08-18T12:10:24Z",
         "expires_at": "2026-08-18T14:10:24Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-18T12:46:50Z"
       }
     },
     {
