@@ -46,6 +46,7 @@ vi.mock("@devscope/db", async (importOriginal) => {
   const mockSemanticSearchRepoChunks = vi.fn();
   const mockListWorkflowReportsByRepository = vi.fn();
   const mockEnqueueRestartableJob = vi.fn();
+  const mockGetReleasesByRepoId = vi.fn();
 
   return {
     ...actual,
@@ -59,11 +60,13 @@ vi.mock("@devscope/db", async (importOriginal) => {
     semanticSearchRepoChunks: mockSemanticSearchRepoChunks,
     listWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
     enqueueRestartableJob: mockEnqueueRestartableJob,
+    getReleasesByRepoId: mockGetReleasesByRepoId,
     users: { id: "users.id" },
     __mockGetRepositoryByFullName: mockGetRepositoryByFullName,
     __mockSemanticSearchRepoChunks: mockSemanticSearchRepoChunks,
     __mockListWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
     __mockEnqueueRestartableJob: mockEnqueueRestartableJob,
+    __mockGetReleasesByRepoId: mockGetReleasesByRepoId,
   };
 });
 
@@ -79,6 +82,7 @@ import {
   __mockSemanticSearchRepoChunks as mockSemanticSearchRepoChunks,
   __mockListWorkflowReportsByRepository as mockListWorkflowReportsByRepository,
   __mockEnqueueRestartableJob as mockEnqueueRestartableJob,
+  __mockGetReleasesByRepoId as mockGetReleasesByRepoId,
   userWatchedRepositories,
   users,
 } from "@devscope/db";
@@ -148,6 +152,32 @@ describe("appRouter", () => {
 
       // 验证 timestamp 是有效的 ISO 8601 格式
       expect(() => new Date(result.timestamp)).not.toThrow();
+    });
+  });
+
+  describe("getReleases", () => {
+    it("将数据库 bigint Release ID 作为无损十进制字符串返回", async () => {
+      mockGetReleasesByRepoId.mockResolvedValueOnce([{
+        id: 2147483648n,
+        repoId: 1,
+        tagName: "v1.0.0",
+        name: "v1.0.0",
+        body: null,
+        author: "maintainer",
+        createdAt: new Date("2026-08-17T00:00:00Z"),
+        publishedAt: new Date("2026-08-17T00:00:00Z"),
+        url: "https://api.github.com/repos/owner/repo/releases/2147483648",
+        htmlUrl: "https://github.com/owner/repo/releases/tag/v1.0.0",
+        zipUrl: null,
+        tarUrl: null,
+        assets: [],
+        isPrerelease: false,
+        fetchedAt: new Date("2026-08-17T00:00:00Z"),
+      }]);
+
+      const result = await createCaller().getReleases({ repoId: 1, limit: 5 });
+
+      expect(result[0].id).toBe("2147483648");
     });
   });
 

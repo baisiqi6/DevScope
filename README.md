@@ -50,7 +50,7 @@ pnpm dev
 
 `pnpm db:push` 只用于本地开发。生产环境必须使用经过审查的迁移，不允许在部署脚本中隐式推送 schema。
 
-完整配置和排障说明见 [本地开发指南](docs/DEVELOPMENT.md)。
+完整配置和排障说明见 [运行手册](docs/project-harness/runbook.md)。
 
 ## 常用命令
 
@@ -84,24 +84,23 @@ skills/
   repo-analyze/           AI 健康度分析 CLI
   report-generate/        报告生成 CLI
 docs/
-  DEVELOPMENT.md          本地开发与验证
   AGENT_INTERFACES.md     CLI、MCP 与 Agent 接入
-  PRODUCTION_RUNBOOK.md   生产部署与安全操作
+  project-harness/
+    scope.md              项目范围、非目标与渐进导航
+    architecture.md       当前实现架构
+    domain-model.md       数据模型与演进约束
+    harness-checklist.json 任务状态与验收
+    progress.md           基线、进展与 handoff
+    runbook.md            开发、生产、回滚与 dogfood 操作
 ```
 
-详细边界和数据流见 [架构说明](ARCHITECTURE.md)。协作约束见 [AGENTS.md](AGENTS.md)。
+项目范围从 [Harness 导航](docs/project-harness/scope.md) 开始渐进读取；协作约束见 [AGENTS.md](AGENTS.md)。
 
 ## 当前边界与下一阶段
 
-现有 API 使用 `publicProcedure`，当前用户解析仍是“首个用户/默认用户”的单用户实现；这不是应用鉴权。用户仓库关联、分组、报告、任务和图谱的数据访问已显式携带 `userId`，但从私有版扩展到公开多用户版之前仍至少需要完成：
+现有 API 使用 `publicProcedure`，当前仍是单用户私有实现，不能直接暴露为公共服务。完整范围和非目标只维护在 [scope.md](docs/project-harness/scope.md)，多用户数据约束只维护在 [domain-model.md](docs/project-harness/domain-model.md)，执行状态只维护在 [harness-checklist.json](docs/project-harness/harness-checklist.json)。
 
-1. 登录、会话与统一身份模型；
-2. 用真实会话替换当前用户解析，并完成全路由授权审计；
-3. 多用户数据迁移演练及必要的数据库/RLS 防御；
-4. API 限流、审计、配额和密钥管理；
-5. 多用户授权测试与生产可观测性。
-
-生产环境当前必须由反向代理访问控制保护。操作方法见 [生产运行手册](docs/PRODUCTION_RUNBOOK.md)。
+生产环境当前必须由反向代理访问控制保护。操作方法见 [运行手册](docs/project-harness/runbook.md)。
 
 CLI 与 MCP 都只调用现有 API，不直接连接数据库或 AI Provider。命令、环境变量和 MCP 客户端配置见 [Agent 调用接口](docs/AGENT_INTERFACES.md)。
 

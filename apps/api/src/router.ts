@@ -373,7 +373,7 @@ export const appRouter = router({
       limit: z.number().min(1).max(50).default(10),
     }))
     .output(z.array(z.object({
-      id: z.number(),
+      id: z.string().regex(/^[1-9]\d*$/),
       tagName: z.string(),
       name: z.string(),
       body: z.string().nullable(),
@@ -399,7 +399,7 @@ export const appRouter = router({
       const releases = await getReleasesByRepoId(db, input.repoId, input.limit);
 
       return releases.map((r) => ({
-        id: r.id,
+        id: r.id.toString(),
         tagName: r.tagName,
         name: r.name,
         body: r.body,

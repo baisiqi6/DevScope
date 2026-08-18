@@ -7,7 +7,7 @@
  * @module pipeline
  */
 
-import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, deleteReleasesByRepoId, insertReleases, repositories } from "./index";
+import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, deleteReleasesByRepoId, insertReleases, normalizeGitHubReleaseId, repositories } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
 import { GitHubClient } from "@devscope/shared";
@@ -638,13 +638,8 @@ export class DataCollectionPipeline {
         console.log("[Pipeline] Releases fetched:", githubReleases.length);
 
         if (githubReleases.length > 0) {
-          // 先删除该仓库的旧 releases（避免重复数据）
-          console.log("[Pipeline] Deleting old releases for repository:", savedRepo.id);
-          await deleteReleasesByRepoId(this.db, savedRepo.id);
-          console.log("[Pipeline] Old releases deleted, inserting new releases...");
-
           const dbReleases = githubReleases.map((release) => ({
-            id: release.id,
+            id: normalizeGitHubReleaseId(release.id),
             tagName: release.tagName,
             name: release.name,
             body: release.body,
@@ -658,6 +653,11 @@ export class DataCollectionPipeline {
             assets: release.assets,
             isPrerelease: release.isPrerelease,
           }));
+
+          // 先删除该仓库的旧 releases（避免重复数据）
+          console.log("[Pipeline] Deleting old releases for repository:", savedRepo.id);
+          await deleteReleasesByRepoId(this.db, savedRepo.id);
+          console.log("[Pipeline] Old releases deleted, inserting new releases...");
 
           await insertReleases(this.db, savedRepo.id, dbReleases);
           console.log("[Pipeline] Releases stored:", dbReleases.length);

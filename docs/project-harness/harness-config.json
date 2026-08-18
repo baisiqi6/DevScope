@@ -1,0 +1,24 @@
+{
+  "project_name": "devscope",
+  "deployment_profile": "standalone",
+  "commands": {
+    "lint": "pnpm lint",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm test",
+    "build": "pnpm build"
+  },
+  "runtime": {
+    "session_init_commands": [
+      "typecheck",
+      "test"
+    ],
+    "lease_ttl_minutes": 120
+  },
+  "git": {
+    "base_branch": "main",
+    "branch_namespace": "codex/{item_id}"
+  },
+  "message_bus": {
+    "event_log": "docs/project-harness/events.jsonl"
+  }
+}

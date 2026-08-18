@@ -150,7 +150,8 @@ jobs:
                 pg_dump -U postgres -d devscope --format=custom > "$backup_file"
               chmod 600 "$backup_file"
 
-              docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api \
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps \
+                -e PGOPTIONS="-c lock_timeout=5s" api \
                 pnpm --filter @devscope/db db:migrate
             fi
 

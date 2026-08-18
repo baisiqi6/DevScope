@@ -5,6 +5,8 @@ node_modules
 
 # Testing
 coverage
+__pycache__/
+*.py[cod]
 
 # Next.js
 .next/
