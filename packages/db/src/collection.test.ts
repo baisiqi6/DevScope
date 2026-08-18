@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  insertReleases,
-  RepositoryIdentityBackfillRequiredError,
-  RepositoryIdentityConflictError,
-  upsertRepository,
-} from "./collection";
+import { insertReleases } from "./collection";
 
 function release(id: number | string) {
   return {
@@ -75,87 +70,5 @@ describe("insertReleases", () => {
     await expect(
       insertReleases(db as never, 7, [release("9223372036854775808")]),
     ).rejects.toThrow(/PostgreSQL bigint range/i);
-  });
-});
-
-describe("upsertRepository stable identity", () => {
-  const repositoryData = {
-    githubRepositoryId: "123",
-    fullName: "new-owner/repo",
-    name: "repo",
-    owner: "new-owner",
-    description: null,
-    url: "https://github.com/new-owner/repo",
-    stars: 1,
-    forks: 0,
-    openIssues: 0,
-    language: "TypeScript",
-    license: "MIT",
-    readme: null,
-    readmeUrl: null,
-    lastFetchedAt: new Date("2026-08-18T00:00:00Z"),
-    isReference: false,
-  };
-
-  it("同一 GitHub ID 改名时更新原实体和关注冗余名称", async () => {
-    const existing = {
-      ...repositoryData,
-      id: 7,
-      fullName: "old-owner/repo",
-      owner: "old-owner",
-    };
-    const updated = { ...existing, ...repositoryData };
-    const repositoryReturning = vi.fn().mockResolvedValue([updated]);
-    const watcherWhere = vi.fn().mockResolvedValue([]);
-    const update = vi.fn()
-      .mockReturnValueOnce({
-        set: vi.fn(() => ({
-          where: vi.fn(() => ({ returning: repositoryReturning })),
-        })),
-      })
-      .mockReturnValueOnce({ set: vi.fn(() => ({ where: watcherWhere })) });
-    const tx = {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({ for: vi.fn().mockResolvedValue([existing]) })),
-        })),
-      })),
-      update,
-    };
-    const db = { transaction: vi.fn((callback) => callback(tx)) };
-
-    await expect(upsertRepository(db as any, repositoryData)).resolves.toEqual(updated);
-    expect(update).toHaveBeenCalledTimes(2);
-    expect(watcherWhere).toHaveBeenCalled();
-  });
-
-  it("ID 与 fullName 命中不同正式行时 fail closed", async () => {
-    const byId = { ...repositoryData, id: 7, fullName: "old-owner/repo" };
-    const byName = { ...repositoryData, id: 8, githubRepositoryId: "456" };
-    const tx = {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({ for: vi.fn().mockResolvedValue([byId, byName]) })),
-        })),
-      })),
-    };
-    const db = { transaction: vi.fn((callback) => callback(tx)) };
-
-    await expect(upsertRepository(db as any, repositoryData))
-      .rejects.toBeInstanceOf(RepositoryIdentityConflictError);
-  });
-
-  it("compatibility 阶段拒绝创建全新 stable-ID 行", async () => {
-    const tx = {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({ for: vi.fn().mockResolvedValue([]) })),
-        })),
-      })),
-    };
-    const db = { transaction: vi.fn((callback) => callback(tx)) };
-
-    await expect(upsertRepository(db as any, repositoryData))
-      .rejects.toBeInstanceOf(RepositoryIdentityBackfillRequiredError);
   });
 });

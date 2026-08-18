@@ -16,6 +16,16 @@ import {
 import sbomFixture from "./__fixtures__/sbom-tailwindcss.json";
 import sbomPypiFixture from "./__fixtures__/sbom-pypi-minimal.json";
 
+const { mockPoolRepositoryEmbedding, mockApplySbomBackfill } = vi.hoisted(() => ({
+  mockPoolRepositoryEmbedding: vi.fn(),
+  mockApplySbomBackfill: vi.fn(),
+}));
+
+vi.mock("./collection", () => ({
+  poolRepositoryEmbeddingForCurrentVersion: mockPoolRepositoryEmbedding,
+  applySbomBackfillIfCurrent: mockApplySbomBackfill,
+}));
+
 // ============================================================================
 // SBOM 解析测试（真实 fixture）
 // ============================================================================
@@ -123,47 +133,32 @@ describe("parseSbomPackages（pypi fixture）", () => {
 // ============================================================================
 
 describe("poolRepoEmbedding", () => {
-  function createMockDb(chunks: Array<{ embedding: number[] | null }>) {
-    const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
-    return {
-      select: vi.fn().mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(chunks),
-        }),
-      }),
-      update: vi.fn().mockReturnValue({ set: updateSet }),
-      _updateSet: updateSet,
-    } as any;
-  }
-
   it("应对 readme/description chunks 做 mean pooling", async () => {
-    const db = createMockDb([
-      { embedding: [1, 0, 0] },
-      { embedding: [0, 1, 0] },
-    ]);
+    const db = {} as any;
+    mockPoolRepositoryEmbedding.mockResolvedValueOnce("applied");
 
     const result = await poolRepoEmbedding(db, 1);
 
     expect(result).toBe(true);
-    expect(db._updateSet).toHaveBeenCalledWith({ embedding: [0.5, 0.5, 0] });
+    expect(mockPoolRepositoryEmbedding).toHaveBeenCalledWith(db, 1);
   });
 
   it("无有效 chunk 时置 null", async () => {
-    const db = createMockDb([]);
+    const db = {} as any;
+    mockPoolRepositoryEmbedding.mockResolvedValueOnce("cleared");
 
     const result = await poolRepoEmbedding(db, 1);
 
     expect(result).toBe(false);
-    expect(db._updateSet).toHaveBeenCalledWith({ embedding: null });
   });
 
   it("单个 chunk 时 mean 等于自身", async () => {
-    const db = createMockDb([{ embedding: [3, 4, 5] }]);
+    const db = {} as any;
+    mockPoolRepositoryEmbedding.mockResolvedValueOnce("applied");
 
     const result = await poolRepoEmbedding(db, 1);
 
     expect(result).toBe(true);
-    expect(db._updateSet).toHaveBeenCalledWith({ embedding: [3, 4, 5] });
   });
 });
 
@@ -659,11 +654,12 @@ describe("getRepoGraphData", () => {
 
 describe("backfillSbomPackages", () => {
   it("回填 null 与遗留无 system 字段的行，跳过已多生态的行", async () => {
-    const updated: Array<{ id: number; packages: unknown }> = [];
+    mockApplySbomBackfill.mockResolvedValue("applied");
+    const version = new Date("2026-08-18T00:00:00.000Z");
     const repos = [
-      { id: 1, fullName: "org/a", sbomPackages: null },
-      { id: 2, fullName: "org/b", sbomPackages: [{ name: "react", version: "19.0.0" }] }, // 遗留无 system
-      { id: 3, fullName: "org/c", sbomPackages: [{ name: "vue", version: "3.0.0", system: "npm" }] }, // 已多生态
+      { id: 1, githubRepositoryId: "101", fullName: "org/a", updatedAt: version, sbomPackages: null },
+      { id: 2, githubRepositoryId: "102", fullName: "org/b", updatedAt: version, sbomPackages: [{ name: "react", version: "19.0.0" }] }, // 遗留无 system
+      { id: 3, githubRepositoryId: "103", fullName: "org/c", updatedAt: version, sbomPackages: [{ name: "vue", version: "3.0.0", system: "npm" }] }, // 已多生态
     ];
     const db = {
       select: vi.fn().mockReturnValue({
@@ -671,14 +667,6 @@ describe("backfillSbomPackages", () => {
           where: vi.fn().mockResolvedValue(repos),
         }),
       }),
-      update: vi.fn().mockImplementation(() => ({
-        set: vi.fn().mockImplementation((vals: any) => ({
-          where: vi.fn().mockImplementation(() => {
-            updated.push({ id: 0, packages: vals.sbomPackages });
-            return Promise.resolve();
-          }),
-        })),
-      })),
     } as any;
 
     const { backfillSbomPackages } = await import("./repo-graph");
@@ -693,9 +681,9 @@ describe("backfillSbomPackages", () => {
     expect(fetchSbom).toHaveBeenCalledWith("org/a");
     expect(fetchSbom).toHaveBeenCalledWith("org/b");
     expect(filled).toBe(2);
-    expect(updated).toHaveLength(2);
-    // pypi 包被正确解析并带 system 字段
-    expect((updated[0].packages as any[])[0]).toMatchObject({ name: "fastapi", system: "pypi" });
+    expect(mockApplySbomBackfill).toHaveBeenCalledTimes(2);
+    expect(mockApplySbomBackfill.mock.calls[0][1].packages[0])
+      .toMatchObject({ name: "fastapi", system: "pypi" });
   });
 
   it("无 fetchSbom 时直接返回 0", async () => {

@@ -272,7 +272,6 @@ export async function applyRepositoryIdentityBackfill(
             owner: update.fullName.split("/")[0],
             name: update.fullName.split("/")[1],
             url: `https://github.com/${update.fullName}`,
-            updatedAt: now,
           })
           .where(eq(repositories.id, update.repositoryId));
         if (update.fullName !== update.previousFullName) {

@@ -76,26 +76,22 @@ const mockRepositoryData = {
 };
 
 const {
-  mockUpsertRepository,
-  mockInsertRepoChunks,
-  mockInsertHackernewsItems,
-  mockDeleteRepoChunksByRepoId,
-  mockDeleteHackernewsItemsByRepoId,
-  mockDeleteReleasesByRepoId,
-  mockInsertReleases,
+  mockCommitRepositoryCollectionSnapshot,
+  mockClaimRepositoryEmbeddingSnapshot,
+  mockUpdateEmbeddingProgressForVersion,
+  mockApplyRepositoryEmbeddingSnapshot,
+  mockMarkEmbeddingFailedForVersion,
   mockNormalizeGitHubReleaseId,
   mockEmbedBatch,
   mockChunkMultiple,
   mockCollectRepository,
   mockGetReleases,
 } = vi.hoisted(() => ({
-  mockUpsertRepository: vi.fn(),
-  mockInsertRepoChunks: vi.fn(),
-  mockInsertHackernewsItems: vi.fn(),
-  mockDeleteRepoChunksByRepoId: vi.fn(),
-  mockDeleteHackernewsItemsByRepoId: vi.fn(),
-  mockDeleteReleasesByRepoId: vi.fn(),
-  mockInsertReleases: vi.fn(),
+  mockCommitRepositoryCollectionSnapshot: vi.fn(),
+  mockClaimRepositoryEmbeddingSnapshot: vi.fn(),
+  mockUpdateEmbeddingProgressForVersion: vi.fn(),
+  mockApplyRepositoryEmbeddingSnapshot: vi.fn(),
+  mockMarkEmbeddingFailedForVersion: vi.fn(),
   mockNormalizeGitHubReleaseId: vi.fn(),
   mockEmbedBatch: vi.fn(),
   mockChunkMultiple: vi.fn(),
@@ -135,13 +131,11 @@ vi.mock("@devscope/ai", () => ({
 
 // Mock database operations
 vi.mock("./index", () => ({
-  upsertRepository: mockUpsertRepository,
-  insertRepoChunks: mockInsertRepoChunks,
-  insertHackernewsItems: mockInsertHackernewsItems,
-  deleteRepoChunksByRepoId: mockDeleteRepoChunksByRepoId,
-  deleteHackernewsItemsByRepoId: mockDeleteHackernewsItemsByRepoId,
-  deleteReleasesByRepoId: mockDeleteReleasesByRepoId,
-  insertReleases: mockInsertReleases,
+  commitRepositoryCollectionSnapshot: mockCommitRepositoryCollectionSnapshot,
+  claimRepositoryEmbeddingSnapshot: mockClaimRepositoryEmbeddingSnapshot,
+  updateEmbeddingProgressForVersion: mockUpdateEmbeddingProgressForVersion,
+  applyRepositoryEmbeddingSnapshot: mockApplyRepositoryEmbeddingSnapshot,
+  markEmbeddingFailedForVersion: mockMarkEmbeddingFailedForVersion,
   normalizeGitHubReleaseId: mockNormalizeGitHubReleaseId,
   repositories: {
     id: "id",
@@ -161,13 +155,30 @@ describe("DataCollectionPipeline", () => {
     vi.clearAllMocks();
 
     // Set up default mock return values
-    mockUpsertRepository.mockResolvedValue({ id: 1, fullName: "test/repo" });
-    mockInsertRepoChunks.mockResolvedValue([]);
-    mockInsertHackernewsItems.mockResolvedValue([]);
-    mockDeleteRepoChunksByRepoId.mockResolvedValue(undefined);
-    mockDeleteHackernewsItemsByRepoId.mockResolvedValue(undefined);
-    mockDeleteReleasesByRepoId.mockResolvedValue(undefined);
-    mockInsertReleases.mockResolvedValue([]);
+    mockCommitRepositoryCollectionSnapshot.mockResolvedValue({
+      repository: {
+        id: 1,
+        githubRepositoryId: "123",
+        fullName: "test/repo",
+        name: "repo",
+        owner: "test",
+        description: "Test repository",
+        url: "https://github.com/test/repo",
+        stars: 1000,
+        forks: 100,
+        openIssues: 10,
+        language: "TypeScript",
+      },
+      version: new Date("2026-08-18T00:00:00.000Z"),
+    });
+    mockClaimRepositoryEmbeddingSnapshot.mockResolvedValue({ status: "not_claimed" });
+    mockUpdateEmbeddingProgressForVersion.mockResolvedValue(true);
+    mockApplyRepositoryEmbeddingSnapshot.mockResolvedValue({
+      status: "applied",
+      completedChunks: 2,
+      totalChunks: 2,
+    });
+    mockMarkEmbeddingFailedForVersion.mockResolvedValue(true);
     mockNormalizeGitHubReleaseId.mockImplementation((id: string) => BigInt(id));
     mockGetReleases.mockResolvedValue([]);
     mockEmbedBatch.mockResolvedValue([
@@ -254,25 +265,26 @@ describe("DataCollectionPipeline", () => {
     it("应该正确保存仓库信息到数据库", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockUpsertRepository).toHaveBeenCalledWith(
+      expect(mockCommitRepositoryCollectionSnapshot).toHaveBeenCalledWith(
         mockDb,
         expect.objectContaining({
-          githubRepositoryId: "123",
-          fullName: "test/repo",
-          name: "repo",
-          owner: "test",
-          description: "Test repository",
-          url: "https://github.com/test/repo",
-          stars: 1000,
-          forks: 100,
-          openIssues: 10,
-          language: "TypeScript",
-          license: "MIT",
-          readme: expect.stringContaining("Test README"),
-          // 采集即视为正式仓库；命中同 fullName 的 reference 轻量行时升级该行
-          isReference: false,
+          repository: expect.objectContaining({
+            githubRepositoryId: "123",
+            fullName: "test/repo",
+            name: "repo",
+            owner: "test",
+            description: "Test repository",
+            url: "https://github.com/test/repo",
+            stars: 1000,
+            forks: 100,
+            openIssues: 10,
+            language: "TypeScript",
+            license: "MIT",
+            readme: expect.stringContaining("Test README"),
+            isReference: false,
+          }),
+          allowNewStableIdentity: false,
         }),
-        { allowNewStableIdentity: false },
       );
     });
   });
@@ -357,7 +369,7 @@ describe("DataCollectionPipeline", () => {
     it("应该先保存不带 Embedding 的分块", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      const insertedChunks = mockInsertRepoChunks.mock.calls[0][1];
+      const insertedChunks = mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].chunks;
       expect(insertedChunks).toHaveLength(2);
       expect(insertedChunks.every((chunk: any) => chunk.embedding === null)).toBe(true);
     });
@@ -368,7 +380,74 @@ describe("DataCollectionPipeline", () => {
       await pipeline.run({ repo: "test/repo" });
 
       expect(mockEmbedBatch).not.toHaveBeenCalled();
-      expect(mockInsertRepoChunks).not.toHaveBeenCalled();
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].chunks).toEqual([]);
+    });
+
+    it("claim 在内部返回绑定 chunks，调用方只传 repoId 与 token", async () => {
+      const version = new Date("2026-08-18T00:00:00.000Z");
+      mockClaimRepositoryEmbeddingSnapshot.mockResolvedValueOnce({
+        status: "claimed",
+        chunks: [
+          { content: "A", chunkType: "readme", sourceId: null, chunkIndex: 0, tokenCount: 1 },
+          { content: "B", chunkType: "issues", sourceId: "1", chunkIndex: 1, tokenCount: 1 },
+        ],
+      });
+      mockEmbedBatch.mockResolvedValueOnce([
+        [1, 0],
+        [0, 1],
+      ]);
+
+      const outcome = await pipeline.runEmbeddingsInBackground(1, version);
+
+      expect(outcome.status).toBe("applied");
+      expect(mockClaimRepositoryEmbeddingSnapshot).toHaveBeenCalledWith(mockDb, 1, version);
+      expect(mockApplyRepositoryEmbeddingSnapshot).toHaveBeenCalledWith(
+        mockDb,
+        expect.objectContaining({
+          repoId: 1,
+          expectedVersion: version,
+          chunks: [
+            expect.objectContaining({ content: "A", embedding: [1, 0] }),
+            expect.objectContaining({ content: "B", embedding: [0, 1] }),
+          ],
+          repositoryEmbedding: [1, 0],
+        }),
+      );
+    });
+
+    it("过期 token 未 claim 时不调用模型或 final write", async () => {
+      const version = new Date("2026-08-18T00:00:00.000Z");
+      mockClaimRepositoryEmbeddingSnapshot.mockResolvedValueOnce({ status: "stale" });
+
+      await expect(pipeline.runEmbeddingsInBackground(1, version))
+        .resolves.toEqual({ status: "stale" });
+      expect(mockEmbedBatch).not.toHaveBeenCalled();
+      expect(mockApplyRepositoryEmbeddingSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("部分 embedding 失败时仍把全部文本交给原子 final write", async () => {
+      const version = new Date("2026-08-18T00:00:00.000Z");
+      mockClaimRepositoryEmbeddingSnapshot.mockResolvedValueOnce({
+        status: "claimed",
+        chunks: [
+          { content: "A", chunkType: "readme", sourceId: null, chunkIndex: 0, tokenCount: 1 },
+          { content: "B", chunkType: "issues", sourceId: "1", chunkIndex: 1, tokenCount: 1 },
+        ],
+      });
+      mockEmbedBatch.mockResolvedValueOnce([[1, 0], null]);
+      mockApplyRepositoryEmbeddingSnapshot.mockResolvedValueOnce({
+        status: "failed",
+        completedChunks: 1,
+        totalChunks: 2,
+        error: "1 chunks 向量化失败",
+      });
+
+      const outcome = await pipeline.runEmbeddingsInBackground(1, version);
+
+      expect(outcome.status).toBe("failed");
+      const finalChunks = mockApplyRepositoryEmbeddingSnapshot.mock.calls[0][1].chunks;
+      expect(finalChunks).toHaveLength(2);
+      expect(finalChunks[1]).toMatchObject({ content: "B", embedding: null });
     });
   });
 
@@ -380,11 +459,10 @@ describe("DataCollectionPipeline", () => {
     it("应该正确插入分块到数据库", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockInsertRepoChunks).toHaveBeenCalledTimes(1);
-      const insertedChunks = mockInsertRepoChunks.mock.calls[0][1];
+      expect(mockCommitRepositoryCollectionSnapshot).toHaveBeenCalledTimes(1);
+      const insertedChunks = mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].chunks;
       expect(insertedChunks).toHaveLength(2);
       expect(insertedChunks[0]).toMatchObject({
-        repoId: 1,
         content: "Chunk 1",
         chunkType: "readme",
         sourceId: null,
@@ -396,8 +474,8 @@ describe("DataCollectionPipeline", () => {
     it("应该在快速采集阶段把 embedding 保存为 null", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockInsertRepoChunks).toHaveBeenCalled();
-      const insertedChunks = mockInsertRepoChunks.mock.calls[0][1];
+      expect(mockCommitRepositoryCollectionSnapshot).toHaveBeenCalled();
+      const insertedChunks = mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].chunks;
       expect(insertedChunks).toHaveLength(2);
       expect(insertedChunks[0].embedding).toBeNull();
       expect(insertedChunks[1].embedding).toBeNull();
@@ -425,8 +503,8 @@ describe("DataCollectionPipeline", () => {
 
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockDeleteReleasesByRepoId).not.toHaveBeenCalled();
-      expect(mockInsertReleases).not.toHaveBeenCalled();
+      const releaseSnapshot = mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].releases;
+      expect(releaseSnapshot.status).toBe("failure");
     });
   });
 
@@ -447,11 +525,11 @@ describe("DataCollectionPipeline", () => {
     it("应该正确解析 Hacker News 响应", async () => {
       await pipeline.run({ repo: "test/repo" });
 
-      expect(mockInsertHackernewsItems).toHaveBeenCalledWith(
-        mockDb,
-        expect.arrayContaining([
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews).toEqual(
+        expect.objectContaining({
+          status: "success",
+          items: expect.arrayContaining([
           expect.objectContaining({
-            repoId: 1,
             type: "story",
             title: "Test Repository Discussion",
             content: "Discussion about the repository",
@@ -460,7 +538,8 @@ describe("DataCollectionPipeline", () => {
             descendants: 10,
             url: "https://example.com",
           }),
-        ])
+          ]),
+        }),
       );
     });
 
@@ -475,7 +554,8 @@ describe("DataCollectionPipeline", () => {
 
       await pipelineNoHN.run({ repo: "test/repo" });
 
-      expect(mockInsertHackernewsItems).not.toHaveBeenCalled();
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews)
+        .toEqual({ status: "skipped" });
 
       vi.unstubAllGlobals();
     });
@@ -490,6 +570,94 @@ describe("DataCollectionPipeline", () => {
       expect(result.hnItemsCollected).toBe(0);
 
       vi.unstubAllGlobals();
+    });
+
+    it("非法 Hacker News payload 作为 failure 保留旧来源并返回告警", async () => {
+      const isolatedPipeline = new DataCollectionPipeline(mockDb as any, {
+        includeHackernews: true,
+        includeSbom: false,
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          hits: [{
+            title: "bad",
+            story_text: null,
+            author: "user",
+            points: "not-a-number",
+            num_comments: 0,
+            url: null,
+          }],
+        }),
+      }));
+
+      const result = await isolatedPipeline.run({ repo: "test/repo" });
+
+      expect(result.status).toBe("completed");
+      expect(result.warning).toContain("Hacker News:");
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews.status)
+        .toBe("failure");
+      vi.unstubAllGlobals();
+    });
+
+    it("成功空 Hacker News 结果仍提交 success([])", async () => {
+      const isolatedPipeline = new DataCollectionPipeline(mockDb as any, {
+        includeHackernews: true,
+        includeSbom: false,
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ hits: [] }),
+      }));
+
+      await isolatedPipeline.run({ repo: "test/repo" });
+
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews)
+        .toEqual({ status: "success", items: [] });
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe("SBOM 采集", () => {
+    it("malformed 200 package 作为 failure，不伪装成 success([])", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string | URL | Request) => {
+        const url = String(input);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(url.includes("hn.algolia.com")
+            ? { hits: [] }
+            : { sbom: { packages: [{}] } }),
+        });
+      }));
+
+      const result = await pipeline.run({ repo: "test/repo" });
+
+      expect(result.status).toBe("completed");
+      expect(result.warning).toContain("SBOM:");
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].sbom.status)
+        .toBe("failure");
+    });
+
+    it("多个 optional failure 按 Hacker News、Releases、SBOM 固定顺序告警", async () => {
+      mockGetReleases.mockRejectedValueOnce(new Error("release unavailable"));
+      vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string | URL | Request) => {
+        const url = String(input);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(url.includes("hn.algolia.com")
+            ? { hits: [{ points: "bad" }] }
+            : { sbom: { packages: [{}] } }),
+        });
+      }));
+
+      const result = await pipeline.run({ repo: "test/repo" });
+      const warning = result.warning ?? "";
+
+      expect(warning.indexOf("Hacker News:")).toBeGreaterThanOrEqual(0);
+      expect(warning.indexOf("Releases:")).toBeGreaterThan(warning.indexOf("Hacker News:"));
+      expect(warning.indexOf("SBOM:")).toBeGreaterThan(warning.indexOf("Releases:"));
     });
   });
 
@@ -637,7 +805,6 @@ describe("DataCollectionPipeline", () => {
       });
 
       // Reset mocks and set up error
-      mockUpsertRepository.mockResolvedValueOnce({ id: 1, fullName: "test/repo" });
       mockCollectRepository.mockResolvedValueOnce(mockRepositoryData);
       mockChunkMultiple.mockReturnValueOnce([
         { content: "Chunk 1", chunkType: "readme", sourceId: undefined, chunkIndex: 0, tokenCount: 10 },
@@ -652,7 +819,7 @@ describe("DataCollectionPipeline", () => {
     });
 
     it("应该在数据库操作失败时传播错误", async () => {
-      mockUpsertRepository.mockRejectedValueOnce(
+      mockCommitRepositoryCollectionSnapshot.mockRejectedValueOnce(
         new Error("Database connection failed")
       );
 

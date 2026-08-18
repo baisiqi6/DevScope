@@ -5,7 +5,7 @@
  * 检查 repo_chunks 表中已有的 embedding 数据，更新 repositories 表的状态字段
  */
 
-import { createDb, repositories, repoChunks } from "./index";
+import { createDb, reconcileRepositoryEmbeddingStatus, repositories } from "./index";
 import { eq } from "drizzle-orm";
 
 /**
@@ -15,14 +15,10 @@ import { eq } from "drizzle-orm";
 export async function syncEmbeddingStatus(repoId: number) {
   const db = createDb();
 
-  // 查询仓库信息
   const repoList = await db
     .select({
       id: repositories.id,
       fullName: repositories.fullName,
-      embeddingStatus: repositories.embeddingStatus,
-      embeddingProgress: repositories.embeddingProgress,
-      embeddingTotalChunks: repositories.embeddingTotalChunks,
     })
     .from(repositories)
     .where(eq(repositories.id, repoId))
@@ -34,62 +30,10 @@ export async function syncEmbeddingStatus(repoId: number) {
     return;
   }
 
-  console.log(`\n=== Checking repository: ${repo.fullName} (ID: ${repoId}) ===`);
-  console.log(`Current status: ${repo.embeddingStatus}, progress: ${repo.embeddingProgress}%`);
-
-  // 查询所有 chunks，并在内存中统计向量化状态。
-  const allChunks = await db
-    .select({ embedding: repoChunks.embedding })
-    .from(repoChunks)
-    .where(eq(repoChunks.repoId, repoId));
-
-  const totalChunks = allChunks.length;
-  const withEmbedding = allChunks.filter((c) => c.embedding !== null && c.embedding !== undefined).length;
-  const withoutEmbedding = totalChunks - withEmbedding;
-
-  console.log(`Total chunks: ${totalChunks}`);
-  console.log(`With embedding: ${withEmbedding}`);
-  console.log(`Without embedding: ${withoutEmbedding}`);
-
-  // 判断是否需要更新状态
-  if (totalChunks === 0) {
-    console.log(`No chunks found, skipping...`);
-    return;
-  }
-
-  if (withEmbedding === totalChunks) {
-    // 所有 chunks 都有 embedding，标记为完成
-    console.log(`✓ All chunks have embeddings, marking as completed...`);
-    await db
-      .update(repositories)
-      .set({
-        embeddingStatus: "completed",
-        embeddingProgress: 100,
-        embeddingTotalChunks: totalChunks,
-        embeddingCompletedChunks: totalChunks,
-        embeddingCompletedAt: new Date(),
-        embeddingError: null,
-      })
-      .where(eq(repositories.id, repoId));
-    console.log(`✓ Updated to completed`);
-  } else if (withEmbedding > 0) {
-    // 部分有 embedding
-    const progress = Math.floor((withEmbedding / totalChunks) * 100);
-    console.log(`⚠ Partial embeddings (${progress}%), updating progress...`);
-    await db
-      .update(repositories)
-      .set({
-        embeddingStatus: "processing",
-        embeddingProgress: progress,
-        embeddingTotalChunks: totalChunks,
-        embeddingCompletedChunks: withEmbedding,
-      })
-      .where(eq(repositories.id, repoId));
-    console.log(`✓ Updated progress to ${progress}%`);
-  } else {
-    // 没有 embedding
-    console.log(`⚠ No embeddings found, status remains pending`);
-  }
+  const result = await reconcileRepositoryEmbeddingStatus(db, repoId);
+  console.log(`\n=== ${repo.fullName} (${repoId}) ===`);
+  console.log(`${result.status}: ${result.completedChunks}/${result.totalChunks}, changed=${result.changed}`);
+  return result;
 }
 
 /**
@@ -103,8 +47,6 @@ export async function syncAllEmbeddingStatus() {
     .select({
       id: repositories.id,
       fullName: repositories.fullName,
-      embeddingStatus: repositories.embeddingStatus,
-      embeddingProgress: repositories.embeddingProgress,
     })
     .from(repositories);
 
@@ -114,55 +56,10 @@ export async function syncAllEmbeddingStatus() {
   let completedCount = 0;
 
   for (const repo of allRepos) {
-    // 统计该仓库的 chunks
-    const allChunks = await db
-      .select({ embedding: repoChunks.embedding })
-      .from(repoChunks)
-      .where(eq(repoChunks.repoId, repo.id));
-
-    const totalChunks = allChunks.length;
-    const withEmbedding = allChunks.filter((c) => c.embedding !== null && c.embedding !== undefined).length;
-
-    if (totalChunks === 0) continue;
-
-    let shouldUpdate = false;
-    const updateData: any = {};
-
-    if (withEmbedding === totalChunks && repo.embeddingStatus !== "completed") {
-      // 全部完成
-      updateData.embeddingStatus = "completed";
-      updateData.embeddingProgress = 100;
-      updateData.embeddingTotalChunks = totalChunks;
-      updateData.embeddingCompletedChunks = totalChunks;
-      updateData.embeddingCompletedAt = new Date();
-      updateData.embeddingError = null;
-      shouldUpdate = true;
-      completedCount++;
-    } else if (withEmbedding > 0 && repo.embeddingStatus === "pending") {
-      // 有部分数据，更新为 processing
-      const progress = Math.floor((withEmbedding / totalChunks) * 100);
-      updateData.embeddingStatus = "processing";
-      updateData.embeddingProgress = progress;
-      updateData.embeddingTotalChunks = totalChunks;
-      updateData.embeddingCompletedChunks = withEmbedding;
-      shouldUpdate = true;
-    } else if (withEmbedding === 0 && repo.embeddingStatus === "pending") {
-      // 没有 embedding，如果 chunks 存在则说明可能需要处理
-      updateData.embeddingTotalChunks = totalChunks;
-      shouldUpdate = true;
-    }
-
-    if (shouldUpdate) {
-      await db
-        .update(repositories)
-        .set(updateData)
-        .where(eq(repositories.id, repo.id));
-      updatedCount++;
-
-      const status = updateData.embeddingStatus || repo.embeddingStatus;
-      const progress = updateData.embeddingProgress || repo.embeddingProgress;
-      console.log(`✓ ${repo.fullName}: ${status} (${progress}%)`);
-    }
+    const result = await reconcileRepositoryEmbeddingStatus(db, repo.id);
+    if (result.changed) updatedCount++;
+    if (result.status === "completed") completedCount++;
+    console.log(`✓ ${repo.fullName}: ${result.status} (${result.completedChunks}/${result.totalChunks})`);
   }
 
   console.log(`\n=== Summary ===`);
