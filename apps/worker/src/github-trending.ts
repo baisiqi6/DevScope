@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { z } from "zod";
 
 export const GITHUB_TRENDING_PERIODS = ["daily", "weekly", "monthly"] as const;
 
@@ -23,6 +24,23 @@ export interface GitHubTrendingResult {
 }
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const GITHUB_TRENDING_FALLBACK_BASE_URL =
+  "https://raw.githubusercontent.com/isboyjc/github-trending-api/main/data/";
+const GITHUB_TRENDING_FALLBACK_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
+
+const githubTrendingFallbackSchema = z.object({
+  pubDate: z.string().min(1),
+  items: z.array(z.object({
+    title: z.string().min(1),
+    url: z.string().url(),
+    description: z.string().nullable().optional(),
+    language: z.string().nullable().optional(),
+    stars: z.union([z.string(), z.number()]),
+    forks: z.union([z.string(), z.number()]),
+    addStars: z.union([z.string(), z.number()]),
+  })).min(1).max(100),
+});
 
 /**
  * GitHub Trending 是服务端渲染页面，没有公开 REST Trending endpoint。
@@ -79,10 +97,7 @@ export function buildGitHubTrendingUrl(
   period: GitHubTrendingPeriod,
   language = "all",
 ): string {
-  const normalizedLanguage = language.trim().toLowerCase() || "all";
-  if (normalizedLanguage !== "all" && !/^[a-z0-9+.#-]+$/.test(normalizedLanguage)) {
-    throw new Error(`无效 GitHub Trending 语言: ${language}`);
-  }
+  const normalizedLanguage = normalizeLanguage(language);
 
   const path = normalizedLanguage === "all"
     ? "/trending"
@@ -92,30 +107,119 @@ export function buildGitHubTrendingUrl(
   return url.toString();
 }
 
+export function buildGitHubTrendingFallbackUrl(
+  period: GitHubTrendingPeriod,
+  language = "all",
+): string {
+  const normalizedLanguage = normalizeLanguage(language);
+  return new URL(
+    `${period}/${encodeURIComponent(normalizedLanguage)}.json`,
+    GITHUB_TRENDING_FALLBACK_BASE_URL,
+  ).toString();
+}
+
+export function parseGitHubTrendingFallbackJson(
+  input: unknown,
+  now = new Date(),
+): GitHubTrendingEntry[] {
+  const snapshot = githubTrendingFallbackSchema.parse(input);
+  const publishedAt = new Date(snapshot.pubDate);
+  const ageMs = now.getTime() - publishedAt.getTime();
+
+  if (!Number.isFinite(publishedAt.getTime())) {
+    throw new Error("GitHub Trending 回退快照时间无效");
+  }
+  if (ageMs < -10 * 60 * 1_000 || ageMs > GITHUB_TRENDING_FALLBACK_MAX_AGE_MS) {
+    throw new Error(`GitHub Trending 回退快照已过期: ${snapshot.pubDate}`);
+  }
+
+  return snapshot.items.map((item, index) => {
+    const repositoryUrl = new URL(item.url);
+    const fullName = parseRepositoryFullName(repositoryUrl.pathname);
+    if (
+      repositoryUrl.protocol !== "https:" ||
+      repositoryUrl.hostname !== "github.com" ||
+      !fullName ||
+      normalizeText(item.title) !== fullName
+    ) {
+      throw new Error(`GitHub Trending 回退快照第 ${index + 1} 项仓库标识无效`);
+    }
+
+    const stars = parseGitHubCount(String(item.stars));
+    const forks = parseGitHubCount(String(item.forks));
+    const starsInPeriod = parseGitHubCount(String(item.addStars));
+    if (stars === null || forks === null || starsInPeriod === null) {
+      throw new Error(`GitHub Trending 回退快照指标无法识别: ${fullName}`);
+    }
+
+    return {
+      rank: index + 1,
+      fullName,
+      url: repositoryUrl.toString(),
+      description: item.description ? normalizeText(item.description) : null,
+      language: item.language ? normalizeText(item.language) : null,
+      stars,
+      forks,
+      starsInPeriod,
+    };
+  });
+}
+
 export async function fetchGitHubTrending(
   period: GitHubTrendingPeriod,
   language = "all",
   fetchImpl: FetchLike = fetch,
+  now: () => Date = () => new Date(),
 ): Promise<GitHubTrendingResult> {
   const sourceUrl = buildGitHubTrendingUrl(period, language);
-  const response = await fetchImpl(sourceUrl, {
-    headers: {
-      Accept: "text/html",
-      "User-Agent": "DevScope/0.1 (+https://github.com)",
-    },
-    signal: AbortSignal.timeout(20_000),
-  });
+  try {
+    const response = await fetchImpl(sourceUrl, {
+      headers: {
+        Accept: "text/html",
+        "User-Agent": "DevScope/0.1 (+https://github.com)",
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`GitHub Trending 请求失败: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`GitHub Trending 请求失败: ${response.status} ${response.statusText}`);
+    }
+
+    return {
+      period,
+      language: normalizeLanguage(language),
+      sourceUrl,
+      entries: parseGitHubTrendingHtml(await response.text()),
+    };
+  } catch (officialError) {
+    const fallbackUrl = buildGitHubTrendingFallbackUrl(period, language);
+    try {
+      const fallbackResponse = await fetchImpl(fallbackUrl, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "DevScope/0.1 (+https://github.com)",
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!fallbackResponse.ok) {
+        throw new Error(
+          `GitHub Trending 回退快照请求失败: ${fallbackResponse.status} ${fallbackResponse.statusText}`,
+        );
+      }
+
+      return {
+        period,
+        language: normalizeLanguage(language),
+        sourceUrl: fallbackUrl,
+        entries: parseGitHubTrendingFallbackJson(await fallbackResponse.json(), now()),
+      };
+    } catch (fallbackError) {
+      throw new Error(
+        `GitHub Trending 官方页面与回退快照均不可用: ${errorMessage(officialError)}; ${errorMessage(fallbackError)}`,
+        { cause: fallbackError },
+      );
+    }
   }
-
-  return {
-    period,
-    language: language.trim().toLowerCase() || "all",
-    sourceUrl,
-    entries: parseGitHubTrendingHtml(await response.text()),
-  };
 }
 
 function parseRepositoryFullName(href: string | undefined): string | null {
@@ -169,4 +273,16 @@ function parseGitHubCount(value: string): number | null {
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeLanguage(language: string): string {
+  const normalized = language.trim().toLowerCase() || "all";
+  if (normalized !== "all" && !/^[a-z0-9+.#-]+$/.test(normalized)) {
+    throw new Error(`无效 GitHub Trending 语言: ${language}`);
+  }
+  return normalized;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

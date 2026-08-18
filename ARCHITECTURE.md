@@ -118,7 +118,7 @@ API / Scheduler → jobs → Worker → workflow / graph / radar 数据
 两条发现管线互不混算：
 
 ```text
-GitHub Trending HTML
+GitHub Trending HTML（主源）/ GitHub 托管快照（网络回退）
   → trending.sync.github
   → github_trending_snapshots + github_trending_entries
   → GitHub Trending 页面
@@ -134,12 +134,18 @@ Trending 是全局来源快照，保留 GitHub 的 `daily`、`weekly`、`monthly
 空页面或关键指标结构变化会使任务失败并重试，不会覆盖上一份成功快照。同日同周期重试在
 数据库事务中整体替换 entries，避免半份榜单。
 
+Worker 优先抓取 GitHub 官方 Trending HTML。若生产网络无法连接 `github.com`，才回退读取
+MIT 许可的 `isboyjc/github-trending-api` 由 GitHub Actions 生成并托管在
+`raw.githubusercontent.com` 的 JSON 快照；回退数据必须通过字段、仓库 URL、指标和 48 小时
+新鲜度校验，否则任务继续失败并保留上一份成功快照。GitHub Search 不参与这条回退路径。
+
 解析行为参考了 MIT 许可项目
 [`ecrmnn/trending-github`](https://github.com/ecrmnn/trending-github)、
 [`doforce/github-trending`](https://github.com/doforce/github-trending) 和
-[`antonkomarev/github-trending-archive`](https://github.com/antonkomarev/github-trending-archive)
+[`antonkomarev/github-trending-archive`](https://github.com/antonkomarev/github-trending-archive)、
+[`isboyjc/github-trending-api`](https://github.com/isboyjc/github-trending-api)
 的字段选择、周期参数与失败重试思路；DevScope 实现为独立编写的薄 TypeScript 解析器，
-没有引入第三方服务或复制其 API/代码结构。
+没有复制第三方代码或内部 API 结构。
 
 Radar 候选按 `(userId, fullName)` 去重，并保留查询条件、topics、创建/更新时间等发现证据。
 确定性评分由 GitHub stars、最近 push、forks 和用户已关注仓库的语言分布组成，四项贡献写入
