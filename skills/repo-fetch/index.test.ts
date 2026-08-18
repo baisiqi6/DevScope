@@ -48,6 +48,7 @@ global.fetch = mockFetch;
  * Mock 响应数据
  */
 const mockRepoResponse = {
+  id: 70107786,
   full_name: "vercel/next.js",
   name: "next.js",
   owner: { login: "vercel" },
@@ -220,6 +221,7 @@ describe("repo-fetch", () => {
       });
 
       // Assert: 验证结果
+      expect(result.repository.githubRepositoryId).toBe("70107786");
       expect(result.repository.fullName).toBe("vercel/next.js");
       expect(result.repository.stars).toBe(120000);
       expect(result.repository.language).toBe("JavaScript");

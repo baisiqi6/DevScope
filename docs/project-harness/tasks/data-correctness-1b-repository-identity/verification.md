@@ -75,6 +75,10 @@
 
 首轮独立实现审查发现并已修复三项反例：无 ID Radar fallback 不再清空稳定 ID；`getFollowing` 在同名不同 ID 或 ID/name 分裂时 fail closed；已终态的 one-shot version 明确拒绝复用而不再伪报 running。对应 focused DB 16 tests、API 44 tests、API typecheck 与 `git diff --check` 通过。Continuity reviewer 重新读取最新 diff 与反例测试后给出 `APPROVE`，允许进入 commit、push、PR。
 
+## PR CI 修订
+
+PR #29 的首次干净 CI 发现 `skills/repo-fetch/index.test.ts` 中共用的 GitHub API fixture 缺少新增的真实 `id` 字段；本地首次全仓测试命中了 Turbo 缓存，因此没有暴露这个跨包 fixture 漂移。补齐 fixture 并断言十进制 `githubRepositoryId` 后，repo-fetch 18 tests、全仓 Turbo tests `--force`（0 cached）、Skill pipeline 21 tests 与全仓 typecheck 全部通过。
+
 ## 待验证
 
 - PR/CI；
