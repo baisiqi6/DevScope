@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { executeJob } from "./worker";
 import {
-  executeJob,
   GITHUB_DISCOVERY_JOB,
-} from "./worker";
-import { GRAPH_REBUILD_JOB, HEALTH_ANALYSIS_JOB } from "@devscope/db";
+  GITHUB_TRENDING_SYNC_JOB,
+  GRAPH_REBUILD_JOB,
+  HEALTH_ANALYSIS_JOB,
+} from "@devscope/db";
 
 describe("Worker 任务执行", () => {
   it("将 GitHub Search 结果写入用户候选池", async () => {
@@ -23,10 +25,16 @@ describe("Worker 任务执行", () => {
       pushedAt: new Date("2026-07-16T00:00:00.000Z"),
     }]);
     const upsertCandidate = vi.fn().mockResolvedValue({ id: 1 });
+    const getInterestProfile = vi.fn().mockResolvedValue({
+      totalRepositories: 2,
+      languages: { typescript: 2 },
+    });
 
     await expect(executeJob({} as any, createJob(), {
       searchRepositories,
       upsertCandidate,
+      getInterestProfile,
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
     })).resolves.toEqual({
       source: "github_search",
       query: "created:>=2026-07-09 stars:>=10 archived:false fork:false",
@@ -42,9 +50,15 @@ describe("Worker 任务执行", () => {
       userId: 7,
       fullName: "owner/repo",
       source: "github_search",
+      deterministicScore: expect.any(Number),
+      scoreBreakdown: expect.objectContaining({
+        languageAffinity: 25,
+        freshness: 25,
+      }),
       evidence: expect.objectContaining({
         query: "created:>=2026-07-09 stars:>=10 archived:false fork:false",
         topics: ["agents"],
+        interestProfile: expect.objectContaining({ totalRepositories: 2 }),
       }),
     }));
   });
@@ -108,6 +122,52 @@ describe("Worker 任务执行", () => {
       sbomBackfilled: 2,
     });
   });
+
+  it("将三个 GitHub Trending 周期保存为独立快照", async () => {
+    const fetchTrending = vi.fn(async (period: "daily" | "weekly" | "monthly") => ({
+      period,
+      language: "all",
+      sourceUrl: `https://github.com/trending?since=${period}`,
+      entries: [{
+        rank: 1,
+        fullName: `owner/${period}`,
+        url: `https://github.com/owner/${period}`,
+        description: null,
+        language: "TypeScript",
+        stars: 10,
+        forks: 1,
+        starsInPeriod: 3,
+      }],
+    }));
+    const saveTrendingSnapshot = vi.fn().mockResolvedValue({});
+    const job = createJob({
+      type: GITHUB_TRENDING_SYNC_JOB,
+      idempotencyKey: "trending:github:all",
+      payload: {
+        requestedAt: "2026-08-17T00:00:00.000Z",
+        snapshotDate: "2026-08-17",
+        language: "all",
+        periods: ["daily", "weekly", "monthly"],
+      },
+    });
+
+    await expect(executeJob({} as any, job, {
+      fetchTrending,
+      saveTrendingSnapshot,
+      now: () => new Date("2026-08-17T01:00:00.000Z"),
+    })).resolves.toEqual({
+      source: "github_trending",
+      snapshots: 3,
+      entries: 3,
+    });
+
+    expect(fetchTrending).toHaveBeenCalledTimes(3);
+    expect(saveTrendingSnapshot).toHaveBeenCalledTimes(3);
+    expect(saveTrendingSnapshot).toHaveBeenNthCalledWith(1, expect.anything(), expect.objectContaining({
+      period: "daily",
+      snapshotDate: "2026-08-17",
+    }));
+  });
 });
 
 function createJob(overrides: Record<string, unknown> = {}) {
@@ -118,6 +178,7 @@ function createJob(overrides: Record<string, unknown> = {}) {
     type: GITHUB_DISCOVERY_JOB,
     idempotencyKey: "radar:2026-07-16",
     payload: {
+      requestedAt: now.toISOString(),
       query: "created:>=2026-07-09 stars:>=10 archived:false fork:false",
       limit: 20,
       sort: "stars",

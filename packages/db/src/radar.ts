@@ -2,7 +2,13 @@
  * 技术雷达候选池操作。
  */
 
-import { radarCandidates, type RadarCandidate } from "./schema";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import {
+  radarCandidates,
+  repositories,
+  userWatchedRepositories,
+  type RadarCandidate,
+} from "./schema";
 import type { Db } from "./index";
 
 export interface UpsertRadarCandidateInput {
@@ -19,7 +25,14 @@ export interface UpsertRadarCandidateInput {
   openIssues?: number;
   source: string;
   evidence: Record<string, unknown>;
+  deterministicScore?: number | null;
+  scoreBreakdown?: Record<string, number> | null;
   observedAt?: Date;
+}
+
+export interface RadarInterestProfile {
+  totalRepositories: number;
+  languages: Record<string, number>;
 }
 
 /**
@@ -46,6 +59,8 @@ export async function upsertRadarCandidate(
     openIssues: input.openIssues ?? 0,
     source: input.source,
     evidence: input.evidence,
+    deterministicScore: input.deterministicScore ?? null,
+    scoreBreakdown: input.scoreBreakdown ?? null,
     lastSeenAt: observedAt,
     updatedAt: observedAt,
   };
@@ -67,6 +82,59 @@ export async function upsertRadarCandidate(
   }
 
   return candidate;
+}
+
+/** 从当前用户已关注仓库中提取轻量语言偏好，不引入第二套画像数据。 */
+export async function getRadarInterestProfile(
+  db: Db,
+  userId: number,
+): Promise<RadarInterestProfile> {
+  const rows = await db
+    .select({
+      language: repositories.language,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(userWatchedRepositories)
+    .innerJoin(repositories, eq(repositories.id, userWatchedRepositories.repoId))
+    .where(and(
+      eq(userWatchedRepositories.userId, userId),
+      eq(repositories.isReference, false),
+      isNotNull(repositories.language),
+    ))
+    .groupBy(repositories.language);
+
+  const languages: Record<string, number> = {};
+  let totalRepositories = 0;
+  for (const row of rows) {
+    const count = Number(row.count);
+    totalRepositories += count;
+    if (row.language) {
+      languages[row.language.toLowerCase()] = count;
+    }
+  }
+
+  return { totalRepositories, languages };
+}
+
+/** 当前用户的发现榜候选；已 dismiss 的条目不再展示。 */
+export async function listRadarCandidates(
+  db: Db,
+  userId: number,
+  limit = 50,
+): Promise<RadarCandidate[]> {
+  return db
+    .select()
+    .from(radarCandidates)
+    .where(and(
+      sql`${radarCandidates.userId} = ${userId}`,
+      ne(radarCandidates.status, "dismissed"),
+    ))
+    .orderBy(
+      sql`${radarCandidates.deterministicScore} DESC NULLS LAST`,
+      desc(radarCandidates.stars),
+      desc(radarCandidates.lastSeenAt),
+    )
+    .limit(Math.max(1, Math.min(limit, 100)));
 }
 
 function normalizeFullName(fullName: string): string {

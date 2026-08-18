@@ -124,6 +124,11 @@ export * from "./jobs";
 export * from "./radar";
 
 /**
+ * GitHub Trending 快照
+ */
+export * from "./github-trending";
+
+/**
  * 仓库关系图谱
  */
 export * from "./repo-graph";

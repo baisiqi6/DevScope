@@ -4,6 +4,11 @@ import {
   failJob,
   GRAPH_REBUILD_JOB,
   graphRebuildJobPayloadSchema,
+  GITHUB_DISCOVERY_JOB,
+  GITHUB_TRENDING_SYNC_JOB,
+  getRadarInterestProfile,
+  githubDiscoveryJobPayloadSchema,
+  githubTrendingSyncJobPayloadSchema,
   GitHubCollector,
   HEALTH_ANALYSIS_JOB,
   healthAnalysisJobPayloadSchema,
@@ -11,23 +16,17 @@ import {
   rebuildRepoGraph,
   renewJobLease,
   runAgentWorkflow,
+  saveGitHubTrendingSnapshot,
   upsertRadarCandidate,
   type Db,
   type GitHubSearchRepo,
   type Job,
+  type RadarInterestProfile,
   type UpsertRadarCandidateInput,
 } from "@devscope/db";
 import { GitHubClient } from "@devscope/shared";
-import { z } from "zod";
-
-export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
-
-const githubDiscoveryPayloadSchema = z.object({
-  query: z.string().trim().min(1),
-  limit: z.number().int().min(1).max(100).default(20),
-  sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).default("stars"),
-  order: z.enum(["asc", "desc"]).default("desc"),
-});
+import { fetchGitHubTrending } from "./github-trending";
+import { scoreRadarCandidate } from "./radar-score";
 
 export interface WorkerOptions {
   workerId: string;
@@ -59,6 +58,9 @@ export interface WorkerDependencies {
     pooledRepos: number;
     sbomBackfilled: number;
   }>;
+  fetchTrending?: typeof fetchGitHubTrending;
+  saveTrendingSnapshot?: typeof saveGitHubTrendingSnapshot;
+  getInterestProfile?: (db: Db, userId: number) => Promise<RadarInterestProfile>;
 }
 
 /**
@@ -141,6 +143,8 @@ export async function executeJob(
   job: Job,
   dependencies: WorkerDependencies = {}
 ): Promise<Record<string, unknown>> {
+  const now = dependencies.now ?? (() => new Date());
+
   if (job.type === HEALTH_ANALYSIS_JOB) {
     const payload = healthAnalysisJobPayloadSchema.parse(job.payload);
     const runHealthAnalysis = dependencies.runHealthAnalysis ?? runAgentWorkflow;
@@ -163,13 +167,41 @@ export async function executeJob(
     return rebuildGraph(db, job.userId);
   }
 
+  if (job.type === GITHUB_TRENDING_SYNC_JOB) {
+    const payload = githubTrendingSyncJobPayloadSchema.parse(job.payload);
+    const fetchTrending = dependencies.fetchTrending ?? fetchGitHubTrending;
+    const saveTrendingSnapshot = dependencies.saveTrendingSnapshot ?? saveGitHubTrendingSnapshot;
+    let entries = 0;
+
+    for (const period of payload.periods) {
+      const result = await fetchTrending(period, payload.language);
+      await saveTrendingSnapshot(db, {
+        period,
+        language: payload.language,
+        snapshotDate: payload.snapshotDate,
+        sourceUrl: result.sourceUrl,
+        fetchedAt: now(),
+        entries: result.entries,
+      });
+      entries += result.entries.length;
+    }
+
+    return {
+      source: "github_trending",
+      snapshots: payload.periods.length,
+      entries,
+    };
+  }
+
   if (job.type !== GITHUB_DISCOVERY_JOB) {
     throw new Error(`不支持的任务类型: ${job.type}`);
   }
 
-  const payload = githubDiscoveryPayloadSchema.parse(job.payload);
+  const payload = githubDiscoveryJobPayloadSchema.parse(job.payload);
   const searchRepositories = dependencies.searchRepositories ?? defaultSearchRepositories;
   const upsertCandidate = dependencies.upsertCandidate ?? upsertRadarCandidate;
+  const getInterestProfile = dependencies.getInterestProfile ?? getRadarInterestProfile;
+  const interestProfile = await getInterestProfile(db, job.userId);
   const repositories = await searchRepositories(payload.query, {
     limit: payload.limit,
     sort: payload.sort,
@@ -182,7 +214,8 @@ export async function executeJob(
       continue;
     }
 
-    const observedAt = new Date();
+    const observedAt = now();
+    const score = scoreRadarCandidate(repository, interestProfile, observedAt);
     await upsertCandidate(db, {
       userId: job.userId,
       githubRepoId: repository.githubRepoId,
@@ -195,6 +228,8 @@ export async function executeJob(
       forks: repository.forks,
       openIssues: repository.openIssues,
       source: "github_search",
+      deterministicScore: score.total,
+      scoreBreakdown: score.breakdown,
       evidence: {
         query: payload.query,
         topics: repository.topics,
@@ -202,6 +237,10 @@ export async function executeJob(
         updatedAt: repository.updatedAt.toISOString(),
         pushedAt: repository.pushedAt.toISOString(),
         observedAt: observedAt.toISOString(),
+        interestProfile: {
+          totalRepositories: interestProfile.totalRepositories,
+          matchedLanguage: repository.language?.toLowerCase() ?? null,
+        },
       },
       observedAt,
     });

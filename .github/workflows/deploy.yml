@@ -156,7 +156,7 @@ jobs:
 
             # 未显式执行迁移时也必须先验证 Worker 所需 schema 已存在。
             if [ "$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
-              psql -U postgres -d devscope -tAc "select count(*) from pg_tables where schemaname='public' and tablename in ('jobs','radar_candidates')" | tr -d '[:space:]')" != "2" ]; then
+              psql -U postgres -d devscope -tAc "select count(*) from pg_tables where schemaname='public' and tablename in ('jobs','radar_candidates','github_trending_snapshots','github_trending_entries')" | tr -d '[:space:]')" != "4" ]; then
               echo "Worker schema is missing; rerun the manual workflow with apply_database_migration=true after review"
               exit 1
             fi

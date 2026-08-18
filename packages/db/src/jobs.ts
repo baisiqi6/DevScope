@@ -11,6 +11,8 @@ import { jobs, type Job } from "./schema";
 
 export const HEALTH_ANALYSIS_JOB = "analysis.health";
 export const GRAPH_REBUILD_JOB = "graph.rebuild";
+export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
+export const GITHUB_TRENDING_SYNC_JOB = "trending.sync.github";
 
 export const healthAnalysisJobPayloadSchema = z.object({
   executionId: z.string().uuid(),
@@ -21,11 +23,56 @@ export const graphRebuildJobPayloadSchema = z.object({
   requestedAt: z.string().datetime(),
 });
 
+export const githubTrendingSyncJobPayloadSchema = z.object({
+  requestedAt: z.string().datetime(),
+  snapshotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  language: z.string().regex(/^(all|[a-z0-9+.#-]+)$/).default("all"),
+  periods: z.array(z.enum(["daily", "weekly", "monthly"]))
+    .min(1)
+    .default(["daily", "weekly", "monthly"]),
+});
+
+export const githubTrendingSyncJobResultSchema = z.object({
+  source: z.literal("github_trending"),
+  snapshots: z.number().int().nonnegative(),
+  entries: z.number().int().nonnegative(),
+});
+
+export const githubDiscoveryJobPayloadSchema = z.object({
+  requestedAt: z.string().datetime().optional(),
+  query: z.string().trim().min(1),
+  limit: z.number().int().min(1).max(100).default(20),
+  sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).default("stars"),
+  order: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export const githubDiscoveryJobResultSchema = z.object({
+  source: z.literal("github_search"),
+  query: z.string(),
+  discovered: z.number().int().nonnegative(),
+  upserted: z.number().int().nonnegative(),
+});
+
+export function createGithubDiscoveryJobPayload(requestedAt: Date) {
+  const createdSince = new Date(requestedAt.getTime() - 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return githubDiscoveryJobPayloadSchema.parse({
+    requestedAt: requestedAt.toISOString(),
+    query: `created:>=${createdSince} stars:>=10 archived:false fork:false`,
+    limit: 20,
+    sort: "stars",
+    order: "desc",
+  });
+}
+
 export function healthAnalysisJobKey(repoFullName: string): string {
   return `analysis:health:${repoFullName.toLowerCase()}`;
 }
 
 export const GRAPH_REBUILD_JOB_KEY = "graph:rebuild";
+export const GITHUB_DISCOVERY_JOB_KEY = "radar:github:new:7d";
+export const GITHUB_TRENDING_SYNC_JOB_KEY = "trending:github:all";
 
 type JobStore = Pick<Db, "insert" | "update" | "select">;
 
@@ -144,7 +191,7 @@ export async function enqueueRestartableJob(
       and(
         eq(jobs.userId, input.userId),
         eq(jobs.idempotencyKey, input.idempotencyKey),
-        inArray(jobs.status, ["succeeded", "dead"])
+        inArray(jobs.status, ["succeeded", "dead", "cancelled"])
       )
     )
     .returning();

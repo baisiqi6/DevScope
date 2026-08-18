@@ -21,6 +21,7 @@ Fastify + tRPC API :3100
   API / Scheduler → PostgreSQL jobs → Worker
     ├── analysis.health → workflow_executions / workflow_reports
     ├── graph.rebuild   → repo_relationships
+    ├── trending.sync.github → github_trending_snapshots / entries
     └── radar.discover.github → radar_candidates
 
 统一 Agent 调用面
@@ -104,8 +105,9 @@ PostgreSQL 是报告的事实来源。`reports/<executionId>` 仍可生成 JSON/
 ### 持久后台任务
 
 API 内 scheduler 按日创建带 `userId` 和 `idempotencyKey` 的
-`radar.discover.github` 任务，不直接调用外部发现源；用户发起的健康分析和图谱重建也进入
-同一 `jobs` 队列。独立 Worker 使用 PostgreSQL
+`radar.discover.github` 与 `trending.sync.github` 任务，不直接调用外部发现源；“发现”页面的
+两个手动同步入口也只创建相同的持久任务。用户发起的健康分析和图谱重建同样进入 `jobs`
+队列。独立 Worker 使用 PostgreSQL
 lease 与 `FOR UPDATE SKIP LOCKED` 领取任务，失败后进入 `retry_wait`，超过最大尝试
 次数后进入 `dead`；进程中断留下的过期 lease 会被重新排队。
 
@@ -113,9 +115,36 @@ lease 与 `FOR UPDATE SKIP LOCKED` 领取任务，失败后进入 `retry_wait`�
 API / Scheduler → jobs → Worker → workflow / graph / radar 数据
 ```
 
-候选按 `(userId, fullName)` 去重，并保留查询条件、topics、创建/更新时间等发现证据。
-候选不会自动写入正式 `repositories`。当前只完成可靠发现与候选池基础；兴趣画像、
-确定性评分、研究 Agent、digest 和反馈闭环仍属于后续迭代。
+两条发现管线互不混算：
+
+```text
+GitHub Trending HTML
+  → trending.sync.github
+  → github_trending_snapshots + github_trending_entries
+  → GitHub Trending 页面
+
+GitHub Search + 已关注仓库语言分布
+  → radar.discover.github
+  → radar_candidates + deterministic_score + score_breakdown
+  → DevScope 发现榜
+```
+
+Trending 是全局来源快照，保留 GitHub 的 `daily`、`weekly`、`monthly` 原始排名，不承载
+用户偏好。解析器只识别仓库链接、描述、语言、stars、forks 和周期新增 stars 等稳定语义；
+空页面或关键指标结构变化会使任务失败并重试，不会覆盖上一份成功快照。同日同周期重试在
+数据库事务中整体替换 entries，避免半份榜单。
+
+解析行为参考了 MIT 许可项目
+[`ecrmnn/trending-github`](https://github.com/ecrmnn/trending-github)、
+[`doforce/github-trending`](https://github.com/doforce/github-trending) 和
+[`antonkomarev/github-trending-archive`](https://github.com/antonkomarev/github-trending-archive)
+的字段选择、周期参数与失败重试思路；DevScope 实现为独立编写的薄 TypeScript 解析器，
+没有引入第三方服务或复制其 API/代码结构。
+
+Radar 候选按 `(userId, fullName)` 去重，并保留查询条件、topics、创建/更新时间等发现证据。
+确定性评分由 GitHub stars、最近 push、forks 和用户已关注仓库的语言分布组成，四项贡献写入
+`score_breakdown`，总分可复算且不依赖模型。候选不会自动写入正式 `repositories`，只有用户在
+发现页明确采集后才进入仓库工作区。研究 Agent、digest 和反馈闭环仍属于后续迭代。
 
 AI 层统一使用 `openai-compatible` provider：优先读取 `OPENAI_COMPATIBLE_*`，
 也支持 `DEEPSEEK_*`，当前生产默认模型为 `deepseek-chat`。未配置 API Key 时会在初始化阶段明确失败。
@@ -189,8 +218,9 @@ Drizzle baseline 及后续显式迁移已纳入版本控制。迁移 `0004` 把�
 ### 实验能力
 
 仓库健康分析的报告入库、历史列表和详情读取已经形成可恢复的数据库链路。
-调度器和 Worker 已通过持久 jobs 解耦；Radar 当前只有 GitHub Search 发现与候选入箱，
-尚未形成完整推荐产品。其他报告类型仍包含可选配置或未完成路径，应继续与稳定核心解耦，
+调度器和 Worker 已通过持久 jobs 解耦；Trending 快照和带确定性评分的 Radar 候选已形成两条
+独立基础管线，但 Radar 尚未包含研究 Agent、digest 和反馈闭环。其他报告类型仍包含可选配置
+或未完成路径，应继续与稳定核心解耦，
 不应阻塞仓库、搜索和基础分析功能。未来接入自研工作流系统时，应通过独立适配层接入，
 不要把外部执行器协议写入现有报告数据模型。
 

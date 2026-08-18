@@ -8,9 +8,14 @@
 
 import cron from "node-cron";
 import {
+  createGithubDiscoveryJobPayload,
   createDb,
   createPipeline,
-  enqueueJob,
+  enqueueRestartableJob,
+  GITHUB_DISCOVERY_JOB,
+  GITHUB_DISCOVERY_JOB_KEY,
+  GITHUB_TRENDING_SYNC_JOB,
+  GITHUB_TRENDING_SYNC_JOB_KEY,
   repositories,
   repoChunks,
   poolRepoEmbedding,
@@ -107,27 +112,49 @@ export async function enqueueGithubDiscovery() {
   try {
     const database = getDb();
     const userId = await getOrCreateCurrentUserId(database);
-    const now = new Date();
-    const scheduleDate = now.toISOString().slice(0, 10);
-    const createdSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    const job = await enqueueJob(database, {
+    const payload = createGithubDiscoveryJobPayload(new Date());
+    const { job, enqueued } = await enqueueRestartableJob(database, {
       userId,
-      type: "radar.discover.github",
-      idempotencyKey: `radar:github:new:7d:${scheduleDate}`,
+      type: GITHUB_DISCOVERY_JOB,
+      idempotencyKey: GITHUB_DISCOVERY_JOB_KEY,
+      payload,
+      maxAttempts: 3,
+    });
+
+    console.log(
+      `[Scheduler] 🔍 趋势发现任务 #${job.id} ${enqueued ? "已入队" : "正在执行"}`,
+    );
+  } catch (err: any) {
+    console.error("[Scheduler] ❌ enqueueGithubDiscovery 失败:", err.message);
+  }
+}
+
+/** 每天同步 GitHub 官方 daily / weekly / monthly Trending 快照。 */
+export async function enqueueGithubTrendingSync() {
+  console.log("[Scheduler] 📈 开始创建 GitHub Trending 同步任务...");
+
+  try {
+    const database = getDb();
+    const userId = await getOrCreateCurrentUserId(database);
+    const requestedAt = new Date();
+    const { job, enqueued } = await enqueueRestartableJob(database, {
+      userId,
+      type: GITHUB_TRENDING_SYNC_JOB,
+      idempotencyKey: GITHUB_TRENDING_SYNC_JOB_KEY,
       payload: {
-        query: `created:>=${createdSince} stars:>=10 archived:false fork:false`,
-        limit: 20,
-        sort: "stars",
-        order: "desc",
+        requestedAt: requestedAt.toISOString(),
+        snapshotDate: requestedAt.toISOString().slice(0, 10),
+        language: "all",
+        periods: ["daily", "weekly", "monthly"],
       },
       maxAttempts: 3,
     });
 
-    console.log(`[Scheduler] 🔍 趋势发现任务已就绪: #${job.id} (${job.status})`);
+    console.log(
+      `[Scheduler] 📈 Trending 任务 #${job.id} ${enqueued ? "已入队" : "正在执行"}`,
+    );
   } catch (err: any) {
-    console.error("[Scheduler] ❌ enqueueGithubDiscovery 失败:", err.message);
+    console.error("[Scheduler] ❌ enqueueGithubTrendingSync 失败:", err.message);
   }
 }
 
@@ -238,6 +265,17 @@ export function startScheduler() {
   );
   console.log(
     `[Scheduler] ⏰ 已注册: 刷新过期仓库 (每天 02:00 ${schedulerTimezone})`
+  );
+
+  cron.schedule(
+    "15 6 * * *",
+    () => {
+      void enqueueGithubTrendingSync();
+    },
+    { timezone: schedulerTimezone },
+  );
+  console.log(
+    `[Scheduler] ⏰ 已注册: GitHub Trending 同步 (每天 06:15 ${schedulerTimezone})`,
   );
 
   // 每天早上 6:00 发现趋势项目

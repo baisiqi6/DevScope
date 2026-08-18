@@ -167,9 +167,9 @@ export const radarCandidates = pgTable("radar_candidates", {
   source: text("source").notNull(),
   /** 最近一次来源证据 */
   evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull(),
-  /** 确定性评分，后续评分阶段写入 */
+  /** 确定性评分，由发现 Worker 根据公开信号与用户语言偏好写入 */
   deterministicScore: integer("deterministic_score"),
-  /** 评分拆分，保留可解释依据 */
+  /** 评分拆分，保留热度、活跃度、语言偏好和社区规模贡献 */
   scoreBreakdown: jsonb("score_breakdown").$type<Record<string, number>>(),
   /** 首次发现时间 */
   firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
@@ -809,3 +809,5 @@ export type RepoRelationship = typeof repoRelationships.$inferSelect;
 export type NewRepoRelationship = typeof repoRelationships.$inferInsert;
 export type PackageRepoMapping = typeof packageRepoMappings.$inferSelect;
 export type NewPackageRepoMapping = typeof packageRepoMappings.$inferInsert;
+
+export * from "./trending";

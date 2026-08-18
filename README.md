@@ -14,10 +14,11 @@ DevScope 是一个面向技术投资人和独立开发者的开源生态智能�
 - 统一 API Client、`devscope` CLI 与 MCP stdio Server
 - 按用户隔离的仓库关系图谱、SBOM 技术栈节点与持久重建状态
 - PostgreSQL 持久任务、独立 Worker、健康分析与 GitHub Search 技术候选池
+- 独立的 GitHub Trending 快照榜与带可解释确定性评分的 DevScope 发现榜
 - `repo-fetch`、`repo-analyze`、`report-generate` 三个 CLI Skills
 
 健康分析报告已使用 PostgreSQL 持久化，容器内文件只作为可选导出缓存。
-技术雷达当前已完成可靠任务和候选发现基础，但兴趣画像、Agent 深度研究、日报和反馈闭环尚未完成。后续工作流接入应通过独立适配边界实现。
+技术雷达当前使用已关注仓库的语言分布形成轻量兴趣信号，并保存可解释确定性评分；Agent 深度研究、日报和反馈闭环尚未完成。后续工作流接入应通过独立适配边界实现。
 
 ## 技术栈
 
