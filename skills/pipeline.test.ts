@@ -68,6 +68,7 @@ vi.mock("@devscope/ai", () => ({
  * Mock GitHub API 响应
  */
 const mockGitHubResponse = {
+  id: 70107786,
   full_name: "vercel/next.js",
   name: "next.js",
   owner: { login: "vercel" },

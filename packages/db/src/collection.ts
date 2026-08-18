@@ -7,13 +7,15 @@
  * @module collection
  */
 
-import { eq, desc, sql, like } from "drizzle-orm";
+import { and, eq, desc, sql, like, or } from "drizzle-orm";
+import { normalizeGitHubRepositoryId } from "@devscope/shared";
 import type { Db } from "./index";
 import {
   repositories,
   repoChunks,
   hackernewsItems,
   releases,
+  userWatchedRepositories,
   type Repository,
   type NewRepository,
   type RepoChunk,
@@ -36,21 +38,100 @@ import {
  */
 export async function upsertRepository(
   db: Db,
-  data: Omit<NewRepository, "id" | "createdAt" | "updatedAt">
+  data: Omit<NewRepository, "id" | "createdAt" | "updatedAt">,
+  options: { allowNewStableIdentity?: boolean } = {},
 ): Promise<Repository> {
-  const [repository] = await db
-    .insert(repositories)
-    .values(data)
-    .onConflictDoUpdate({
-      target: repositories.fullName,
-      set: {
-        ...data,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
+  if (!data.githubRepositoryId) {
+    const [repository] = await db
+      .insert(repositories)
+      .values(data)
+      .onConflictDoUpdate({
+        target: repositories.fullName,
+        set: { ...data, updatedAt: new Date() },
+      })
+      .returning();
+    return repository;
+  }
 
-  return repository;
+  const githubRepositoryId = normalizeGitHubRepositoryId(data.githubRepositoryId);
+  const stableData = { ...data, githubRepositoryId };
+
+  return db.transaction(async (tx) => {
+    const matches = await tx
+      .select()
+      .from(repositories)
+      .where(or(
+        eq(repositories.githubRepositoryId, githubRepositoryId),
+        eq(repositories.fullName, data.fullName),
+      ))
+      .for("update");
+    const idMatch = matches.find((row) => row.githubRepositoryId === githubRepositoryId);
+    const nameMatch = matches.find((row) => row.fullName === data.fullName);
+
+    if (idMatch && nameMatch && idMatch.id !== nameMatch.id) {
+      throw new RepositoryIdentityConflictError(
+        `GitHub repository ID ${githubRepositoryId} 与 fullName ${data.fullName} 分属不同仓库行`,
+      );
+    }
+    if (nameMatch?.githubRepositoryId && nameMatch.githubRepositoryId !== githubRepositoryId) {
+      throw new RepositoryIdentityConflictError(
+        `fullName ${data.fullName} 已属于 GitHub repository ID ${nameMatch.githubRepositoryId}`,
+      );
+    }
+
+    const existing = idMatch ?? nameMatch;
+    if (existing) {
+      const [repository] = await tx
+        .update(repositories)
+        .set({ ...stableData, updatedAt: new Date() })
+        .where(eq(repositories.id, existing.id))
+        .returning();
+      if (!repository) {
+        throw new Error(`仓库身份更新失败: ${data.fullName}`);
+      }
+      if (repository.fullName !== existing.fullName) {
+        await tx
+          .update(userWatchedRepositories)
+          .set({ repoFullName: repository.fullName, updatedAt: new Date() })
+          .where(and(
+            eq(userWatchedRepositories.repoId, repository.id),
+            eq(userWatchedRepositories.repoFullName, existing.fullName),
+          ));
+      }
+      return repository;
+    }
+
+    if (!options.allowNewStableIdentity) {
+      throw new RepositoryIdentityBackfillRequiredError(data.fullName);
+    }
+
+    const [repository] = await tx
+      .insert(repositories)
+      .values(stableData)
+      .returning();
+    if (!repository) {
+      throw new Error(`仓库身份写入失败: ${data.fullName}`);
+    }
+    return repository;
+  });
+}
+
+export class RepositoryIdentityConflictError extends Error {
+  readonly code = "REPOSITORY_IDENTITY_CONFLICT";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "RepositoryIdentityConflictError";
+  }
+}
+
+export class RepositoryIdentityBackfillRequiredError extends Error {
+  readonly code = "REPOSITORY_IDENTITY_BACKFILL_REQUIRED";
+
+  constructor(fullName: string) {
+    super(`Repository identity backfill is required before inserting ${fullName}`);
+    this.name = "RepositoryIdentityBackfillRequiredError";
+  }
 }
 
 /**

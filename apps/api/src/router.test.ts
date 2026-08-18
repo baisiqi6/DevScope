@@ -74,7 +74,11 @@ vi.mock("@devscope/db", async (importOriginal) => {
 // 导入被测试的模块和 mock 函数
 // ============================================================================
 
-import { appRouter, type AppRouter } from "./router";
+import {
+  appRouter,
+  resolveFollowingRepositoryMatch,
+  type AppRouter,
+} from "./router";
 import { __mockStructuredComplete as mockStructuredComplete } from "@devscope/ai";
 import { __mockComplete as mockComplete, __mockEmbed as mockEmbed } from "@devscope/ai";
 import {
@@ -984,6 +988,32 @@ describe("appRouter", () => {
         expect(result.recommendation).toBe(rec);
       }
     });
+  });
+});
+
+describe("resolveFollowingRepositoryMatch", () => {
+  it("同名行属于不同稳定 ID 时 fail closed", () => {
+    expect(() => resolveFollowingRepositoryMatch(
+      [{ id: 2, githubRepositoryId: "456", fullName: "new-owner/repo" }],
+      { githubRepositoryId: "123", fullName: "new-owner/repo" },
+    )).toThrow(/identity conflict/i);
+  });
+
+  it("ID 与 fullName 分别命中不同实体时 fail closed", () => {
+    expect(() => resolveFollowingRepositoryMatch([
+      { id: 1, githubRepositoryId: "123", fullName: "old-owner/repo" },
+      { id: 2, githubRepositoryId: "456", fullName: "new-owner/repo" },
+    ], {
+      githubRepositoryId: "123",
+      fullName: "new-owner/repo",
+    })).toThrow(/identity conflict/i);
+  });
+
+  it("允许给唯一同名 legacy 行附加关注关系", () => {
+    expect(resolveFollowingRepositoryMatch(
+      [{ id: 1, githubRepositoryId: null, fullName: "owner/repo" }],
+      { githubRepositoryId: "123", fullName: "owner/repo" },
+    )).toEqual({ id: 1, githubRepositoryId: null, fullName: "owner/repo" });
   });
 });
 

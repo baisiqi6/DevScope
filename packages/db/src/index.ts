@@ -119,6 +119,11 @@ export * from "./agent-workflow";
 export * from "./jobs";
 
 /**
+ * GitHub repository 稳定身份回填计划与原子应用
+ */
+export * from "./repository-identity";
+
+/**
  * 技术雷达候选池
  */
 export * from "./radar";

@@ -69,6 +69,7 @@ describe("GitHubCollector", () => {
     it("应该成功获取仓库基础信息", async () => {
       // Arrange - Mock API 响应
       const mockRepoData = {
+        id: 987654321,
         full_name: "owner/repo",
         name: "repo",
         owner: { login: "owner" },
@@ -91,6 +92,7 @@ describe("GitHubCollector", () => {
 
       // Assert
       expect(result.fullName).toBe("owner/repo");
+      expect(result.githubRepositoryId).toBe("987654321");
       expect(result.name).toBe("repo");
       expect(result.owner).toBe("owner");
       expect(result.description).toBe("A test repository");
@@ -325,6 +327,32 @@ describe("GitHubCollector", () => {
         stars: 42,
       })]);
     });
+
+    it("拒绝超出 JavaScript 安全整数范围的 repository ID", async () => {
+      mockRest.search.repos.mockResolvedValue({
+        data: {
+          items: [{
+            id: Number.MAX_SAFE_INTEGER + 1,
+            full_name: "owner/unsafe-id",
+            name: "unsafe-id",
+            owner: { login: "owner" },
+            description: null,
+            html_url: "https://github.com/owner/unsafe-id",
+            stargazers_count: 0,
+            forks_count: 0,
+            open_issues_count: 0,
+            language: null,
+            topics: [],
+            created_at: "2026-07-10T00:00:00Z",
+            updated_at: "2026-07-16T00:00:00Z",
+            pushed_at: "2026-07-16T00:00:00Z",
+          }],
+        },
+      });
+
+      await expect(collector.searchRepositories("owner:owner"))
+        .rejects.toThrow(/safe integer/i);
+    });
   });
 
   // ========================================================================
@@ -336,6 +364,7 @@ describe("GitHubCollector", () => {
       // Mock 各 API 响应
       mockRest.repos.get.mockResolvedValue({
         data: {
+          id: 987654321,
           full_name: "owner/repo",
           name: "repo",
           owner: { login: "owner" },
@@ -371,6 +400,7 @@ describe("GitHubCollector", () => {
     it("应该根据选项跳过部分数据采集", async () => {
       mockRest.repos.get.mockResolvedValue({
         data: {
+          id: 987654321,
           full_name: "owner/repo", name: "repo", owner: { login: "owner" },
           description: "Test", html_url: "https://github.com/owner/repo",
           stargazers_count: 100, forks_count: 10, open_issues_count: 5,

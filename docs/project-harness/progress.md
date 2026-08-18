@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-18
-> 基线：`main@2b18ebf`
+> 基线：`main@f3184d3`
 > 部署形态：Standalone
-> 当前状态：首个数据 Correctness item 已通过独立 closeout review 并关闭
+> 当前状态：Release ID item 已关闭；Repository stable identity 实现与独立审查通过，进入 PR/CI
 
 ## 已完成
 
@@ -40,7 +40,14 @@
 - Canonical plan：`tasks/data-correctness-1a-release-id-bigint/plan.md`；
 - Verification：`tasks/data-correctness-1a-release-id-bigint/verification.md`；
 - 独立 correctness/迁移 review 与生产 closeout review 均已批准，生产验收已经落盘；
-- 当前没有激活中的 item；下一步按 checklist 选择 `data-correctness-1b-repository-identity`，先建立并复核唯一 canonical plan，再开始实现。
+- 当前 item：`data-correctness-1b-repository-identity`；
+- Canonical plan：`tasks/data-correctness-1b-repository-identity/plan.md`；
+- Production baseline：`tasks/data-correctness-1b-repository-identity/verification.md`；
+- 生产只读预检发现 22 个真实仓库中 19 个可解析稳定 ID、3 个 unresolved；Radar 有 1 组可确定性合并的同 ID 重复；
+- 两轮 continuity review 已关闭 compatibility/backfill 窗口、lease 原子授权、不可变审计、Radar 全序 tie-break 与 active singleton 风险，最终 verdict 为 `APPROVE`；
+- 稳定 ID 边界、ID-first repository/Radar 写入、one-shot backfill、lease 原子 apply、`0007` 合并迁移与 compatibility/cutover 已完成；
+- 首轮实现审查发现的 Radar ID 擦除、following 错误关联和终态 version 伪报问题均已修复，continuity verdict 为 `APPROVE`；
+- 全仓 lint/typecheck/test/build、真实 PostgreSQL 演练与迁移再生成检查通过；下一步为 PR/CI 和分阶段生产上线，不扩大到原子替换、技术栈实体迁移或公开鉴权。
 
 ## Harness 初始化验证
 

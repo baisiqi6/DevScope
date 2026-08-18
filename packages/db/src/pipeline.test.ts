@@ -24,6 +24,7 @@ const mockRepositoryData = {
   id: 1,
   fullName: "test/repo",
   repository: {
+    githubRepositoryId: "123",
     fullName: "test/repo",
     name: "repo",
     owner: "test",
@@ -256,6 +257,7 @@ describe("DataCollectionPipeline", () => {
       expect(mockUpsertRepository).toHaveBeenCalledWith(
         mockDb,
         expect.objectContaining({
+          githubRepositoryId: "123",
           fullName: "test/repo",
           name: "repo",
           owner: "test",
@@ -269,7 +271,8 @@ describe("DataCollectionPipeline", () => {
           readme: expect.stringContaining("Test README"),
           // 采集即视为正式仓库；命中同 fullName 的 reference 轻量行时升级该行
           isReference: false,
-        })
+        }),
+        { allowNewStableIdentity: false },
       );
     });
   });

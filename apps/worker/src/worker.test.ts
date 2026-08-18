@@ -5,6 +5,7 @@ import {
   GITHUB_TRENDING_SYNC_JOB,
   GRAPH_REBUILD_JOB,
   HEALTH_ANALYSIS_JOB,
+  REPOSITORY_IDENTITY_BACKFILL_JOB,
 } from "@devscope/db";
 
 describe("Worker 任务执行", () => {
@@ -167,6 +168,43 @@ describe("Worker 任务执行", () => {
       period: "daily",
       snapshotDate: "2026-08-17",
     }));
+  });
+
+  it("repository identity backfill 将 worker lease authority 传给原子执行器", async () => {
+    const runRepositoryIdentityBackfill = vi.fn().mockResolvedValue({
+      outcome: "applied",
+      updated: [],
+      unresolved: [],
+      conflicts: [],
+    });
+    const resolveRepositoryIdentity = vi.fn();
+    const job = createJob({
+      type: REPOSITORY_IDENTITY_BACKFILL_JOB,
+      idempotencyKey: "repository:identity:backfill:v1",
+      payload: {
+        requestedAt: "2026-08-18T00:00:00.000Z",
+        version: "v1",
+      },
+    });
+
+    await expect(executeJob({} as any, job, {
+      workerId: "worker-1",
+      runRepositoryIdentityBackfill,
+      resolveRepositoryIdentity,
+      now: () => new Date("2026-08-18T00:01:00.000Z"),
+    })).resolves.toEqual({
+      outcome: "applied",
+      updated: [],
+      unresolved: [],
+      conflicts: [],
+    });
+    expect(runRepositoryIdentityBackfill).toHaveBeenCalledWith(
+      expect.anything(),
+      job,
+      "worker-1",
+      resolveRepositoryIdentity,
+      new Date("2026-08-18T00:01:00.000Z"),
+    );
   });
 });
 

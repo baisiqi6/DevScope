@@ -29,7 +29,7 @@ import {
   userWatchedRepositories,
   type Db,
 } from "@devscope/db";
-import { desc, eq, sql, and } from "drizzle-orm";
+import { desc, eq, sql, and, or } from "drizzle-orm";
 import {
   repositoryAnalysisRequestSchema,
   repositoryAnalysisSchema,
@@ -46,6 +46,37 @@ import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
 import { v4 as uuidv4 } from "uuid";
 
 const activeRepositoryCollections = new Set<string>();
+
+interface RepositoryIdentityMatch {
+  id: number;
+  githubRepositoryId: string | null;
+  fullName: string;
+}
+
+export function resolveFollowingRepositoryMatch(
+  matches: RepositoryIdentityMatch[],
+  incoming: { githubRepositoryId: string; fullName: string },
+): RepositoryIdentityMatch | null {
+  const idMatch = matches.find(
+    (row) => row.githubRepositoryId === incoming.githubRepositoryId,
+  );
+  const nameMatch = matches.find((row) => row.fullName === incoming.fullName);
+
+  if (idMatch && nameMatch && idMatch.id !== nameMatch.id) {
+    throw new Error(
+      `Repository identity conflict: ${incoming.githubRepositoryId} and ${incoming.fullName} match different rows`,
+    );
+  }
+  if (
+    nameMatch?.githubRepositoryId
+    && nameMatch.githubRepositoryId !== incoming.githubRepositoryId
+  ) {
+    throw new Error(
+      `Repository identity conflict: ${incoming.fullName} belongs to ${nameMatch.githubRepositoryId}`,
+    );
+  }
+  return idMatch ?? nameMatch ?? null;
+}
 
 function normalizeRepoKey(fullName: string): string {
   const { owner, repo } = parseRepoFullName(fullName.trim());
@@ -147,11 +178,18 @@ export const appRouter = router({
           for (const repo of repos) {
             const starredAt = (repo as { starredAt?: Date }).starredAt;
             if (starredAt) {
-              const [storedRepo] = await db
-                .select({ id: repositories.id })
+              const storedRepos = await db
+                .select({
+                  id: repositories.id,
+                  githubRepositoryId: repositories.githubRepositoryId,
+                  fullName: repositories.fullName,
+                })
                 .from(repositories)
-                .where(eq(repositories.fullName, repo.fullName))
-                .limit(1);
+                .where(or(
+                  eq(repositories.githubRepositoryId, repo.githubRepositoryId),
+                  eq(repositories.fullName, repo.fullName),
+                ));
+              const storedRepo = resolveFollowingRepositoryMatch(storedRepos, repo);
               if (!storedRepo) continue;
               await db
                 .insert(userWatchedRepositories)
