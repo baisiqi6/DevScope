@@ -71,9 +71,29 @@ PR #35 的 CI 通过并 squash merge 为 `main@eae3127433280831f4f30467f583e0dfe
 
 ## 尚未验证
 
-- precision fix 的 PR/CI 与无迁移生产部署；
-- 新 version 的生产 one-shot backfill 成功 receipt；
-- 生产 graph rebuild 的 shadow zero-diff；
-- backfill 后认证 MCP/UI dogfood、服务 revision/health/auth 和独立 production closeout。
+- Phase A 的独立 production closeout；
+- Phase B `new_read_dual_write` 与 Phase C `new_only → legacy_cleaned`。
 
-Phase B `new_read_dual_write` 与 Phase C `new_only → legacy_cleaned` 不属于本次批准范围，整个 item 仍保持 `doing`。
+Phase B `new_read_dual_write` 与 Phase C `new_only → legacy_cleaned` 不属于本次批准范围，整个 item 仍未完成；当前已 handoff 并暂停。
+
+## Phase A 精度修复部署与最终生产证据
+
+PR #36 的 CI 通过并 squash merge 为 `main@3fa0d9cde6443b3b39d494489c14a206e84cfef6`。deploy workflow run `32146784184` 以 `apply_database_migration=false` 成功发布；服务器 HEAD 与 API/Web/Worker image revision 均为该 SHA，migration rows 保持 9，API/Worker mode 保持 `legacy_shadow_dual_write`。API/Web 内网 health 为 200，未认证 tunnel 为 401，Keychain-backed MCP health 为 `ok`。
+
+新 version `phase-a-token-ms-v2`、job #28 在 `2026-08-18T14:18:43.498Z` 至 `14:18:45.131Z` 完成，terminal receipt 为 `succeeded`、`40/40`、attempt 1；旧 job #27 保持 `dead` 和 `1/40` checkpoint，没有被重置。回填后新投影为 13 个 stack、79 条 repository-stack facts、25 个 source repositories、379 条 packages evidence。
+
+graph job #9 从 `2026-08-18T14:20:25.255Z` 运行到 `15:31:09.406Z`，attempt 1 成功，result 为 `similarityEdges=40`、`dependencyEdges=93`、`pooledRepos=40`、`sbomBackfilled=0`。Worker 日志给出 shadow 一致，数据库结构化复核为：
+
+- new projection：13 stacks、79 relations、25 source repositories、379 packages；
+- legacy stack projection：79 edges、25 source repositories、379 packages；
+- repositories：40 real + 13 reference；watches：40 real + 13 reference；
+- stacks：`actix-web, axum, express, fastapi, flask, nextjs, nuxt, react, react-native, svelte, tauri, vite, vue`；
+- legacy API graph：62 nodes（40 repo、13 reference、9 language）与 173 edges（93 dependency、40 similarity、40 written_in）。Phase A 仍返回 legacy contract，这是计划内行为。
+
+认证 MCP dogfood 返回 health `ok`，`devscope_list_repositories(limit=100)` 精确返回 40 个真实仓库，没有泄漏 13 个 reference rows。上述计数是本次生产 receipt，不是长期常量。
+
+## 生产暴露的后续 P1
+
+graph job #9 共耗时约 70 分 44 秒。生产 40 个真实仓库当时包含 19007 个唯一 SBOM package/version，首次运行补齐约 6000 个 deps.dev cache miss；3053 个外部 GitHub target 达到 canonicalization 门槛并被串行请求。`resolveViaDepsDev` 和 `GitHubClient.getCanonicalFullName` 缺少完整 timeout/budget 边界，canonical freshness 未持久化，graph status 也没有 stage progress。
+
+该问题没有破坏本次 shadow correctness，但属于进入 Phase B 前必须处理的 P1。唯一执行计划为 [依赖解析缓存恢复与外呼预算计划](../data-correctness-4-deps-cache-recovery/plan.md)；不得在本文件维护第二套方案。

@@ -56,6 +56,9 @@
 - Phase A PR #35 与 CI 已通过并合并为 `main@eae3127`；deploy run `32144833809` 已完成可恢复备份、显式 `0008` expand migration 和 shadow dual-write 服务发布，revision、health、401 access control 与认证 MCP health 均通过。
 - 首次生产 backfill version `phase-a-eae3127-v1` 在第一个 source 后 fail closed：历史 PostgreSQL 微秒 `updated_at` 无法与 JavaScript 毫秒 token 严格等值，job 27 重试后 `dead` 并保留 `1/40` checkpoint，没有伪成功或旧读路径破坏。
 - 最小 precision fix 只把数据库 token 比较规范为毫秒，保留 stable-ID/SBOM/lease/evidence 护栏；隔离 PostgreSQL 14/14、全仓门禁与独立 review 已通过。下一步提交修复 PR、无迁移部署，并用新 version 重跑 backfill 与 shadow rebuild。
+- precision fix PR #36 与 CI 已通过并合并为 `main@3fa0d9c`；无迁移 deploy run `32146784184` 成功，生产三类 image revision 一致，migration rows 保持 9，mode/health/auth/MCP 正常。
+- backfill job #28、version `phase-a-token-ms-v2` 已以 `succeeded 40/40` 完成；graph job #9 attempt 1 成功，new/legacy 技术栈投影均为 79 relations、25 sources、379 packages，认证 MCP 只列出 40 个真实仓库。
+- graph job #9 的冷缓存生产运行耗时约 70 分 44 秒，暴露约 6000 个 deps.dev miss、3053 个串行 GitHub canonicalization、缺少外呼 timeout/budget/freshness/progress 的 P1；已把现有 item 4 前置并形成唯一 canonical plan，Phase B 在该 P1 closeout 前暂停。
 
 ## 已验证基线
 
@@ -92,7 +95,7 @@
 - 当前 item：`data-architecture-3-technology-stack-entities`；
 - Canonical plan：`tasks/data-architecture-3-technology-stack-entities/plan.md`；
 - Verification：`tasks/data-architecture-3-technology-stack-entities/verification.md`；
-- Phase A expand 已合并并部署；首次 backfill 的 fail-closed 证据与微秒 precision fix 已落盘，修复通过隔离 PostgreSQL 14/14、全仓门禁和独立审查。下一步为修复 PR/CI、无迁移部署、新 version backfill receipt 与 shadow zero-diff；不能提前进入 Phase B 或标记 done。
+- Phase A expand、precision fix、versioned backfill、shadow zero-diff 与生产 MCP/health/auth 证据均已完成；独立 production closeout 尚未执行。下一步先完成 `data-correctness-4-deps-cache-recovery` 的恢复语义和外呼预算，再由 Reviewer 复核，不能提前进入 Phase B 或标记 done。
 
 ## Harness 初始化验证
 

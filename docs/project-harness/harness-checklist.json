@@ -131,23 +131,26 @@
     {
       "id": "data-architecture-3-technology-stack-entities",
       "title": "将技术栈节点从伪仓库和伪收藏关系中分离",
-      "status": "doing",
+      "status": "todo",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260818-technology-stack-entities",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-18",
       "dependencies": [
-        "data-correctness-2-atomic-replacement"
+        "data-correctness-2-atomic-replacement",
+        "data-correctness-4-deps-cache-recovery"
       ],
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "仓库列表和收藏关系只包含真实 GitHub 仓库；Vue、React、Spring Boot 等技术栈作为独立实体保留完整、可验证的图节点与依赖边。",
       "verification": "",
-      "handoff": "按 domain-model.md 的双读验证和分阶段切换执行。",
+      "handoff": "Phase A 生产 backfill/shadow/MCP 已验证；先完成 data-correctness-4-deps-cache-recovery，再由 Reviewer 做 production closeout，批准前不得进入 Phase B。",
       "workflow": {
-        "status": "review_approved",
+        "status": "handoff_requested",
         "updated_at": "2026-08-18",
-        "branch": "codex/data-architecture-3-technology-stack-entities"
+        "branch": "codex/data-architecture-3-technology-stack-entities",
+        "handoff_from": "codex",
+        "handoff_target": "next-agent"
       },
       "review": {
         "decision": "approved",
@@ -159,36 +162,46 @@
       "artifacts": {
         "plan": "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md",
         "branch": "codex/data-architecture-3-technology-stack-entities",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260818-technology-stack-entities",
-        "acquired_at": "2026-08-18T12:51:15Z",
-        "expires_at": "2026-08-18T14:51:15Z",
-        "ttl_minutes": 120
+        "acquired_at": "2026-08-18T15:35:10Z",
+        "expires_at": "2026-08-18T16:05:10Z",
+        "ttl_minutes": 30,
+        "released_at": "2026-08-18T15:37:47Z"
       }
     },
     {
       "id": "data-correctness-4-deps-cache-recovery",
-      "title": "使 deps.dev 映射缓存区分阴性与临时失败",
+      "title": "使依赖解析缓存可恢复且具备外呼预算",
       "status": "todo",
       "priority": "p1",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-18",
       "dependencies": [
-        "data-architecture-3-technology-stack-entities"
+        "data-correctness-2-atomic-replacement"
       ],
       "blocked_by": [],
       "blocked_reason": "",
-      "acceptance": "resolved、not_found、error 状态和 TTL 语义可验证；临时失败按退避恢复，真无映射不会在每次图重建时重复请求。",
+      "acceptance": "resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。",
       "verification": "",
-      "handoff": "状态字段和重试规则以 domain-model.md 为唯一设计来源。",
+      "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "todo"
+        "status": "handoff_requested",
+        "updated_at": "2026-08-18",
+        "handoff_from": "",
+        "handoff_target": "next-agent"
       },
-      "review": null
+      "review": null,
+      "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
+      "artifacts": {
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+      },
+      "lease": null
     },
     {
       "id": "data-quality-5-postgres-integration-gates",
