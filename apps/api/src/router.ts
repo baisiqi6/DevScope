@@ -26,6 +26,7 @@ import {
   HEALTH_ANALYSIS_JOB,
   healthAnalysisJobKey,
   healthAnalysisJobPayloadSchema,
+  reconcileRepositoryEmbeddingStatus,
   userWatchedRepositories,
   type Db,
 } from "@devscope/db";
@@ -37,7 +38,6 @@ import {
   semanticSearchResponseSchema,
   repositoryDetailSchema,
   type RepositoryAnalysis,
-  type CollectionResult,
 } from "@devscope/shared";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
 import { graphRouter } from "./router/graph";
@@ -478,58 +478,44 @@ export const appRouter = router({
 
       try {
         // 始终执行快速采集
-        const result: CollectionResult = await pipeline.run({
+        const result = await pipeline.run({
           repo: input.repo,
           config: { skipEmbeddings: true }, // 始终先快速采集
         });
         console.log("[collectRepository] Quick collection result:", result);
 
-        if (result.repository?.id && result.repository.fullName) {
-          await db
-            .insert(userWatchedRepositories)
-            .values({
-              userId,
-              repoId: result.repository.id,
-              repoFullName: result.repository.fullName,
-            })
-            .onConflictDoUpdate({
-              target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
-              set: { repoFullName: result.repository.fullName, updatedAt: new Date() },
-            });
+        if (result.status !== "completed" || !result.repository || !result.collectionVersion) {
+          throw new Error(result.error || "仓库采集未提交有效快照");
         }
+
+        await db
+          .insert(userWatchedRepositories)
+          .values({
+            userId,
+            repoId: result.repository.id,
+            repoFullName: result.repository.fullName,
+          })
+          .onConflictDoUpdate({
+            target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
+            set: { repoFullName: result.repository.fullName, updatedAt: new Date() },
+          });
 
         // 如果用户没有选择跳过向量化，启动后台向量化任务
-        if (!input.skipEmbeddings && result.repository?.id) {
+        if (!input.skipEmbeddings && result.chunksCollected > 0) {
           console.log("[collectRepository] Starting background embedding for repo:", result.repository.id);
-
-          // 获取 chunks 用于后台向量化
-          const chunks = await db
-            .select()
-            .from(repoChunks)
-            .where(eq(repoChunks.repoId, result.repository.id));
-
-          const [repoRecord] = await db
-            .select({
-              updatedAt: repositories.updatedAt,
-            })
-            .from(repositories)
-            .where(eq(repositories.id, result.repository.id))
-            .limit(1);
-
-          if (chunks.length > 0 && repoRecord) {
-            // 启动后台向量化（不等待完成）
-            backgroundTaskOwnsLock = true;
-            pipeline.runEmbeddingsInBackground(result.repository.id, chunks as any, undefined, repoRecord.updatedAt).catch((err) => {
-              console.error("[collectRepository] Background embedding failed:", err);
-            }).finally(() => {
-              activeRepositoryCollections.delete(repoKey);
-            });
-
-            result.embeddingInBackground = true;
-          }
+          backgroundTaskOwnsLock = true;
+          pipeline.runEmbeddingsInBackground(result.repository.id, result.collectionVersion).then((outcome) => {
+            console.log("[collectRepository] Background embedding outcome:", outcome);
+          }).catch((err) => {
+            console.error("[collectRepository] Background embedding failed:", err);
+          }).finally(() => {
+            activeRepositoryCollections.delete(repoKey);
+          });
+          result.embeddingInBackground = true;
         }
 
-        return result;
+        const { collectionVersion: _collectionVersion, ...publicResult } = result;
+        return publicResult;
       } catch (err) {
         console.error("[collectRepository] Error:", err);
         throw err;
@@ -789,7 +775,6 @@ export const appRouter = router({
         .select({
           id: repositories.id,
           fullName: repositories.fullName,
-          embeddingStatus: repositories.embeddingStatus,
         })
         .from(repositories)
         .innerJoin(
@@ -804,75 +789,17 @@ export const appRouter = router({
       const results = [];
 
       for (const repo of repoList) {
-        // SQL 聚合统计，不加载向量数据
-        const [stats] = await db
-          .select({
-            totalChunks: sql<number>`count(*)`,
-            withEmbedding: sql<number>`count(*) FILTER (WHERE ${repoChunks.embedding} IS NOT NULL)`,
-          })
-          .from(repoChunks)
-          .where(eq(repoChunks.repoId, repo.id));
-
-        const totalChunks = Number(stats?.totalChunks ?? 0);
-        const withEmbedding = Number(stats?.withEmbedding ?? 0);
-
-        if (totalChunks === 0) {
-          results.push({
-            repoId: repo.id,
-            fullName: repo.fullName,
-            status: 'no_chunks',
-            message: '没有 chunks 数据',
-          });
-          continue;
-        }
-
-        const progress = Math.floor((withEmbedding / totalChunks) * 100);
-
-        // 更新状态
-        if (withEmbedding === totalChunks && repo.embeddingStatus !== 'completed') {
-          await db
-            .update(repositories)
-            .set({
-              embeddingStatus: 'completed',
-              embeddingProgress: 100,
-              embeddingTotalChunks: totalChunks,
-              embeddingCompletedChunks: totalChunks,
-              embeddingCompletedAt: new Date(),
-              embeddingError: null,
-            })
-            .where(eq(repositories.id, repo.id));
-
-          results.push({
-            repoId: repo.id,
-            fullName: repo.fullName,
-            status: 'updated_to_completed',
-            message: `更新为完成 (${withEmbedding}/${totalChunks})`,
-          });
-        } else if (withEmbedding > 0 && repo.embeddingStatus === 'pending') {
-          await db
-            .update(repositories)
-            .set({
-              embeddingStatus: 'processing',
-              embeddingProgress: progress,
-              embeddingTotalChunks: totalChunks,
-              embeddingCompletedChunks: withEmbedding,
-            })
-            .where(eq(repositories.id, repo.id));
-
-          results.push({
-            repoId: repo.id,
-            fullName: repo.fullName,
-            status: 'updated_to_processing',
-            message: `更新为进行中 ${progress}% (${withEmbedding}/${totalChunks})`,
-          });
-        } else {
-          results.push({
-            repoId: repo.id,
-            fullName: repo.fullName,
-            status: 'no_change',
-            message: `${repo.embeddingStatus} (${withEmbedding}/${totalChunks})`,
-          });
-        }
+        const reconciled = await reconcileRepositoryEmbeddingStatus(db, repo.id);
+        results.push({
+          repoId: repo.id,
+          fullName: repo.fullName,
+          status: reconciled.status === "no_chunks"
+            ? "no_chunks"
+            : reconciled.changed
+              ? `updated_to_${reconciled.status}`
+              : "no_change",
+          message: `${reconciled.status} (${reconciled.completedChunks}/${reconciled.totalChunks})`,
+        });
       }
 
       return {

@@ -17,8 +17,6 @@ import {
   GITHUB_TRENDING_SYNC_JOB,
   GITHUB_TRENDING_SYNC_JOB_KEY,
   repositories,
-  repoChunks,
-  poolRepoEmbedding,
 } from "@devscope/db";
 import { lt, eq, or, isNull, and } from "drizzle-orm";
 import { getOrCreateCurrentUserId } from "./current-user";
@@ -41,7 +39,7 @@ function getDb() {
  * 刷新已关注仓库（超过 24h 未更新的）
  * 调度：每天凌晨 2:00
  */
-async function refreshStaleRepositories() {
+export async function refreshStaleRepositories() {
   console.log("[Scheduler] 🔄 开始刷新过期仓库...");
 
   try {
@@ -79,12 +77,13 @@ async function refreshStaleRepositories() {
 
     for (const repo of staleRepos) {
       try {
-        await pipeline.runQuick({ repo: repo.fullName });
-        // 刷新后将 embeddingStatus 重置为 pending，让 processPendingEmbeddings 重新向量化
-        await database
-          .update(repositories)
-          .set({ embeddingStatus: "pending" })
-          .where(eq(repositories.id, repo.id));
+        const result = await pipeline.runQuick({ repo: repo.fullName });
+        if (result.status !== "completed") {
+          throw new Error(result.error || "仓库刷新未提交有效快照");
+        }
+        if (result.warning) {
+          console.warn(`[Scheduler] ⚠️ ${repo.fullName} 可选来源告警: ${result.warning}`);
+        }
         success++;
         console.log(`[Scheduler] ✅ 刷新成功: ${repo.fullName}`);
       } catch (err: any) {
@@ -162,7 +161,7 @@ export async function enqueueGithubTrendingSync() {
  * 处理待向量化数据
  * 调度：每 30 分钟
  */
-async function processPendingEmbeddings() {
+export async function processPendingEmbeddings() {
   console.log("[Scheduler] 🧠 开始处理待向量化数据...");
 
   try {
@@ -170,7 +169,11 @@ async function processPendingEmbeddings() {
 
     // 查询 embeddingStatus = 'pending' 的仓库
     const pendingRepos = await database
-      .select({ id: repositories.id, fullName: repositories.fullName })
+      .select({
+        id: repositories.id,
+        fullName: repositories.fullName,
+        updatedAt: repositories.updatedAt,
+      })
       .from(repositories)
       .where(
         and(
@@ -196,40 +199,14 @@ async function processPendingEmbeddings() {
 
     for (const repo of pendingRepos) {
       try {
-        // 读取该仓库已存储的 chunks
-        const chunks = await database
-          .select({ content: repoChunks.content, chunkType: repoChunks.chunkType, sourceId: repoChunks.sourceId, chunkIndex: repoChunks.chunkIndex, tokenCount: repoChunks.tokenCount })
-          .from(repoChunks)
-          .where(eq(repoChunks.repoId, repo.id));
-
-        if (chunks.length === 0) {
-          console.log(`[Scheduler] ⏭️ ${repo.fullName} 没有 chunks，跳过`);
-          continue;
+        const outcome = await pipeline.runEmbeddingsInBackground(repo.id, repo.updatedAt);
+        if (outcome.status === "applied") {
+          success++;
+          console.log(`[Scheduler] ✅ 向量化完成: ${repo.fullName}`);
+        } else {
+          failed++;
+          console.warn(`[Scheduler] ⚠️ 向量化未应用: ${repo.fullName} (${outcome.status})`);
         }
-
-        const [repoRecord] = await database
-          .select({ updatedAt: repositories.updatedAt })
-          .from(repositories)
-          .where(eq(repositories.id, repo.id))
-          .limit(1);
-
-        if (!repoRecord) {
-          console.log(`[Scheduler] ⏭️ ${repo.fullName} 仓库记录不存在，跳过`);
-          continue;
-        }
-
-        // 调用后台向量化流程
-        await pipeline.runEmbeddingsInBackground(repo.id, chunks.map(c => ({
-          content: c.content,
-          chunkType: c.chunkType || "description",
-          sourceId: c.sourceId || undefined,
-          chunkIndex: c.chunkIndex,
-          tokenCount: c.tokenCount || 0,
-        })), undefined, repoRecord.updatedAt);
-        success++;
-        console.log(`[Scheduler] ✅ 向量化完成: ${repo.fullName}`);
-
-        await poolRepoEmbedding(database, repo.id);
       } catch (err: any) {
         failed++;
         console.error(`[Scheduler] ❌ 向量化失败: ${repo.fullName} - ${err.message}`);

@@ -88,11 +88,11 @@
     {
       "id": "data-correctness-2-atomic-replacement",
       "title": "使采集子数据整体原子替换",
-      "status": "todo",
+      "status": "doing",
       "priority": "p0",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": "codex",
+      "selected_in_session": "codex-20260818-atomic-replacement",
+      "updated_at": "2026-08-18",
       "dependencies": [
         "data-correctness-1b-repository-identity"
       ],
@@ -102,9 +102,29 @@
       "verification": "",
       "handoff": "复用现有 jobs 或最小 PostgreSQL 锁，不新增第二套队列。",
       "workflow": {
-        "status": "todo"
+        "status": "review_approved",
+        "updated_at": "2026-08-18",
+        "branch": "codex/data-correctness-2-atomic-replacement"
       },
-      "review": null
+      "review": {
+        "decision": "approved",
+        "reviewer": "release_id_migration_reviewer",
+        "phase": "review_requested",
+        "updated_at": "2026-08-18",
+        "summary": "Continuity implementation review closed reconcile authority, malformed SBOM, stale-writer concurrency evidence and Harness state findings; no remaining P0-P3 findings."
+      },
+      "plan_path": "docs/project-harness/tasks/data-correctness-2-atomic-replacement/plan.md",
+      "artifacts": {
+        "branch": "codex/data-correctness-2-atomic-replacement",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260818-atomic-replacement",
+        "acquired_at": "2026-08-18T12:10:24Z",
+        "expires_at": "2026-08-18T14:10:24Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "data-architecture-3-technology-stack-entities",

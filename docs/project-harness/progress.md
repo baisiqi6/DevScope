@@ -35,6 +35,13 @@
 - 无迁移 deploy run 32124923912 成功，migration rows 保持 8；认证 MCP 分组列表已恢复，7 个 `repoCount` 均为 number；
 - 部署期间并行 dogfood 会话把 group members 从 16 增至 63，本修复无 group mutation，保留全部业务写入；下一步仅做独立 closeout。
 - 独立 production closeout review 确认上述并发写入早于部署、线上数值计数与 63 条关系一致，最终 verdict 为 `APPROVE`；Harness 已将 1C 标记为 `done`。
+- `data-correctness-2-atomic-replacement` 已完成源码与生产只读基线核验：三类来源均存在空结果不清旧数据，delete/insert 分离，且 HN/Releases 把失败吞成空数组；后台 embedding 还存在第二个 chunks 替换窗口。
+- 2026-08-18 生产当前有 50 个仓库行（40 个真实仓库）、35815 chunks、0 HN items、362 releases；40 个真实仓库 embedding 均为 `completed`，未发现重复 chunk natural key、Release ID 跨仓库冲突、active collection-like job 或长事务。
+- 已形成 `tasks/data-correctness-2-atomic-replacement/plan.md`，下一步进行独立 plan review 后进入 RED tests。
+- 原子替换计划经过五轮独立 continuity review 后获 `APPROVE`；已实现 stable-ID 锁、数据库严格单调毫秒 token、三来源 structured outcome、单事务快照提交与版本安全 embedding/SBOM 派生写入。
+- 定向 DB/API 单元测试、真实 PostgreSQL 10 个事务与双连接竞争场景、全仓 lint/typecheck/test/build 均通过；未新增 migration，下一步进行独立 implementation review。
+- 独立 implementation review 首轮发现 reconcile 撤销活跃 claim、malformed SBOM 误清空与并发证据不足；已完成最小修复并把真实 PostgreSQL 定向场景扩展为 10 个，等待 continuity 复核。
+- continuity implementation review 确认四项 finding 均已关闭，未发现剩余 P0–P3 finding，最终 verdict 为 `APPROVE`；下一步提交 PR 并等待 CI。
 
 ## 已验证基线
 

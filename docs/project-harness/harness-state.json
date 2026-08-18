@@ -1,22 +1,61 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-18T10:15:41Z",
+  "generated_at": "2026-08-18T12:25:05Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "f976ce9f56f7c05c362745866c77f429ba9e647cc57ca2b5f4a3e66a1d4ce1f3"
+    "checklist_sha256": "81b0d7d774245b22ed7bc1ef6ec76085286ef7524a7c081c8a25dc1c8c1f1090"
   },
   "current_status": "",
-  "current_item": null,
+  "current_item": {
+    "id": "data-correctness-2-atomic-replacement",
+    "title": "使采集子数据整体原子替换",
+    "status": "doing",
+    "owner": "codex",
+    "selected_in_session": "codex-20260818-atomic-replacement",
+    "updated_at": "2026-08-18",
+    "workflow": {
+      "status": "review_approved",
+      "updated_at": "2026-08-18",
+      "branch": "codex/data-correctness-2-atomic-replacement"
+    },
+    "lease": {
+      "owner": "codex",
+      "session": "codex-20260818-atomic-replacement",
+      "acquired_at": "2026-08-18T12:10:24Z",
+      "expires_at": "2026-08-18T14:10:24Z",
+      "ttl_minutes": 120
+    },
+    "active_lease": {
+      "owner": "codex",
+      "session": "codex-20260818-atomic-replacement",
+      "acquired_at": "2026-08-18T12:10:24Z",
+      "expires_at": "2026-08-18T14:10:24Z",
+      "ttl_minutes": 120
+    },
+    "artifacts": {
+      "branch": "codex/data-correctness-2-atomic-replacement",
+      "review_packet": "docs/project-harness/current/review-packet.md"
+    },
+    "review": {
+      "decision": "approved",
+      "reviewer": "release_id_migration_reviewer",
+      "phase": "review_requested",
+      "updated_at": "2026-08-18",
+      "summary": "Continuity implementation review closed reconcile authority, malformed SBOM, stale-writer concurrency evidence and Harness state findings; no remaining P0-P3 findings."
+    },
+    "plan_path": "docs/project-harness/tasks/data-correctness-2-atomic-replacement/plan.md"
+  },
   "checklist_summary": {
-    "todo": 5,
-    "doing": 0,
+    "todo": 4,
+    "doing": 1,
     "done": 3,
     "blocked": 0
   },
   "workflow_summary": {
     "closed": 3,
-    "todo": 5
+    "review_approved": 1,
+    "todo": 4
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -56,52 +95,26 @@
   "open_risks": [],
   "recent_events": [
     {
-      "actor": "operator",
-      "artifacts": [
-        "docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
-      ],
-      "branch": "codex/data-correctness-1c-group-count",
-      "causation_id": null,
-      "created_at": "2026-08-18T09:51:08Z",
-      "id": "evt-20260818T095108Z-14bfa393",
-      "idempotency_key": "ASSIGN:data-correctness-1c-group-count-contract:assigned:operator",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260818-group-count"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "assigned",
-      "summary": "operator assigned data-correctness-1c-group-count-contract to codex",
-      "target": "codex",
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "ASSIGN",
-      "visible_header": "[ASSIGN] id=evt-20260818T095108Z-14bfa393 task=data-correctness-1c-group-count-contract actor=operator target=codex status=assigned branch=codex/data-correctness-1c-group-count artifacts=docs/project-harness/tasks/data-correctness-1c-group-count-contract/plan.md"
-    },
-    {
       "actor": "codex",
-      "artifacts": [],
-      "branch": "codex/data-correctness-1c-group-count",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
       "causation_id": null,
-      "created_at": "2026-08-18T09:51:09Z",
-      "id": "evt-20260818T095109Z-5bfde1fd",
-      "idempotency_key": "ACCEPT:data-correctness-1c-group-count-contract:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260818-group-count"
-      },
+      "created_at": "2026-08-18T11:38:00Z",
+      "id": "evt-20260818T113800Z-e1c7047e",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:requested:codex",
+      "metadata": {},
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
-      "status": "running",
-      "summary": "codex accepted data-correctness-1c-group-count-contract",
-      "target": "codex",
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260818T095109Z-5bfde1fd task=data-correctness-1c-group-count-contract actor=codex target=codex status=running branch=codex/data-correctness-1c-group-count"
+      "status": "requested",
+      "summary": "Review requested for data-correctness-2-atomic-replacement",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T113800Z-e1c7047e task=data-correctness-2-atomic-replacement actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
     },
     {
       "actor": "codex",
@@ -110,124 +123,149 @@
       ],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-08-18T09:54:08Z",
-      "id": "evt-20260818T095408Z-28079b09",
-      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:requested:codex",
+      "created_at": "2026-08-18T11:42:57Z",
+      "id": "evt-20260818T114257Z-5b4ad4c2",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:requested:codex",
       "metadata": {},
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
       "status": "requested",
-      "summary": "Review requested for data-correctness-1c-group-count-contract",
+      "summary": "Review requested for data-correctness-2-atomic-replacement",
       "target": "release_id_migration_reviewer",
-      "task": "data-correctness-1c-group-count-contract",
+      "task": "data-correctness-2-atomic-replacement",
       "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T095408Z-28079b09 task=data-correctness-1c-group-count-contract actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:54:09Z",
-      "id": "evt-20260818T095409Z-2e724dba",
-      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Plan approved: normalize PostgreSQL count at the API runtime boundary with strict canonical decimal and safe nonnegative integer checks; avoid SQL casts; cover invalid matrix and no-migration production invariants.",
-      "target": "codex",
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T095409Z-2e724dba task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-18T09:59:46Z",
-      "id": "evt-20260818T095946Z-505b7ac6",
-      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Implementation review approved strict runtime normalization, real groups.getAll path, RED/GREEN matrix, no schema changes and full gates; no P0-P2 findings.",
-      "target": "codex",
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T095946Z-505b7ac6 task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
+      "visible_header": "[REVIEW] id=evt-20260818T114257Z-5b4ad4c2 task=data-correctness-2-atomic-replacement actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
     },
     {
       "actor": "codex",
       "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
+        "docs/project-harness/current/review-packet.md"
       ],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-08-18T10:11:55Z",
-      "id": "evt-20260818T101155Z-ebb0772d",
-      "idempotency_key": "RESULT:data-correctness-1c-group-count-contract:closeout_requested:codex",
+      "created_at": "2026-08-18T11:45:13Z",
+      "id": "evt-20260818T114513Z-9cf5a2b0",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:requested:codex",
       "metadata": {},
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for data-correctness-1c-group-count-contract",
+      "status": "requested",
+      "summary": "Review requested for data-correctness-2-atomic-replacement",
       "target": "release_id_migration_reviewer",
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260818T101155Z-ebb0772d task=data-correctness-1c-group-count-contract actor=codex target=release_id_migration_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T114513Z-9cf5a2b0 task=data-correctness-2-atomic-replacement actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
     },
     {
-      "actor": "release_id_migration_reviewer",
-      "artifacts": [],
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-08-18T10:15:41Z",
-      "id": "evt-20260818T101541Z-7a112fb5",
-      "idempotency_key": "REVIEW:data-correctness-1c-group-count-contract:approved:release_id_migration_reviewer",
+      "created_at": "2026-08-18T12:09:36Z",
+      "id": "evt-20260818T120936Z-ee84e983",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:requested:codex",
       "metadata": {},
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
-      "status": "approved",
-      "summary": "Production closeout verified PR/CI/deploy SHA, no-migration invariant, services/auth and seven numeric MCP group counts matching 63 live memberships; concurrent dogfood writes predated deployment and are not a regression.",
-      "target": "codex",
-      "task": "data-correctness-1c-group-count-contract",
+      "status": "requested",
+      "summary": "Review requested for data-correctness-2-atomic-replacement",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-2-atomic-replacement",
       "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260818T101541Z-7a112fb5 task=data-correctness-1c-group-count-contract actor=release_id_migration_reviewer target=codex status=approved"
+      "visible_header": "[REVIEW] id=evt-20260818T120936Z-ee84e983 task=data-correctness-2-atomic-replacement actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
     },
     {
       "actor": "codex",
       "artifacts": [],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-08-18T10:15:41Z",
-      "id": "evt-20260818T101541Z-dc7b7a75",
-      "idempotency_key": "CLOSE:data-correctness-1c-group-count-contract:done:codex",
+      "created_at": "2026-08-18T12:10:24Z",
+      "id": "evt-20260818T121024Z-c6a8e0f5",
+      "idempotency_key": "LEASE:data-correctness-2-atomic-replacement:renewed:codex",
       "metadata": {
-        "force_reason": null
+        "force_reason": null,
+        "session": "codex-20260818-atomic-replacement"
       },
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
-      "status": "done",
-      "summary": "codex closed data-correctness-1c-group-count-contract",
-      "target": null,
-      "task": "data-correctness-1c-group-count-contract",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260818T101541Z-dc7b7a75 task=data-correctness-1c-group-count-contract actor=codex status=done"
+      "status": "renewed",
+      "summary": "codex renewed lease for data-correctness-2-atomic-replacement",
+      "target": "codex",
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "LEASE",
+      "visible_header": "[LEASE] id=evt-20260818T121024Z-c6a8e0f5 task=data-correctness-2-atomic-replacement actor=codex target=codex status=renewed"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T12:18:02Z",
+      "id": "evt-20260818T121802Z-8829f037",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:changes_requested:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "changes_requested",
+      "summary": "P1 preserve active processing/failed reconcile authority; P2 validate malformed SBOM; expand PostgreSQL stale-writer concurrency evidence",
+      "target": "codex",
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T121802Z-8829f037 task=data-correctness-2-atomic-replacement actor=release_id_migration_reviewer target=codex status=changes_requested"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T12:22:40Z",
+      "id": "evt-20260818T122240Z-67c36446",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for data-correctness-2-atomic-replacement",
+      "target": "release_id_migration_reviewer",
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T122240Z-67c36446 task=data-correctness-2-atomic-replacement actor=codex target=release_id_migration_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "release_id_migration_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-08-18T12:24:44Z",
+      "id": "evt-20260818T122444Z-5e26cf87",
+      "idempotency_key": "REVIEW:data-correctness-2-atomic-replacement:approved:release_id_migration_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Continuity implementation review closed reconcile authority, malformed SBOM, stale-writer concurrency evidence and Harness state findings; no remaining P0-P3 findings.",
+      "target": "codex",
+      "task": "data-correctness-2-atomic-replacement",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260818T122444Z-5e26cf87 task=data-correctness-2-atomic-replacement actor=release_id_migration_reviewer target=codex status=approved"
     }
   ]
 }

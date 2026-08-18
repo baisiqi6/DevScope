@@ -784,7 +784,7 @@ export class GitHubCollector {
       return [];
     } catch (error) {
       console.error(`[getReleases] Failed to fetch releases for ${owner}/${repo}:`, error);
-      return [];
+      throw error;
     }
   }
 

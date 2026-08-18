@@ -284,6 +284,13 @@ describe("GitHubCollector", () => {
       expect(result).toEqual([]);
       expect(mockRest.repos.listTags).not.toHaveBeenCalled();
     });
+
+    it("Release API 失败时抛错而不是伪装成成功空数组", async () => {
+      mockRest.repos.listReleases.mockRejectedValueOnce(new Error("rate limited"));
+
+      await expect(collector.getReleases("owner", "repo"))
+        .rejects.toThrow("rate limited");
+    });
   });
 
   describe("searchRepositories", () => {

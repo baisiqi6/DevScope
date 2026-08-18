@@ -1,13 +1,16 @@
-import { eq, and, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, and, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "./index";
 import {
   repositories,
-  repoChunks,
   repoRelationships,
   packageRepoMappings,
   userWatchedRepositories,
 } from "./schema";
 import { detectTechStack, type TechStackNode } from "./tech-stack-catalog";
+import {
+  applySbomBackfillIfCurrent,
+  poolRepositoryEmbeddingForCurrentVersion,
+} from "./collection";
 
 export { detectTechStack } from "./tech-stack-catalog";
 
@@ -96,45 +99,7 @@ export function parseSbomPackages(sbom: Record<string, unknown>): SbomPackage[] 
 const POOL_CHUNK_TYPES = ["readme", "description"];
 
 export async function poolRepoEmbedding(db: Db, repoId: number): Promise<boolean> {
-  const chunks = await db
-    .select({ embedding: repoChunks.embedding })
-    .from(repoChunks)
-    .where(
-      and(
-        eq(repoChunks.repoId, repoId),
-        inArray(repoChunks.chunkType, POOL_CHUNK_TYPES),
-        isNotNull(repoChunks.embedding)
-      )
-    );
-
-  const validEmbeddings = chunks.filter(
-    (c) => c.embedding && c.embedding.length > 0
-  );
-
-  if (validEmbeddings.length === 0) {
-    await db
-      .update(repositories)
-      .set({ embedding: null })
-      .where(eq(repositories.id, repoId));
-    return false;
-  }
-
-  const dim = validEmbeddings[0].embedding!.length;
-  const sum = new Array(dim).fill(0);
-  for (const chunk of validEmbeddings) {
-    const emb = chunk.embedding!;
-    for (let i = 0; i < dim; i++) {
-      sum[i] += emb[i];
-    }
-  }
-  const mean = sum.map((v) => v / validEmbeddings.length);
-
-  await db
-    .update(repositories)
-    .set({ embedding: mean })
-    .where(eq(repositories.id, repoId));
-
-  return true;
+  return await poolRepositoryEmbeddingForCurrentVersion(db, repoId) === "applied";
 }
 
 export async function backfillRepoEmbeddings(db: Db, userId: number): Promise<number> {
@@ -809,7 +774,13 @@ export async function backfillSbomPackages(
   const delayMs = opts.delayMs ?? 100;
 
   const rows = await db
-    .select({ id: repositories.id, fullName: repositories.fullName, sbomPackages: repositories.sbomPackages })
+    .select({
+      id: repositories.id,
+      githubRepositoryId: repositories.githubRepositoryId,
+      fullName: repositories.fullName,
+      updatedAt: repositories.updatedAt,
+      sbomPackages: repositories.sbomPackages,
+    })
     .from(repositories)
     .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
 
@@ -819,16 +790,34 @@ export async function backfillSbomPackages(
 
   let filled = 0;
   for (const repo of missing) {
+    if (!repo.githubRepositoryId) {
+      console.warn(`[RepoGraph] SBOM backfill skipped without stable ID: ${repo.fullName}`);
+      continue;
+    }
     try {
       const raw = await opts.fetchSbom(repo.fullName);
-      if (raw) {
-        const packages = parseSbomPackages(raw);
-        await db
-          .update(repositories)
-          .set({ sbomPackages: packages, updatedAt: new Date() })
-          .where(eq(repositories.id, repo.id));
-        filled++;
+      let packages: SbomPackage[];
+      if (raw === null) {
+        packages = [];
+      } else {
+        const sbom = raw.sbom;
+        if (
+          typeof sbom !== "object"
+          || sbom === null
+          || !Array.isArray((sbom as Record<string, unknown>).packages)
+        ) {
+          throw new Error("Malformed GitHub SBOM envelope");
+        }
+        packages = parseSbomPackages(raw);
       }
+      const outcome = await applySbomBackfillIfCurrent(db, {
+        repoId: repo.id,
+        githubRepositoryId: repo.githubRepositoryId,
+        expectedVersion: repo.updatedAt,
+        baseline: repo.sbomPackages,
+        packages,
+      });
+      if (outcome === "applied") filled++;
     } catch (err) {
       console.warn(`[RepoGraph] SBOM backfill failed for ${repo.fullName}:`,
         err instanceof Error ? err.message : err);

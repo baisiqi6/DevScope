@@ -7,13 +7,22 @@
  * @module pipeline
  */
 
-import { upsertRepository, insertRepoChunks, insertHackernewsItems, deleteRepoChunksByRepoId, deleteHackernewsItemsByRepoId, deleteReleasesByRepoId, insertReleases, normalizeGitHubReleaseId, repositories } from "./index";
+import {
+  applyRepositoryEmbeddingSnapshot,
+  claimRepositoryEmbeddingSnapshot,
+  commitRepositoryCollectionSnapshot,
+  markEmbeddingFailedForVersion,
+  normalizeGitHubReleaseId,
+  updateEmbeddingProgressForVersion,
+  type EmbeddingApplyResult,
+  type SourceSnapshot,
+} from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
 import { GitHubClient } from "@devscope/shared";
 import { parseSbomPackages, type SbomPackage } from "./repo-graph";
 import type { Db } from "./index";
-import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 // ============================================================================
 // 类型定义
@@ -62,7 +71,68 @@ interface CollectionResult {
   embeddingInBackground?: boolean;
   /** SBOM 中解析出的 npm 包列表 */
   sbomPackages?: SbomPackage[];
+  /** 原子提交返回的采集版本，仅供同进程 embedding 启动使用 */
+  collectionVersion?: Date;
 }
+
+type PreparedHackerNewsItem = {
+  type: string;
+  title: string | null;
+  content: string | null;
+  author: string | null;
+  score: number | null;
+  descendants: number | null;
+  url: string | null;
+  rawJson: Record<string, unknown>;
+};
+
+const hackerNewsResponseSchema = z.object({
+  hits: z.array(z.object({
+    title: z.string().nullable(),
+    story_text: z.string().nullable(),
+    author: z.string().nullable(),
+    points: z.number().int().nullable(),
+    num_comments: z.number().int().nonnegative().nullable(),
+    url: z.string().nullable(),
+  }).passthrough()),
+});
+
+const githubReleaseSchema = z.object({
+  id: z.union([z.string(), z.number(), z.bigint()]),
+  tagName: z.string(),
+  name: z.string(),
+  body: z.string().nullable(),
+  author: z.string(),
+  createdAt: z.date(),
+  publishedAt: z.date().nullable(),
+  url: z.string(),
+  htmlUrl: z.string(),
+  zipUrl: z.string().nullable(),
+  tarUrl: z.string().nullable(),
+  assets: z.array(z.object({
+    name: z.string(),
+    size: z.number().nonnegative(),
+    downloadCount: z.number().int().nonnegative(),
+    url: z.string(),
+    browserDownloadUrl: z.string(),
+  })),
+  isPrerelease: z.boolean(),
+});
+
+const sbomPackageSchema = z.object({
+  name: z.string().min(1),
+  versionInfo: z.string().min(1).optional(),
+  externalRefs: z.array(z.object({
+    referenceType: z.string().min(1),
+    referenceLocator: z.string().min(1),
+  }).passthrough()).optional(),
+}).passthrough();
+
+const sbomEnvelopeSchema = z.object({
+  sbom: z.object({
+    packages: z.array(sbomPackageSchema),
+  }).passthrough(),
+}).passthrough();
 
 /**
  * 向量化进度回调
@@ -187,82 +257,6 @@ export class DataCollectionPipeline {
     }
   }
 
-  /**
-   * 更新仓库的向量化状态
-   */
-  private async updateEmbeddingStatus(
-    repoId: number,
-    status: 'pending' | 'processing' | 'completed' | 'failed',
-    progress: { current: number; total: number },
-    error?: string
-  ): Promise<void> {
-    const updateData: any = {
-      embeddingStatus: status,
-      embeddingProgress: progress.total > 0 ? Math.floor((progress.current / progress.total) * 100) : 0,
-      embeddingCompletedChunks: progress.current,
-      embeddingTotalChunks: progress.total,
-    };
-
-    if (status === 'processing' && !updateData.embeddingStartedAt) {
-      updateData.embeddingStartedAt = new Date();
-    }
-
-    if (status === 'completed') {
-      updateData.embeddingCompletedAt = new Date();
-      updateData.embeddingProgress = 100;
-    }
-
-    if (status === 'failed' && error) {
-      updateData.embeddingError = error;
-    }
-
-    await this.db
-      .update(repositories)
-      .set(updateData)
-      .where(eq(repositories.id, repoId));
-
-    console.log(`[Pipeline] Updated embedding status: ${status}, progress: ${progress.current}/${progress.total}`);
-  }
-
-  private async isRepositoryVersionCurrent(
-    repoId: number,
-    expectedUpdatedAt?: Date
-  ): Promise<boolean> {
-    if (!expectedUpdatedAt) {
-      return true;
-    }
-
-    const repoList = await this.db
-      .select({
-        updatedAt: repositories.updatedAt,
-      })
-      .from(repositories)
-      .where(eq(repositories.id, repoId))
-      .limit(1);
-
-    if (repoList.length === 0) {
-      return false;
-    }
-
-    return repoList[0].updatedAt.getTime() === expectedUpdatedAt.getTime();
-  }
-
-  private async ensureCurrentEmbeddingRun(
-    repoId: number,
-    expectedUpdatedAt: Date | undefined,
-    phase: string
-  ): Promise<boolean> {
-    const isCurrent = await this.isRepositoryVersionCurrent(repoId, expectedUpdatedAt);
-
-    if (!isCurrent) {
-      console.warn(
-        `[Pipeline] Background embedding aborted for repository ${repoId}: newer repository data detected during ${phase}.`
-      );
-    }
-
-    return isCurrent;
-  }
-
   private getEmbeddingBatchSize(): number {
     const configured = Number.parseInt(process.env.EMBEDDING_BATCH_SIZE || "", 10);
     return Number.isFinite(configured) && configured > 0 ? configured : 10;
@@ -288,78 +282,35 @@ export class DataCollectionPipeline {
   }
 
   /**
-   * 后台执行向量化
-   * @param repoId 仓库 ID
-   * @param chunks 文本分块数组
-   * @param onProgress 进度回调
+   * 后台执行向量化。chunks 必须由版本绑定的 claim 事务读取，调用方不能传入。
    */
   async runEmbeddingsInBackground(
     repoId: number,
-    chunks: TextChunk[],
+    expectedUpdatedAt: Date,
     onProgress?: EmbeddingProgressCallback,
-    expectedUpdatedAt?: Date
-  ): Promise<void> {
+  ): Promise<EmbeddingApplyResult> {
+    const claim = await claimRepositoryEmbeddingSnapshot(this.db, repoId, expectedUpdatedAt);
+    if (claim.status !== "claimed") {
+      return { status: claim.status };
+    }
+
+    const chunks = claim.chunks;
     const totalChunks = chunks.length;
-    console.log(`[Pipeline] Starting background embedding for ${totalChunks} chunks...`);
+    console.log(`[Pipeline] Starting background embedding for repository ${repoId}, ${totalChunks} chunks...`);
 
     try {
-      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "startup"))) {
-        return;
-      }
-
-      await this.updateEmbeddingStatus(repoId, 'processing', { current: 0, total: totalChunks });
-
-      const texts = chunks.map((c: TextChunk) => c.content);
-
-      // 自定义 embedBatch，支持进度回调
+      const texts = chunks.map((chunk) => chunk.content);
       const BATCH_SIZE = this.getEmbeddingBatchSize();
       const batchDelayMs = this.getEmbeddingBatchDelayMs();
       const results: (number[] | null)[] = new Array(texts.length).fill(null);
-      let successCount = 0;
 
       for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-        const batchIndex = Math.floor(i / BATCH_SIZE);
         const batch = texts.slice(i, i + BATCH_SIZE);
-
-        if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, `batch ${batchIndex} start`))) {
-          return;
+        const batchResults = await this.embedder.embedBatch(batch) as Array<number[] | null>;
+        for (let j = 0; j < batch.length; j++) {
+          results[i + j] = batchResults[j] ?? null;
         }
 
-        let retryCount = 0;
-        const maxRetries = 3;
-
-        while (retryCount < maxRetries) {
-          try {
-            const response = await (this.embedder as any).client.embeddings.create({
-              model: (this.embedder as any).defaultModel,
-              input: batch,
-            });
-
-            for (const data of response.data) {
-              results[i + data.index] = data.embedding;
-              successCount++;
-            }
-
-            break;
-          } catch (error: any) {
-            retryCount++;
-            const isRetryable = error.status === 429 || error.status === 400;
-
-            if (isRetryable && retryCount < maxRetries) {
-              const waitTime = retryCount * 5000;
-              console.warn(`[Pipeline] Batch ${batchIndex} failed (attempt ${retryCount}/${maxRetries}), retrying after ${waitTime}ms...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-            } else {
-              console.warn(`[Pipeline] Batch ${batchIndex} permanently failed: ${error.message || error}`);
-              for (let j = 0; j < batch.length; j++) {
-                results[i + j] = null;
-              }
-              break;
-            }
-          }
-        }
-
-        // 更新进度
         const completed = Math.min(i + BATCH_SIZE, texts.length);
         const progress = {
           current: completed,
@@ -367,58 +318,51 @@ export class DataCollectionPipeline {
           percent: Math.floor((completed / totalChunks) * 100),
           status: 'processing' as const,
         };
-
-        if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, `batch ${batchIndex} progress update`))) {
-          return;
-        }
-
-        await this.updateEmbeddingStatus(repoId, 'processing', { current: completed, total: totalChunks });
+        const current = await updateEmbeddingProgressForVersion(
+          this.db,
+          repoId,
+          expectedUpdatedAt,
+          completed,
+          totalChunks,
+        );
+        if (!current) return { status: "stale" };
 
         if (onProgress) {
           await onProgress(progress);
         }
 
-        // 添加延迟避免 API 限流
         if (batchDelayMs > 0 && i + BATCH_SIZE < texts.length) {
           await new Promise(resolve => setTimeout(resolve, batchDelayMs));
         }
       }
 
-      // 删除旧的 chunks 并插入新的带 embedding 的 chunks
-      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "final write"))) {
-        return;
-      }
-
-      console.log(`[Pipeline] Deleting old chunks for repository: ${repoId}`);
-      await deleteRepoChunksByRepoId(this.db, repoId);
-
-      // 只插入成功的 chunks
-      const validChunks = chunks.filter((_, i) => results[i] !== null);
-      const dbChunks = validChunks.map((chunk) => {
-        const resultIndex = chunks.indexOf(chunk);
-        return {
-          repoId: repoId,
+      const dbChunks = chunks.map((chunk, index) => ({
           content: chunk.content,
           chunkType: chunk.chunkType || "description",
           sourceId: chunk.sourceId || null,
           chunkIndex: chunk.chunkIndex,
-          embedding: results[resultIndex] as number[],
+          embedding: results[index],
           tokenCount: chunk.tokenCount,
-        };
+      }));
+      const pooled = results.flatMap((embedding, index) =>
+        embedding !== null
+          && (chunks[index].chunkType === "readme" || chunks[index].chunkType === "description")
+          ? [embedding]
+          : []
+      );
+      const repositoryEmbedding = pooled.length > 0
+        ? pooled[0].map((_, dimension) =>
+            pooled.reduce((sum, embedding) => sum + embedding[dimension], 0) / pooled.length)
+        : null;
+      const failedCount = results.filter((embedding) => embedding === null).length;
+      const applied = await applyRepositoryEmbeddingSnapshot(this.db, {
+        repoId,
+        expectedVersion: expectedUpdatedAt,
+        chunks: dbChunks,
+        repositoryEmbedding,
+        error: failedCount > 0 ? `${failedCount} chunks 向量化失败` : undefined,
       });
-
-      await insertRepoChunks(this.db, dbChunks);
-
-      const failedCount = totalChunks - successCount;
-      if (failedCount > 0) {
-        console.warn(`[Pipeline] Completed with ${failedCount} failed embeddings`);
-      }
-
-      if (!(await this.ensureCurrentEmbeddingRun(repoId, expectedUpdatedAt, "completion"))) {
-        return;
-      }
-
-      await this.updateEmbeddingStatus(repoId, 'completed', { current: totalChunks, total: totalChunks });
+      if (applied.status !== "applied") return applied;
 
       if (onProgress) {
         await onProgress({
@@ -429,10 +373,12 @@ export class DataCollectionPipeline {
         });
       }
 
-      console.log(`[Pipeline] Background embedding completed: ${successCount}/${totalChunks} chunks`);
+      console.log(`[Pipeline] Background embedding completed: ${totalChunks}/${totalChunks} chunks`);
+      return applied;
     } catch (err) {
       console.error(`[Pipeline] Background embedding failed:`, err);
-      await this.updateEmbeddingStatus(repoId, 'failed', { current: 0, total: totalChunks }, err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      const recorded = await markEmbeddingFailedForVersion(this.db, repoId, expectedUpdatedAt, message);
 
       if (onProgress) {
         await onProgress({
@@ -440,9 +386,89 @@ export class DataCollectionPipeline {
           total: totalChunks,
           percent: 0,
           status: 'failed',
-          error: err instanceof Error ? err.message : String(err),
+          error: message,
         });
       }
+      return recorded
+        ? { status: "failed", completedChunks: 0, totalChunks, error: message }
+        : { status: "stale" };
+    }
+  }
+
+  private async prepareHackerNewsSnapshot(
+    query: string,
+    limit: number,
+    enabled: boolean,
+  ): Promise<SourceSnapshot<PreparedHackerNewsItem>> {
+    if (!enabled) return { status: "skipped" };
+    try {
+      const response = await fetch(
+        `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hits_per_page=${limit}`,
+      );
+      if (!response.ok) {
+        throw new Error(`Hacker News API error: ${response.status}`);
+      }
+      const data = hackerNewsResponseSchema.parse(await response.json());
+      return {
+        status: "success",
+        items: data.hits.map((hit) => ({
+          type: "story",
+          title: hit.title,
+          content: hit.story_text,
+          author: hit.author,
+          score: hit.points,
+          descendants: hit.num_comments,
+          url: hit.url,
+          rawJson: hit,
+        })),
+      };
+    } catch (err) {
+      return { status: "failure", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private async prepareReleaseSnapshot(
+    owner: string,
+    repo: string,
+  ): Promise<SourceSnapshot<ReturnType<typeof this.toStoredRelease>>> {
+    try {
+      const githubReleases = z.array(githubReleaseSchema).parse(
+        await this.github.getReleases(owner, repo, 10),
+      );
+      return {
+        status: "success",
+        items: githubReleases.map((release) => this.toStoredRelease(release)),
+      };
+    } catch (err) {
+      return { status: "failure", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private toStoredRelease(release: z.infer<typeof githubReleaseSchema>) {
+    return {
+      ...release,
+      id: normalizeGitHubReleaseId(release.id),
+    };
+  }
+
+  private async prepareSbomSnapshot(
+    fullName: string,
+    enabled: boolean,
+    githubToken: string,
+  ): Promise<
+    | { status: "success"; packages: SbomPackage[] }
+    | { status: "failure"; error: string }
+    | { status: "skipped" }
+  > {
+    if (!enabled) return { status: "skipped" };
+    try {
+      const ghClient = new GitHubClient(githubToken || undefined);
+      const raw = await ghClient.getSbom(fullName);
+      if (raw === null) return { status: "success", packages: [] };
+      const envelope = sbomEnvelopeSchema.parse(raw);
+      return { status: "success", packages: parseSbomPackages(envelope) };
+    } catch (err) {
+      return { status: "failure", error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -480,6 +506,7 @@ export class DataCollectionPipeline {
     let embeddingsGenerated = 0;
     let hnItemsCollected = 0;
     let sbomPackages: SbomPackage[] | undefined;
+    let collectionVersion: Date | undefined;
 
     try {
       console.log("[Pipeline] Step 1: Collecting GitHub data...");
@@ -493,43 +520,7 @@ export class DataCollectionPipeline {
         commitsLimit: effectiveConfig.commitsLimit,
       });
 
-      // 2. 保存仓库信息到数据库
-      const savedRepo = await upsertRepository(this.db, {
-        githubRepositoryId: githubData.repository.githubRepositoryId,
-        fullName: githubData.repository.fullName,
-        name: githubData.repository.name,
-        owner: githubData.repository.owner,
-        description: githubData.repository.description,
-        url: githubData.repository.url,
-        stars: githubData.repository.stars,
-        forks: githubData.repository.forks,
-        openIssues: githubData.repository.openIssues,
-        language: githubData.repository.language,
-        license: githubData.repository.license,
-        readme: githubData.readme,
-        readmeUrl: githubData.readmeUrl,
-        lastFetchedAt: new Date(),
-        // 采集即视为正式仓库；若命中同 fullName 的 reference 轻量行则升级该行
-        isReference: false,
-      }, {
-        allowNewStableIdentity: process.env.REPOSITORY_IDENTITY_CUTOVER === "enabled",
-      });
-
-      repository = {
-        id: savedRepo.id,
-        fullName: githubData.repository.fullName,
-        name: githubData.repository.name,
-        owner: githubData.repository.owner,
-        description: githubData.repository.description || undefined,
-        url: githubData.repository.url,
-        stars: githubData.repository.stars,
-        forks: githubData.repository.forks,
-        openIssues: githubData.repository.openIssues,
-        language: githubData.repository.language || undefined,
-      };
-      console.log("[Pipeline] Step 2: Repository saved, ID:", savedRepo.id);
-
-      // 3. 准备文本分块
+      // 2. 在事务外准备文本分块；任何失败都不会推进 repository version。
       const textSources: Array<{ text: string; sourceId?: string; chunkType: string }> = [];
 
       // 添加 README 分块
@@ -564,134 +555,81 @@ export class DataCollectionPipeline {
         }
       }
 
-      // 4. 执行文本分块
-      console.log("[Pipeline] Step 3: Chunking text sources, count:", textSources.length);
+      console.log("[Pipeline] Step 2: Chunking text sources, count:", textSources.length);
       const chunks: TextChunk[] = this.chunker.chunkMultiple(textSources);
       chunksCollected = chunks.length;
-      console.log("[Pipeline] Step 3 complete: Chunks created:", chunksCollected);
-
-      // 5. 生成 Embedding 并存储
-      console.log("[Pipeline] Step 4: Generating embeddings and storing chunks...");
-      if (chunks.length > 0) {
-        // 先删除该仓库的旧 chunks（避免重复数据）
-        console.log("[Pipeline] Deleting old chunks for repository:", savedRepo.id);
-        await deleteRepoChunksByRepoId(this.db, savedRepo.id);
-        console.log("[Pipeline] Old chunks deleted, inserting new chunks...");
-
-        // 新模式：始终先快速存储（不带 embedding），然后根据配置决定是否后台向量化
-        console.log("[Pipeline] Storing chunks without embeddings (quick mode)...");
-        const dbChunks = chunks.map((chunk: TextChunk) => ({
-          repoId: savedRepo.id,
+      console.log("[Pipeline] Step 2 complete: Chunks created:", chunksCollected);
+      const dbChunks = chunks.map((chunk: TextChunk) => ({
           content: chunk.content,
           chunkType: chunk.chunkType || "description",
           sourceId: chunk.sourceId || null,
           chunkIndex: chunk.chunkIndex,
-          embedding: null, // 先存储为 null
+          embedding: null,
           tokenCount: chunk.tokenCount,
         }));
-        await insertRepoChunks(this.db, dbChunks);
-        chunksCollected = dbChunks.length;
-        console.log("[Pipeline] Step 4 complete: Stored", chunksCollected, "chunks (without embeddings)");
 
-        // 如果不跳过向量化，更新状态为 pending（将在后台处理）
-        if (!effectiveConfig.skipEmbeddings) {
-          await this.updateEmbeddingStatus(savedRepo.id, 'pending', { current: 0, total: chunksCollected });
-          console.log("[Pipeline] Embeddings will be processed in background");
-        }
-      } else {
-        console.log("[Pipeline] Step 4 skipped: No chunks to process");
-      }
+      // 3. 在事务外准备可选来源，并保留 success([]) / failure / skipped。
+      const [hackernews, releases, sbom] = await Promise.all([
+        this.prepareHackerNewsSnapshot(repo, effectiveConfig.hnLimit, effectiveConfig.includeHackernews),
+        this.prepareReleaseSnapshot(owner, repo),
+        this.prepareSbomSnapshot(
+          githubData.repository.fullName,
+          effectiveConfig.includeSbom,
+          effectiveConfig.githubToken,
+        ),
+      ]);
+      hnItemsCollected = hackernews.status === "success" ? hackernews.items.length : 0;
+      sbomPackages = sbom.status === "success" ? sbom.packages : undefined;
 
-      // 6. 采集 Hacker News 数据
-      console.log("[Pipeline] Step 5: Fetching Hacker News data...");
-      if (effectiveConfig.includeHackernews) {
-        const hnItems = await this.fetchHackerNews(repo, effectiveConfig.hnLimit);
-        hnItemsCollected = hnItems.length;
-        console.log("[Pipeline] Hacker News items fetched:", hnItemsCollected);
+      const warnings = [
+        hackernews.status === "failure" ? `Hacker News: ${hackernews.error}` : null,
+        releases.status === "failure" ? `Releases: ${releases.error}` : null,
+        sbom.status === "failure" ? `SBOM: ${sbom.error}` : null,
+      ].filter((item): item is string => item !== null);
+      warning = warnings.length > 0 ? warnings.join("; ") : undefined;
 
-        if (hnItems.length > 0) {
-          // 先删除该仓库的旧 HackerNews items（避免重复数据）
-          console.log("[Pipeline] Deleting old HackerNews items for repository:", savedRepo.id);
-          await deleteHackernewsItemsByRepoId(this.db, savedRepo.id);
-          console.log("[Pipeline] Old HackerNews items deleted, inserting new items...");
+      // 4. repository metadata、版本、三类子快照与 embedding 初态一次提交。
+      const committed = await commitRepositoryCollectionSnapshot(this.db, {
+        repository: {
+          githubRepositoryId: githubData.repository.githubRepositoryId,
+          fullName: githubData.repository.fullName,
+          name: githubData.repository.name,
+          owner: githubData.repository.owner,
+          description: githubData.repository.description,
+          url: githubData.repository.url,
+          stars: githubData.repository.stars,
+          forks: githubData.repository.forks,
+          openIssues: githubData.repository.openIssues,
+          language: githubData.repository.language,
+          license: githubData.repository.license,
+          readme: githubData.readme,
+          readmeUrl: githubData.readmeUrl,
+          lastFetchedAt: new Date(),
+          isReference: false,
+        },
+        chunks: dbChunks,
+        hackernews,
+        releases,
+        sbom,
+        allowNewStableIdentity: process.env.REPOSITORY_IDENTITY_CUTOVER === "enabled",
+      });
 
-          const dbHnItems = hnItems.map((item) => ({
-            repoId: savedRepo.id,
-            type: item.type,
-            title: item.title,
-            content: item.content,
-            author: item.author,
-            score: item.score,
-            descendants: item.descendants,
-            url: item.url,
-            rawJson: item.rawJson,
-          }));
-
-          await insertHackernewsItems(this.db, dbHnItems);
-          console.log("[Pipeline] Hacker News items stored:", dbHnItems.length);
-        }
-      } else {
-        console.log("[Pipeline] Step 5 skipped: includeHackernews is false");
-      }
-
-      // 7. 采集 Releases 数据
-      console.log("[Pipeline] Step 6: Fetching Releases data...");
-      try {
-        const githubReleases = await this.github.getReleases(owner, repo, 10);
-        console.log("[Pipeline] Releases fetched:", githubReleases.length);
-
-        if (githubReleases.length > 0) {
-          const dbReleases = githubReleases.map((release) => ({
-            id: normalizeGitHubReleaseId(release.id),
-            tagName: release.tagName,
-            name: release.name,
-            body: release.body,
-            author: release.author,
-            createdAt: release.createdAt,
-            publishedAt: release.publishedAt,
-            url: release.url,
-            htmlUrl: release.htmlUrl,
-            zipUrl: release.zipUrl,
-            tarUrl: release.tarUrl,
-            assets: release.assets,
-            isPrerelease: release.isPrerelease,
-          }));
-
-          // 先删除该仓库的旧 releases（避免重复数据）
-          console.log("[Pipeline] Deleting old releases for repository:", savedRepo.id);
-          await deleteReleasesByRepoId(this.db, savedRepo.id);
-          console.log("[Pipeline] Old releases deleted, inserting new releases...");
-
-          await insertReleases(this.db, savedRepo.id, dbReleases);
-          console.log("[Pipeline] Releases stored:", dbReleases.length);
-        }
-      } catch (err) {
-        console.warn("[Pipeline] Failed to fetch releases:", err);
-        // Releases 不是关键数据，继续执行
-      }
-
-      // 8. 采集 SBOM 数据
-      if (effectiveConfig.includeSbom && savedRepo.id) {
-        console.log("[Pipeline] Step 7: Fetching SBOM...");
-        try {
-          const ghClient = new GitHubClient(effectiveConfig.githubToken || undefined);
-          const sbomRaw = await ghClient.getSbom(`${owner}/${repo}`);
-          if (sbomRaw) {
-            sbomPackages = parseSbomPackages(sbomRaw);
-            await this.db
-              .update(repositories)
-              .set({ sbomPackages })
-              .where(eq(repositories.id, savedRepo.id));
-            console.log("[Pipeline] SBOM packages parsed and stored:", sbomPackages.length);
-          } else {
-            console.log("[Pipeline] No SBOM available for this repository");
-          }
-        } catch (err) {
-          console.warn("[Pipeline] Failed to fetch SBOM:", err);
-        }
-      }
+      repository = {
+        id: committed.repository.id,
+        fullName: committed.repository.fullName,
+        name: committed.repository.name,
+        owner: committed.repository.owner,
+        description: committed.repository.description || undefined,
+        url: committed.repository.url,
+        stars: committed.repository.stars ?? 0,
+        forks: committed.repository.forks ?? 0,
+        openIssues: committed.repository.openIssues ?? 0,
+        language: committed.repository.language || undefined,
+      };
+      console.log("[Pipeline] Step 4: Atomic snapshot committed, repository ID:", committed.repository.id);
 
       status = "completed";
+      collectionVersion = committed.version;
       console.log("[Pipeline] ======= PIPELINE COMPLETED SUCCESSFULLY =======");
     } catch (err) {
       status = "failed";
@@ -726,53 +664,8 @@ export class DataCollectionPipeline {
       warning,
       duration,
       sbomPackages,
+      collectionVersion,
     };
-  }
-
-  /**
-   * 采集 Hacker News 数据
-   * 使用 HN Search API (https://hn.algolia.com/api/v1/search)
-   */
-  private async fetchHackerNews(
-    query: string,
-    limit: number
-  ): Promise<
-    Array<{
-      type: string;
-      title: string | null;
-      content: string | null;
-      author: string | null;
-      score: number | null;
-      descendants: number | null;
-      url: string | null;
-      rawJson: object;
-    }>
-  > {
-    try {
-      const response = await fetch(
-        `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hits_per_page=${limit}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`Hacker News API error: ${response.status}`);
-      }
-
-      const data = await response.json() as { hits: Array<Record<string, unknown>> };
-
-      return data.hits.map((hit) => ({
-        type: "story",
-        title: hit.title as string | null,
-        content: hit.story_text as string | null,
-        author: hit.author as string | null,
-        score: hit.points as number | null,
-        descendants: hit.num_comments as number | null,
-        url: hit.url as string | null,
-        rawJson: hit,
-      }));
-    } catch (err) {
-      console.error("Failed to fetch Hacker News:", err);
-      return [];
-    }
   }
 }
 

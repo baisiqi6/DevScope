@@ -47,6 +47,7 @@ vi.mock("@devscope/db", async (importOriginal) => {
   const mockListWorkflowReportsByRepository = vi.fn();
   const mockEnqueueRestartableJob = vi.fn();
   const mockGetReleasesByRepoId = vi.fn();
+  const mockCreatePipeline = vi.fn();
 
   return {
     ...actual,
@@ -61,12 +62,14 @@ vi.mock("@devscope/db", async (importOriginal) => {
     listWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
     enqueueRestartableJob: mockEnqueueRestartableJob,
     getReleasesByRepoId: mockGetReleasesByRepoId,
+    createPipeline: mockCreatePipeline,
     users: { id: "users.id" },
     __mockGetRepositoryByFullName: mockGetRepositoryByFullName,
     __mockSemanticSearchRepoChunks: mockSemanticSearchRepoChunks,
     __mockListWorkflowReportsByRepository: mockListWorkflowReportsByRepository,
     __mockEnqueueRestartableJob: mockEnqueueRestartableJob,
     __mockGetReleasesByRepoId: mockGetReleasesByRepoId,
+    __mockCreatePipeline: mockCreatePipeline,
   };
 });
 
@@ -87,6 +90,7 @@ import {
   __mockListWorkflowReportsByRepository as mockListWorkflowReportsByRepository,
   __mockEnqueueRestartableJob as mockEnqueueRestartableJob,
   __mockGetReleasesByRepoId as mockGetReleasesByRepoId,
+  __mockCreatePipeline as mockCreatePipeline,
   userWatchedRepositories,
   users,
 } from "@devscope/db";
@@ -156,6 +160,32 @@ describe("appRouter", () => {
 
       // 验证 timestamp 是有效的 ISO 8601 格式
       expect(() => new Date(result.timestamp)).not.toThrow();
+    });
+  });
+
+  describe("collectRepository", () => {
+    it("原子采集失败时不创建关注关系也不启动 embedding", async () => {
+      const runEmbeddingsInBackground = vi.fn();
+      mockCreatePipeline.mockReturnValueOnce({
+        run: vi.fn().mockResolvedValue({
+          status: "failed",
+          error: "snapshot commit failed",
+          chunksCollected: 3,
+        }),
+        runEmbeddingsInBackground,
+      });
+      const db = createCurrentUserDb(7) as ReturnType<typeof createCurrentUserDb> & {
+        insert: ReturnType<typeof vi.fn>;
+      };
+      db.insert = vi.fn();
+
+      await expect(createCaller(db).collectRepository({
+        repo: "owner/atomic-failure",
+        skipEmbeddings: false,
+      })).rejects.toThrow("snapshot commit failed");
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(runEmbeddingsInBackground).not.toHaveBeenCalled();
     });
   });
 
