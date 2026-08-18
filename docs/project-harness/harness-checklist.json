@@ -47,40 +47,42 @@
     {
       "id": "data-correctness-1b-repository-identity",
       "title": "以 GitHub 稳定 ID 统一仓库身份",
-      "status": "doing",
+      "status": "done",
       "priority": "p0",
-      "owner": "codex",
-      "selected_in_session": "codex-20260818-repository-identity",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-18",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "同一 GitHub repository ID 在改名或转移前后只对应一个仓库实体和一个用户候选状态；回填与冲突合并可审计，无法确认时 fail closed。",
-      "verification": "RED/GREEN implementation, 0007 migration rehearsal, real PostgreSQL singleton and lease atomicity checks, post-review full lint/typecheck/test/build gates, and independent continuity review pass.",
-      "handoff": "Commit, push, PR and CI; then production backup, compatibility deploy, explicit migration, one-shot backfill, verification and cutover.",
+      "verification": "PR #29 merged at 647dc62; CI and deploy runs passed; production backup/migration/backfill/cutover and business/auth invariants verified; independent closeout APPROVE.",
+      "handoff": "Closed after independent production review. Track groups repoCount runtime type drift in a separate correctness item before data-correctness-2.",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-18",
         "branch": "codex/data-correctness-1b-repository-identity"
       },
       "review": {
         "decision": "approved",
         "reviewer": "release_id_migration_reviewer",
-        "phase": "changes_requested",
+        "phase": "closeout_requested",
         "updated_at": "2026-08-18",
-        "summary": "Continuity implementation review closed all three findings: Radar fallback preserves stable identity and user state, following identity conflicts fail closed, and terminal one-shot versions are rejected; focused DB/API tests, API typecheck, and diff check pass."
+        "summary": "Production closeout verified PR/CI/deploy SHA, readable backups, explicit 0007 migration and indexes, 22 stable IDs, Radar dedupe, immutable applied job result, association invariants, cutover, services and auth; pre-existing groups repoCount runtime type drift is a separate non-blocking P2 follow-up."
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md",
         "branch": "codex/data-correctness-1b-repository-identity",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260818-repository-identity",
         "acquired_at": "2026-08-18T08:12:37Z",
         "expires_at": "2026-08-18T10:12:37Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-18T09:42:52Z"
       }
     },
     {
