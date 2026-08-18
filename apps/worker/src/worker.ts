@@ -13,6 +13,9 @@ import {
   HEALTH_ANALYSIS_JOB,
   healthAnalysisJobPayloadSchema,
   recoverExpiredJobs,
+  REPOSITORY_IDENTITY_BACKFILL_JOB,
+  repositoryIdentityBackfillJobPayloadSchema,
+  executeRepositoryIdentityBackfill,
   rebuildRepoGraph,
   renewJobLease,
   runAgentWorkflow,
@@ -23,6 +26,7 @@ import {
   type Job,
   type RadarInterestProfile,
   type UpsertRadarCandidateInput,
+  type ResolveGitHubRepositoryIdentity,
 } from "@devscope/db";
 import { GitHubClient } from "@devscope/shared";
 import { fetchGitHubTrending } from "./github-trending";
@@ -61,6 +65,9 @@ export interface WorkerDependencies {
   fetchTrending?: typeof fetchGitHubTrending;
   saveTrendingSnapshot?: typeof saveGitHubTrendingSnapshot;
   getInterestProfile?: (db: Db, userId: number) => Promise<RadarInterestProfile>;
+  workerId?: string;
+  resolveRepositoryIdentity?: ResolveGitHubRepositoryIdentity;
+  runRepositoryIdentityBackfill?: typeof executeRepositoryIdentityBackfill;
 }
 
 /**
@@ -109,8 +116,13 @@ export async function runWorker(
     );
 
     try {
-      const result = await executeJob(db, job, dependencies);
-      await completeJob(db, job.id, options.workerId, result, now());
+      const result = await executeJob(db, job, {
+        ...dependencies,
+        workerId: options.workerId,
+      });
+      if (job.type !== REPOSITORY_IDENTITY_BACKFILL_JOB) {
+        await completeJob(db, job.id, options.workerId, result, now());
+      }
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
     } catch (error) {
       try {
@@ -191,6 +203,24 @@ export async function executeJob(
       snapshots: payload.periods.length,
       entries,
     };
+  }
+
+  if (job.type === REPOSITORY_IDENTITY_BACKFILL_JOB) {
+    repositoryIdentityBackfillJobPayloadSchema.parse(job.payload);
+    if (!dependencies.workerId) {
+      throw new Error("Repository identity backfill 缺少 workerId");
+    }
+    const runBackfill = dependencies.runRepositoryIdentityBackfill
+      ?? executeRepositoryIdentityBackfill;
+    const resolveIdentity = dependencies.resolveRepositoryIdentity
+      ?? createDefaultRepositoryIdentityResolver();
+    return runBackfill(
+      db,
+      job,
+      dependencies.workerId,
+      resolveIdentity,
+      now(),
+    );
   }
 
   if (job.type !== GITHUB_DISCOVERY_JOB) {
@@ -288,6 +318,25 @@ async function defaultSearchRepositories(
   }
 ): Promise<GitHubSearchRepo[]> {
   return new GitHubCollector(process.env.GITHUB_TOKEN).searchRepositories(query, options);
+}
+
+function createDefaultRepositoryIdentityResolver(): ResolveGitHubRepositoryIdentity {
+  const github = new GitHubCollector(process.env.GITHUB_TOKEN);
+  return async (fullName) => {
+    const [owner, repo] = fullName.split("/");
+    try {
+      const repository = await github.getRepository(owner, repo);
+      return {
+        githubRepositoryId: repository.githubRepositoryId,
+        fullName: repository.fullName,
+      };
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  };
 }
 
 function defaultSleep(milliseconds: number): Promise<void> {

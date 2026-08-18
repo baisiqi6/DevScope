@@ -1252,6 +1252,8 @@ export type RebuildGraphStatus = z.infer<typeof rebuildGraphStatusSchema>;
 
 export type RebuildRepoGraphResult = z.infer<typeof rebuildRepoGraphResultSchema>;
 
+export * from "./github-identity";
+
 // ============================================================================
 // GitHub Client (GitHub API 客户端)
 // ============================================================================

@@ -15,8 +15,8 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "遵循 domain-model.md 的 Release ID 约束完成显式迁移与回归覆盖；以生产迁移前即时记录的 Release 行集为基线，ID、行数和归属保持一致，超过 int4 上限的 ID 可无损写入、读取和经 API 返回。",
-      "verification": "独立 closeout APPROVE；完整证据见 docs/project-harness/tasks/data-correctness-1a-release-id-bigint/verification.md 与 docs/project-harness/current/review.md。",
-      "handoff": "已通过独立 production closeout review 并关闭；后续以 verification.md 与 current/review.md 为历史证据，不再重开本 item。",
+      "verification": "独立 closeout APPROVE；完整证据见 docs/project-harness/tasks/data-correctness-1a-release-id-bigint/verification.md 与 docs/project-harness/tasks/data-correctness-1a-release-id-bigint/review.md。",
+      "handoff": "已通过独立 production closeout review 并关闭；后续以同目录 verification.md 与 review.md 为历史证据，不再重开本 item。",
       "workflow": {
         "status": "closed",
         "updated_at": "2026-08-18",
@@ -47,21 +47,41 @@
     {
       "id": "data-correctness-1b-repository-identity",
       "title": "以 GitHub 稳定 ID 统一仓库身份",
-      "status": "todo",
+      "status": "doing",
       "priority": "p0",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": "codex",
+      "selected_in_session": "codex-20260818-repository-identity",
+      "updated_at": "2026-08-18",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "同一 GitHub repository ID 在改名或转移前后只对应一个仓库实体和一个用户候选状态；回填与冲突合并可审计，无法确认时 fail closed。",
-      "verification": "",
-      "handoff": "开始前创建唯一 canonical plan，并复核生产重复候选。",
+      "verification": "RED/GREEN implementation, 0007 migration rehearsal, real PostgreSQL singleton and lease atomicity checks, post-review full lint/typecheck/test/build gates, and independent continuity review pass.",
+      "handoff": "Commit, push, PR and CI; then production backup, compatibility deploy, explicit migration, one-shot backfill, verification and cutover.",
       "workflow": {
-        "status": "todo"
+        "status": "review_approved",
+        "updated_at": "2026-08-18",
+        "branch": "codex/data-correctness-1b-repository-identity"
       },
-      "review": null
+      "review": {
+        "decision": "approved",
+        "reviewer": "release_id_migration_reviewer",
+        "phase": "changes_requested",
+        "updated_at": "2026-08-18",
+        "summary": "Continuity implementation review closed all three findings: Radar fallback preserves stable identity and user state, following identity conflicts fail closed, and terminal one-shot versions are rejected; focused DB/API tests, API typecheck, and diff check pass."
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md",
+        "branch": "codex/data-correctness-1b-repository-identity",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260818-repository-identity",
+        "acquired_at": "2026-08-18T08:12:37Z",
+        "expires_at": "2026-08-18T10:12:37Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "data-correctness-2-atomic-replacement",

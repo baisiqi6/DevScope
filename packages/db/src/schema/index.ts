@@ -9,6 +9,7 @@
  */
 
 import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ============================================================================
 // 枚举定义
@@ -128,6 +129,11 @@ export const jobs = pgTable("jobs", {
   claimIdx: index("jobs_claim_idx").on(table.status, table.availableAt, table.priority),
   leaseExpiresAtIdx: index("jobs_lease_expires_at_idx").on(table.leaseExpiresAt),
   userTypeIdx: index("jobs_user_type_idx").on(table.userId, table.type),
+  activeRepositoryIdentityBackfillUnique: uniqueIndex(
+    "jobs_repository_identity_backfill_active_unique"
+  )
+    .on(table.type)
+    .where(sql`${table.type} = 'repository.identity.backfill' AND ${table.status} IN ('queued', 'running', 'retry_wait')`),
 }));
 
 /**
@@ -191,6 +197,9 @@ export const radarCandidates = pgTable("radar_candidates", {
   ),
   lastSeenAtIdx: index("radar_candidates_last_seen_at_idx").on(table.lastSeenAt),
   githubRepoIdIdx: index("radar_candidates_github_repo_id_idx").on(table.githubRepoId),
+  uniqueUserGitHubRepoId: uniqueIndex("radar_candidates_user_github_repo_id_unique")
+    .on(table.userId, table.githubRepoId)
+    .where(sql`${table.githubRepoId} IS NOT NULL`),
 }));
 
 /**
@@ -200,6 +209,8 @@ export const radarCandidates = pgTable("radar_candidates", {
 export const repositories = pgTable("repositories", {
   /** 仓库唯一标识 */
   id: serial("id").primaryKey(),
+  /** GitHub 稳定 repository ID；reference 行及尚未回填的旧行允许为空 */
+  githubRepositoryId: text("github_repository_id"),
   /** GitHub 仓库全名 (owner/repo) */
   fullName: text("full_name").notNull().unique(),
   /** 仓库名 */
@@ -263,6 +274,9 @@ export const repositories = pgTable("repositories", {
   starsIdx: index("repositories_stars_idx").on(table.stars),
   lastFetchedAtIdx: index("repositories_last_fetched_at_idx").on(table.lastFetchedAt),
   embeddingStatusIdx: index("repositories_embedding_status_idx").on(table.embeddingStatus),
+  githubRepositoryIdUnique: uniqueIndex("repositories_github_repository_id_unique")
+    .on(table.githubRepositoryId)
+    .where(sql`${table.githubRepositoryId} IS NOT NULL`),
 }));
 
 /**

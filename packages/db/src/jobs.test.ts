@@ -3,6 +3,7 @@ import {
   claimNextJob,
   enqueueJob,
   enqueueRestartableJob,
+  enqueueRepositoryIdentityBackfillJob,
   failJob,
   recoverExpiredJobs,
   renewJobLease,
@@ -117,6 +118,76 @@ describe("持久任务队列", () => {
       idempotencyKey: "analysis:health:owner/repo",
       payload: { executionId: "execution-new" },
     })).resolves.toEqual({ job: existing, enqueued: false });
+  });
+
+  it("repository identity 使用全局 active singleton 并返回现有任务", async () => {
+    const existing = createJob({
+      id: 42,
+      type: "repository.identity.backfill",
+      idempotencyKey: "repository:identity:backfill:v1",
+      status: "running",
+    });
+    const insertReturning = vi.fn().mockResolvedValue([]);
+    const activeLimit = vi.fn().mockResolvedValue([existing]);
+    const db = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({ returning: insertReturning })),
+        })),
+      })),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({ limit: activeLimit })),
+          })),
+        })),
+      })),
+    };
+
+    await expect(enqueueRepositoryIdentityBackfillJob(db as any, {
+      userId: 7,
+      version: "v2",
+      requestedAt: new Date("2026-08-18T00:00:00Z"),
+    })).resolves.toEqual({ job: existing, enqueued: false });
+  });
+
+  it("repository identity 拒绝复用已经终态的 one-shot version", async () => {
+    const terminal = createJob({
+      id: 43,
+      type: "repository.identity.backfill",
+      idempotencyKey: "repository:identity:backfill:v1",
+      status: "succeeded",
+      result: { outcome: "applied", updated: [], unresolved: [], conflicts: [] },
+    });
+    const insertReturning = vi.fn().mockResolvedValue([]);
+    const activeLimit = vi.fn().mockResolvedValue([]);
+    const terminalLimit = vi.fn().mockResolvedValue([terminal]);
+    const select = vi.fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({ limit: activeLimit })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: terminalLimit })),
+        })),
+      });
+    const db = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({ returning: insertReturning })),
+        })),
+      })),
+      select,
+    };
+
+    await expect(enqueueRepositoryIdentityBackfillJob(db as any, {
+      userId: 7,
+      version: "v1",
+    })).rejects.toThrow(/new version/i);
   });
 
   it("使用租约领取可执行任务并增加 attempt", async () => {

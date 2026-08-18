@@ -50,6 +50,13 @@
       "when": 1787036436441,
       "tag": "0006_release_id_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787042369745,
+      "tag": "0007_square_arclight",
+      "breakpoints": true
     }
   ]
 }

@@ -1,98 +1,91 @@
-# 独立审查结论
+# GitHub Repository 稳定身份计划审查
 
-- Item：`data-correctness-1a-release-id-bigint`
+- Item：`data-correctness-1b-repository-identity`
 - Reviewer：`release_id_migration_reviewer`
 - Context mode：`limited-fresh`
 - 日期：2026-08-18
-- 首轮 Verdict：`CHANGES_REQUESTED`
+- Verdict：`APPROVE`
 
-## P1：采集边界仍先把 Release ID 收窄为 JavaScript `number`
+Reviewer 只使用当前 canonical plan、边界文档、日期化生产基线与真实源码，未沿用 Release ID item 的结论。
 
-### Evidence
+## P1：compatibility 与 backfill 之间缺少防重复窗口
 
-- `GitHubRelease.id` 和 Octokit response 当前仍使用 `number`；
-- JSON 中的 `9007199254740993` 会被 Node 解析为 `9007199254740992`，但同一响应的 Release API URL 仍保留精确十进制 ID；
-- pipeline 当前在 `insertReleases()` 校验 ID 之前删除旧 Releases。
+旧行只有 `fullName`、GitHub 已改名时，如果新代码在 backfill 前允许 ID-first 新实体插入，会产生第二个正式仓库行。计划必须拆分 compatibility、backfill、cutover；在可解析旧行完成回填前禁止新 ID 行插入，或暂停正式采集，并明确 unresolved 与各阶段回滚点。
 
-### Impact
+## P1：backfill mutation 没有与 job lease/result 原子绑定
 
-PostgreSQL `bigint` 范围内但超过 `Number.MAX_SAFE_INTEGER` 的合法 ID 无法全链路无损；转换失败时还可能在后续原子替换整改完成前留下空数据。
+现有 Worker 先执行任务 mutation，之后才由 `completeJob` 检查 lease；失去 lease 的 Worker仍可能写数据而无法写 result。最终 apply 事务必须锁定并校验 job 的 `running`、`leaseOwner`、未过期 lease，并把 repository 更新和 structured result 原子提交。需要“apply 前失去 lease ⇒ 0 writes”测试。
 
-### Minimal correction
+## P1：restartable job 会清空审计 result
 
-- 从正式 Release API URL 严格提取十进制 ID，使 `GitHubRelease.id` 保持 `string`；
-- 在删除旧 Releases 之前完成全部 ID 范围校验；
-- 增加超过 safe integer、PostgreSQL bigint 上限和越界不删除旧数据的回归测试。
+`enqueueRestartableJob` 会在重启终态任务时清空 result，失败路径也只有字符串 `lastError`。Repository identity backfill 必须使用版本化 one-shot job，保留每次结构化 `outcome: applied | blocked`、updated、unresolved、conflicts；API 应把 blocked 与成功区分。
 
-## P2：迁移演练缺少锁影响、执行时间和失败回滚证据
+## P2：Radar 最新证据缺少完整 tie-break
 
-### Evidence
-
-`integer → bigint` 的 `ALTER COLUMN TYPE` 需要表重写和 `ACCESS EXCLUSIVE` lock。当前验证记录没有冲突事务、`lock_timeout`、实际耗时或失败回滚结果；部署流程会在旧应用仍运行时执行迁移。
-
-### Impact
-
-持有冲突锁的长事务可能令迁移无限等待，并让后续 Releases 请求排队。现有证据不足以证明生产迁移行为有界。
-
-### Minimal correction
-
-- 在隔离 PostgreSQL 中持有冲突事务，记录有界失败、释放后的成功耗时和事务回滚；
-- 为生产迁移增加明确 `lock_timeout` 和 fail-closed 操作说明，或在迁移窗口暂停相关应用连接；
-- 同步更新 runbook 与 verification。
-
-## 已独立核验
-
-- focused DB tests：2 files / 15 tests 通过；
-- API router tests：1 file / 34 tests 通过；
-- `pnpm lint` 与 `pnpm typecheck` 通过；
-- migration snapshot 只包含 `releases.id: integer → bigint`，journal 链接正确；
-- tRPC ID 字符串契约与当前 Web 调用方兼容；
-- tag hash fallback 已移除；成功空结果清理和整体原子替换仍属于后续 item；
-- 未连接生产、未编辑文件、未 commit、未 push、未部署。
-
-## Context mode 说明
-
-采用 `limited-fresh`：reviewer 只读取完成判断所需的目标、canonical plan、non-goals、真实 diff 和证据，不继承此前自我判断或旧 verdict。
+同一 ID 的候选具有相同 `lastSeenAt` 时，单按时间不能确定保留哪一行。迁移需使用 `lastSeenAt DESC, updatedAt DESC, id DESC` 全序，并增加时间相同 fixture；多个不同非默认状态继续 fail closed。
 
 ## Operator 修订响应
 
-2026-08-18 已完成两项最小修正：
+Canonical plan 已按最小范围修订：
 
-- P1：Release ID 改由 API URL 提取为十进制字符串，pipeline 在删除旧数据前完成 `bigint` 转换；增加 safe integer、bigint 上限和不删除旧数据测试；
-- P2：部署迁移进程增加 `5s lock_timeout`；隔离 PostgreSQL 已验证锁冲突在 0.34 秒内失败且完整回滚，释放锁后迁移在 0.11 秒内成功。
+- 新增 compatibility → one-shot backfill → cutover 三阶段，compatibility 默认禁止 ID/fullName 都未命中时创建正式仓库；
+- 定义最终 apply 事务的 job row lock、lease owner/expiry 校验、repository mutation 与 structured result 原子提交；
+- 改用版本化 one-shot idempotency key，终态行不可重置，blocked outcome 也持久保存 conflicts/unresolved；
+- Radar 合并排序补齐 `lastSeenAt DESC, updatedAt DESC, id DESC` 与相同时间验证；
+- 明确 unresolved 持续走 fullName 兼容路径、每阶段暂停范围与回滚点。
 
-修订证据已追加到 `tasks/data-correctness-1a-release-id-bigint/verification.md`，等待同一 reviewer 以 continuity 模式复核；此处保留首轮 verdict，不由 Operator 自行改写为批准。
+修订后等待同一 reviewer continuity 复核；在复核批准前不进入 RED tests。
 
-## Continuity 复核
+## Continuity 复核一
 
-- Reviewer：`release_id_migration_reviewer`
-- 日期：2026-08-18
-- Final verdict：`APPROVE`
+Reviewer 确认原 4 项 finding 已关闭，但新增一项 P1：版本化 idempotency key 允许两个 identity backfill 同时 active，各自只锁自己的 job 行，不能互斥另一份合法 lease 与不同 GitHub 快照。
 
-Reviewer 重新读取当前代码、diff 和证据后确认：
+Operator 接受该 finding，并把最小修正写入 canonical plan：
 
-- P1 已关闭：URL 十进制 ID、`number|string|bigint` 边界与删除前校验一致，3 files / 53 focused tests 及 DB/API typecheck 通过；
-- P2 已关闭：生产迁移具备 `5s lock_timeout`，锁冲突 fail-closed、失败回滚、成功耗时和 bigint 最大值往返证据齐全；
-- 未发现新的阻塞问题；
-- 生产仍为 `UNVERIFIED`，批准不授予迁移或部署权限。
+- 对 `jobs.type = repository.identity.backfill` 且状态为 `queued | running | retry_wait` 建立全局部分唯一索引；
+- 并发重复触发通过 insert no-op 返回同一 active job；
+- 只有当前 run 进入终态后才能创建下一条版本化 one-shot 记录；
+- 增加并发双触发与双 Worker 领取的 PostgreSQL/RED 用例，证明只存在一个 active run；
+- 唯一约束只覆盖 identity backfill 的 active 状态，不改变其他 job 类型。
 
-采用 continuity 是因为本轮仅验证同一 reviewer 上轮两个明确 finding 的局部修订，同时仍重新核对了最新事实。
+## Continuity 复核二
 
-## 生产 Closeout Review
+Reviewer 重新读取最新 canonical plan、当前审查记录、jobs claim/lease 契约与 Harness 状态，确认 active-singleton finding 已闭环：
 
-- Reviewer：`release_id_migration_reviewer`
-- Context mode：`continuity`
-- 日期：2026-08-18
-- Final verdict：`APPROVE`
-- Findings：无实质性或阻塞性 finding
+- 全局 partial unique active singleton 与全局 `repositories` 实体边界一致；
+- 不同 versioned idempotency key 的并发触发也只能得到同一个 active job；
+- 只有旧 run 原子进入终态后才允许创建下一 one-shot 版本；
+- singleton 不替代 lease authority，最终 apply 仍锁定并校验 job 行，并原子提交数据 mutation、structured result 与终态；
+- 每个终态 job/result 保持不可变，双触发、双 Worker 与其他 job type 隔离测试边界完整。
 
-Reviewer 在生产发布后重新独立核验，而不是沿用先前 verdict：
+Verdict：`APPROVE`。计划边界审查通过，允许进入 RED tests 与实现阶段。
 
-- PR #27、`main`、`origin/main`、生产工作树及 API/Web/Worker 镜像 revision 均指向 `2b18ebfb1220062524d272e90e8bace12d92cac3`；
-- Actions run 32112032164 的 build/deploy 成功，迁移、容器重建、PostgreSQL health 与 `nginx -t` 证据完整；
-- 两份迁移前 custom-format 备份均有效、权限为 `0600`、大小为 `72218486` bytes，且备份 schema 中 `releases.id` 为 `integer`；
-- Reviewer 直接从两份备份流式提取并排序 `(id, repo_id)`，MD5 均为 `e3fef7531cab411153a32948f8b7a5ad`；在线 `bigint` 表的 191 行、21 个仓库得到相同哈希；
-- 临时验证数据库不存在，没有超过 30 秒的活动长事务；API、Web、Worker、认证边界和 Keychain-backed MCP health 均通过；
-- 当前未提交变更只包含 Harness closeout 状态与证据，没有部署后产品代码变化；Harness validation 为 0 warnings，`git diff --check` 通过。
+## 独立实现审查一
 
-Reviewer 明确确认 acceptance 已覆盖、verification 足以从 `doing` 进入 `done`，可由 Operator 先记录 `review-result approved`，再执行规范的 Harness `mark-done`。
+Reviewer 重新读取实际 diff、迁移、snapshot/journal、测试与 PostgreSQL verification，给出 `CHANGES_REQUESTED`：
+
+- P1：Radar 缺 ID 的同名 fallback update 会把已知 `githubRepoId` 改为 `null`，必须只在 insert 写空值，update 保留稳定 ID、状态和首次发现时间；
+- P1：`getFollowing` 使用 `githubRepositoryId OR fullName` 后直接 `limit(1)`，在 ID/name 分裂时可能把关注关系写到错误实体，必须读取全部 matches 并复用 fail-closed 冲突判断；
+- P2：重复使用已经终态的 one-shot version 时 DB 返回旧行，API 却无条件报告 `running/alreadyRunning`，必须明确拒绝并要求新 version，或返回真实终态。
+
+其余 safe decimal ID、迁移合并/回滚、partial unique、active singleton、lease-atomic apply、Worker 不二次 complete 与三阶段 cutover 均通过审查。修复三项反例并补测试后请求 continuity review；在批准前不 commit/push/PR。
+
+## Operator 修订响应
+
+三项 finding 已按最小范围修复：
+
+- Radar 将 insert values 与 conflict-update metadata 分离；无 ID 新行仍写 `null`，但同名 fallback update 不再包含 `githubRepoId`、`status` 或 `firstSeenAt`；
+- `getFollowing` 改为读取全部 ID/name matches，通过 `resolveFollowingRepositoryMatch` 明确区分 ID 命中、legacy name fallback、同名不同 ID 和 ID/name 分裂，后两者 fail closed；
+- 终态 one-shot version 冲突改为抛出 `REPOSITORY_IDENTITY_BACKFILL_VERSION_USED`，消息明确要求 new version，API 不再伪报 `running`。
+
+新增 5 个反例回归测试；focused DB 16 tests、API 44 tests 与 API typecheck 通过。等待同一 Reviewer continuity review；批准前仍不 commit/push/PR。
+
+## 实现 Continuity 复核
+
+Reviewer 重新读取三项修订的最新 diff、回归测试与审查记录，确认：
+
+- Radar 的无 ID insert 仍显式写 `null`，但 conflict update 不再覆盖 `githubRepoId`、`status` 或 `firstSeenAt`；
+- `getFollowing` 读取全部 ID/name matches，并在同名不同 ID 或 ID/name 分裂时 fail closed；
+- 已终态 one-shot version 抛出 `REPOSITORY_IDENTITY_BACKFILL_VERSION_USED`，API 不再把历史终态伪报为 active run。
+
+Reviewer 独立复跑 DB focused 16 tests、API focused 44 tests、API typecheck 与 `git diff --check`，全部通过。最终 verdict：`APPROVE`，允许进入 commit、push、PR；生产部署仍按 Harness 的迁移与 closeout 门禁执行。

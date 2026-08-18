@@ -2,7 +2,8 @@
  * 技术雷达候选池操作。
  */
 
-import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
+import { normalizeGitHubRepositoryId } from "@devscope/shared";
 import {
   radarCandidates,
   repositories,
@@ -45,9 +46,10 @@ export async function upsertRadarCandidate(
   const fullName = normalizeFullName(input.fullName);
   const [owner, name] = fullName.split("/");
   const observedAt = input.observedAt ?? new Date();
-  const values = {
-    userId: input.userId,
-    githubRepoId: input.githubRepoId ?? null,
+  const githubRepoId = input.githubRepoId
+    ? normalizeGitHubRepositoryId(input.githubRepoId)
+    : null;
+  const metadataValues = {
     fullName,
     owner: input.owner.trim() || owner,
     name: input.name.trim() || name,
@@ -65,23 +67,76 @@ export async function upsertRadarCandidate(
     updatedAt: observedAt,
   };
 
-  const [candidate] = await db
-    .insert(radarCandidates)
-    .values({
-      ...values,
-      firstSeenAt: observedAt,
-    })
-    .onConflictDoUpdate({
-      target: [radarCandidates.userId, radarCandidates.fullName],
-      set: values,
-    })
-    .returning();
+  if (!githubRepoId) {
+    const [candidate] = await db
+      .insert(radarCandidates)
+      .values({
+        userId: input.userId,
+        githubRepoId: null,
+        ...metadataValues,
+        firstSeenAt: observedAt,
+      })
+      .onConflictDoUpdate({
+        target: [radarCandidates.userId, radarCandidates.fullName],
+        set: metadataValues,
+      })
+      .returning();
 
-  if (!candidate) {
-    throw new Error(`技术雷达候选写入失败: ${fullName}`);
+    if (!candidate) {
+      throw new Error(`技术雷达候选写入失败: ${fullName}`);
+    }
+    return candidate;
   }
 
-  return candidate;
+  return db.transaction(async (tx) => {
+    const matches = await tx
+      .select()
+      .from(radarCandidates)
+      .where(and(
+        eq(radarCandidates.userId, input.userId),
+        or(
+          eq(radarCandidates.githubRepoId, githubRepoId),
+          eq(radarCandidates.fullName, fullName),
+        ),
+      ))
+      .for("update");
+    const idMatch = matches.find((row) => row.githubRepoId === githubRepoId);
+    const nameMatch = matches.find((row) => row.fullName === fullName);
+
+    if (idMatch && nameMatch && idMatch.id !== nameMatch.id) {
+      throw new Error(`技术雷达身份冲突: ${githubRepoId} 与 ${fullName} 分属不同候选`);
+    }
+    if (nameMatch?.githubRepoId && nameMatch.githubRepoId !== githubRepoId) {
+      throw new Error(`技术雷达名称冲突: ${fullName} 已属于 ${nameMatch.githubRepoId}`);
+    }
+
+    const existing = idMatch ?? nameMatch;
+    if (existing) {
+      const [candidate] = await tx
+        .update(radarCandidates)
+        .set({ githubRepoId, ...metadataValues })
+        .where(eq(radarCandidates.id, existing.id))
+        .returning();
+      if (!candidate) {
+        throw new Error(`技术雷达候选更新失败: ${fullName}`);
+      }
+      return candidate;
+    }
+
+    const [candidate] = await tx
+      .insert(radarCandidates)
+      .values({
+        userId: input.userId,
+        githubRepoId,
+        ...metadataValues,
+        firstSeenAt: observedAt,
+      })
+      .returning();
+    if (!candidate) {
+      throw new Error(`技术雷达候选写入失败: ${fullName}`);
+    }
+    return candidate;
+  });
 }
 
 /** 从当前用户已关注仓库中提取轻量语言偏好，不引入第二套画像数据。 */

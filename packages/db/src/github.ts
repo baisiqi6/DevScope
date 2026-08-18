@@ -15,6 +15,7 @@
  */
 
 import { Octokit } from "octokit";
+import { normalizeGitHubRepositoryId } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
@@ -24,6 +25,7 @@ import { Octokit } from "octokit";
  * GitHub 仓库信息
  */
 export interface GitHubRepoInfo {
+  githubRepositoryId: string;
   fullName: string;
   name: string;
   owner: string;
@@ -174,6 +176,7 @@ export interface GitHubContentFile {
  * 用户关注的仓库
  */
 export interface GitHubFollowingRepo {
+  githubRepositoryId: string;
   fullName: string;
   name: string;
   owner: string;
@@ -292,6 +295,7 @@ export class GitHubCollector {
     });
 
     return {
+      githubRepositoryId: normalizeGitHubRepositoryId(data.id),
       fullName: data.full_name,
       name: data.name,
       owner: data.owner.login,
@@ -408,6 +412,7 @@ export class GitHubCollector {
         const starredAt = (item as any).starred_at || repo.updated_at;
 
         repos.push({
+          githubRepositoryId: normalizeGitHubRepositoryId(repo.id),
           fullName: repo.full_name,
           name: repo.name,
           owner: repo.owner.login,
@@ -447,7 +452,7 @@ export class GitHubCollector {
     });
 
     return data.items.slice(0, limit).map((repo) => ({
-      githubRepoId: String(repo.id),
+      githubRepoId: normalizeGitHubRepositoryId(repo.id),
       fullName: repo.full_name,
       name: repo.name,
       owner: repo.owner?.login || repo.full_name.split("/")[0],

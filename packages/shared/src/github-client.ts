@@ -4,6 +4,7 @@
  */
 
 import { setTimeout as delay } from "node:timers/promises";
+import { normalizeGitHubRepositoryId } from "./github-identity";
 
 // ============================================================================
 // 类型定义
@@ -13,6 +14,8 @@ import { setTimeout as delay } from "node:timers/promises";
  * GitHub 仓库信息
  */
 export interface RepositoryInfo {
+  /** GitHub 稳定 repository ID（无损十进制字符串） */
+  githubRepositoryId: string;
   /** 完整仓库名 (owner/repo) */
   fullName: string;
   /** 仓库名 */
@@ -149,6 +152,7 @@ export class GitHubClient {
     const data = await this.fetch<any>(`/repos/${owner}/${repo}`);
 
     return {
+      githubRepositoryId: normalizeGitHubRepositoryId(data.id),
       fullName: data.full_name,
       name: data.name,
       owner: data.owner.login,

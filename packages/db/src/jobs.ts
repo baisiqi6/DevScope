@@ -13,6 +13,7 @@ export const HEALTH_ANALYSIS_JOB = "analysis.health";
 export const GRAPH_REBUILD_JOB = "graph.rebuild";
 export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
 export const GITHUB_TRENDING_SYNC_JOB = "trending.sync.github";
+export const REPOSITORY_IDENTITY_BACKFILL_JOB = "repository.identity.backfill";
 
 export const healthAnalysisJobPayloadSchema = z.object({
   executionId: z.string().uuid(),
@@ -74,6 +75,26 @@ export const GRAPH_REBUILD_JOB_KEY = "graph:rebuild";
 export const GITHUB_DISCOVERY_JOB_KEY = "radar:github:new:7d";
 export const GITHUB_TRENDING_SYNC_JOB_KEY = "trending:github:all";
 
+export const repositoryIdentityBackfillJobPayloadSchema = z.object({
+  requestedAt: z.string().datetime(),
+  version: z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9._-]+$/),
+});
+
+export const repositoryIdentityBackfillJobResultSchema = z.object({
+  outcome: z.enum(["applied", "blocked"]),
+  updated: z.array(z.object({
+    repositoryId: z.number().int().positive(),
+    previousFullName: z.string(),
+    fullName: z.string(),
+    githubRepositoryId: z.string().regex(/^[1-9]\d*$/),
+  })),
+  unresolved: z.array(z.object({
+    repositoryId: z.number().int().positive(),
+    fullName: z.string(),
+  })),
+  conflicts: z.array(z.record(z.unknown())),
+});
+
 type JobStore = Pick<Db, "insert" | "update" | "select">;
 
 export interface EnqueueJobInput {
@@ -101,6 +122,85 @@ export interface EnqueueRestartableJobResult {
   job: Job;
   /** true 表示本次创建或把终态任务重新排队；false 表示已有活跃任务 */
   enqueued: boolean;
+}
+
+export interface EnqueueRepositoryIdentityBackfillInput {
+  userId: number;
+  version: string;
+  requestedAt?: Date;
+}
+
+/**
+ * 创建不可重置的一次性 repository identity backfill。
+ * 部分唯一索引使不同 version 也只能有一个全局 active run。
+ */
+export async function enqueueRepositoryIdentityBackfillJob(
+  db: JobStore,
+  input: EnqueueRepositoryIdentityBackfillInput,
+): Promise<EnqueueRestartableJobResult> {
+  const requestedAt = input.requestedAt ?? new Date();
+  const payload = repositoryIdentityBackfillJobPayloadSchema.parse({
+    requestedAt: requestedAt.toISOString(),
+    version: input.version,
+  });
+  const idempotencyKey = `repository:identity:backfill:${payload.version}`;
+  const [created] = await db
+    .insert(jobs)
+    .values({
+      userId: input.userId,
+      type: REPOSITORY_IDENTITY_BACKFILL_JOB,
+      idempotencyKey,
+      payload,
+      maxAttempts: 3,
+      availableAt: requestedAt,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (created) {
+    return { job: created, enqueued: true };
+  }
+
+  const [active] = await db
+    .select()
+    .from(jobs)
+    .where(and(
+      eq(jobs.type, REPOSITORY_IDENTITY_BACKFILL_JOB),
+      inArray(jobs.status, ["queued", "running", "retry_wait"]),
+    ))
+    .orderBy(desc(jobs.createdAt))
+    .limit(1);
+  if (active) {
+    return { job: active, enqueued: false };
+  }
+
+  const [existingVersion] = await db
+    .select()
+    .from(jobs)
+    .where(and(
+      eq(jobs.userId, input.userId),
+      eq(jobs.idempotencyKey, idempotencyKey),
+    ))
+    .limit(1);
+  if (existingVersion) {
+    throw new RepositoryIdentityBackfillVersionUsedError(
+      payload.version,
+      existingVersion.status,
+    );
+  }
+
+  throw new Error("Repository identity backfill 冲突后无法读取 active job");
+}
+
+export class RepositoryIdentityBackfillVersionUsedError extends Error {
+  readonly code = "REPOSITORY_IDENTITY_BACKFILL_VERSION_USED";
+
+  constructor(version: string, status: Job["status"]) {
+    super(
+      `Repository identity backfill version ${version} is already ${status}; use a new version`,
+    );
+    this.name = "RepositoryIdentityBackfillVersionUsedError";
+  }
 }
 
 /**
@@ -234,6 +334,18 @@ export async function getJobByIdempotencyKey(
     )
     .limit(1);
 
+  return job ?? null;
+}
+
+export async function getLatestRepositoryIdentityBackfillJob(
+  db: Pick<Db, "select">,
+): Promise<Job | null> {
+  const [job] = await db
+    .select()
+    .from(jobs)
+    .where(eq(jobs.type, REPOSITORY_IDENTITY_BACKFILL_JOB))
+    .orderBy(desc(jobs.createdAt))
+    .limit(1);
   return job ?? null;
 }
 

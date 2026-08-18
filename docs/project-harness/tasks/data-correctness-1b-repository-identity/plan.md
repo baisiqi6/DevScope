@@ -1,45 +1,3 @@
-# Review Packet
-
-## Subject
-
-- Checklist item: `data-correctness-1b-repository-identity`
-- Reviewer: `release_id_migration_reviewer`
-- Updated at: `2026-08-18`
-- Canonical plan path: `docs/project-harness/tasks/data-correctness-1b-repository-identity/plan.md`
-
-## Item Snapshot
-
-- Title: 以 GitHub 稳定 ID 统一仓库身份
-- Status: doing
-- Workflow status: review_approved
-- Priority: p0
-- Owner: codex
-- Session: codex-20260818-repository-identity
-- Dependencies: None
-
-## Acceptance
-
-同一 GitHub repository ID 在改名或转移前后只对应一个仓库实体和一个用户候选状态；回填与冲突合并可审计，无法确认时 fail closed。
-
-## Verification
-
-RED/GREEN implementation, 0007 migration rehearsal, real PostgreSQL singleton/lease atomicity checks, and full lint/typecheck/test/build gates pass.
-
-## Handoff
-
-Independent reviewer must inspect repository identity precision, ID-first writes, Radar migration, active singleton, lease-atomic apply, compatibility/cutover, tests and docs before PR.
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-```md
 # 以 GitHub 稳定 ID 统一仓库身份
 
 ## Item
@@ -150,12 +108,3 @@ Independent reviewer must inspect repository identity precision, ID-first writes
 ## Handoff
 
 - 若本轮未完成，下一 session 先运行 Harness session init，确认本 item 的 owner/lease 和 branch，再从本计划最后一项已有 verification 继续；不得跳过 unresolved/conflict 清单直接执行生产写入。
-```
-
-## Review Focus
-
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮

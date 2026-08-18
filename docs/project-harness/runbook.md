@@ -64,6 +64,10 @@ API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置�
 - `WORKER_RECOVERY_INTERVAL_MS`：过期租约回收间隔，默认 `60000`；
 - `WORKER_RETRY_DELAY_MS`：失败后的基础重试等待，默认 `60000`。
 
+### Repository identity cutover
+
+- `REPOSITORY_IDENTITY_CUTOVER`：正式仓库稳定 ID 的三阶段发布开关。默认 `disabled`；只有最新一次 `repository.identity.backfill` 结果为 `applied`、冲突为空且可解析正式仓库均已带 ID 后，才改为 `enabled`。在 `disabled` 阶段仍可给同名旧行附加 ID、处理已知 ID 的 rename，但拒绝创建 ID 与 `fullName` 都未命中的新正式行。
+
 浏览器请求使用同源路径 `/api/trpc/*` 和 `/api/agent/*`，通常不需要配置公开的后端地址。
 
 ## 开发命令
@@ -113,8 +117,8 @@ pnpm db:studio
 
 本地 `pnpm dev` 会同时启动 API、Web 和 Worker。scheduler 仅在
 `ENABLE_SCHEDULER=true` 时创建每日 GitHub Search 与 GitHub Trending 任务；Worker 可以独立运行
-并消费 `jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild`、`radar.discover.github` 和
-`trending.sync.github`，
+并消费 `jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild`、`radar.discover.github`、
+`trending.sync.github` 和手动触发的 `repository.identity.backfill`，
 运行中会续租，异常中断后的过期任务会被恢复。健康分析需要 AI 配置，图谱依赖回填和 Radar
 发现需要 `GITHUB_TOKEN`。Trending 默认每天 `06:15`（`SCHEDULER_TIMEZONE`）抓取三个周期，
 也可以从“发现”页面手动启动；Radar 默认每天 `06:00` 创建搜索任务，也可以从对应页签手动
@@ -127,6 +131,18 @@ Trending 优先抓取 `github.com/trending`。当部署网络无法连接 GitHub
 
 新增迁移 `0005_github_trending.sql` 创建 Trending 快照和条目表。生产环境执行前仍需按
 [生产部署与运维](#生产部署与运维)一节完成备份、迁移审查和回滚准备，不要使用 `db:push`。
+
+### Repository identity 三阶段发布
+
+迁移 `0007_square_arclight.sql` 增加 nullable `repositories.github_repository_id`、正式仓库/Radar 稳定 ID 部分唯一索引和 identity backfill active singleton。迁移会在锁定 Radar 写入后确定性合并同一用户的重复 GitHub ID；保留最早 `firstSeenAt`、按 `lastSeenAt DESC, updatedAt DESC, id DESC` 选择最新证据，并保留唯一非默认状态。若同组存在多个不同非默认状态，整个迁移事务 fail closed。
+
+生产必须依次执行：
+
+1. 备份后在 `REPOSITORY_IDENTITY_CUTOVER=disabled` 下部署 schema 与 compatibility code；
+2. 暂停正式仓库采集，通过 `discovery.startRepositoryIdentityBackfill` 创建版本化 one-shot job，并轮询 `discovery.getRepositoryIdentityBackfillStatus`；`blocked` 不是成功，必须先处理 conflicts；
+3. 只有结果为 `applied`、conflicts 为空且重新核验通过后，才把 API 的 `REPOSITORY_IDENTITY_CUTOVER` 改为 `enabled` 并恢复采集。
+
+每次 backfill 的终态 job/result 不可重置；新一轮必须使用新 version。任一阶段异常先保持或恢复 `disabled` 并暂停采集；已经完成数据写入而需要整体回退时使用 Stage 1 前备份，不执行临时 down migration。
 
 ## CLI 与 MCP
 

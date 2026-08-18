@@ -495,6 +495,7 @@ export class DataCollectionPipeline {
 
       // 2. 保存仓库信息到数据库
       const savedRepo = await upsertRepository(this.db, {
+        githubRepositoryId: githubData.repository.githubRepositoryId,
         fullName: githubData.repository.fullName,
         name: githubData.repository.name,
         owner: githubData.repository.owner,
@@ -510,6 +511,8 @@ export class DataCollectionPipeline {
         lastFetchedAt: new Date(),
         // 采集即视为正式仓库；若命中同 fullName 的 reference 轻量行则升级该行
         isReference: false,
+      }, {
+        allowNewStableIdentity: process.env.REPOSITORY_IDENTITY_CUTOVER === "enabled",
       });
 
       repository = {

@@ -65,8 +65,8 @@ ID `2147483648` 写入和读取成功，数据库类型为 `bigint`，`repo_id=1
 
 ## 独立 review 修订
 
-首轮独立 reviewer 给出 `CHANGES_REQUESTED`，原始结论见
-`docs/project-harness/current/review.md`。修订遵循最小范围：
+首轮独立 reviewer 给出 `CHANGES_REQUESTED`，原始结论见同目录
+[`review.md`](review.md)。修订遵循最小范围：
 
 - collector 不再使用 Octokit 已解析的 `number` 作为权威 ID，而是从正式 Release API URL 严格提取十进制字符串；
 - pipeline 在删除旧 Releases 之前将全部 ID 校验并转换为 `bigint`；

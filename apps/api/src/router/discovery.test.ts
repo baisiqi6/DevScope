@@ -7,15 +7,20 @@ vi.mock("@devscope/db", async (importOriginal) => {
     getLatestGitHubTrendingSnapshot: vi.fn(),
     listRadarCandidates: vi.fn(),
     enqueueRestartableJob: vi.fn(),
+    enqueueRepositoryIdentityBackfillJob: vi.fn(),
     getJobByIdempotencyKey: vi.fn(),
+    getLatestRepositoryIdentityBackfillJob: vi.fn(),
   };
 });
 
 import {
   enqueueRestartableJob,
+  enqueueRepositoryIdentityBackfillJob,
   getJobByIdempotencyKey,
   getLatestGitHubTrendingSnapshot,
+  getLatestRepositoryIdentityBackfillJob,
   GITHUB_DISCOVERY_JOB_KEY,
+  RepositoryIdentityBackfillVersionUsedError,
   users,
 } from "@devscope/db";
 import { discoveryRouter } from "./discovery";
@@ -23,6 +28,8 @@ import { discoveryRouter } from "./discovery";
 const getLatest = vi.mocked(getLatestGitHubTrendingSnapshot);
 const enqueue = vi.mocked(enqueueRestartableJob);
 const getJob = vi.mocked(getJobByIdempotencyKey);
+const enqueueIdentity = vi.mocked(enqueueRepositoryIdentityBackfillJob);
+const getLatestIdentity = vi.mocked(getLatestRepositoryIdentityBackfillJob);
 
 describe("discovery router", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -159,6 +166,61 @@ describe("discovery router", () => {
       GITHUB_DISCOVERY_JOB_KEY,
     );
   });
+
+  it("启动版本化 identity backfill 并明确报告 active singleton", async () => {
+    const now = new Date("2026-08-18T02:00:00.000Z");
+    enqueueIdentity.mockResolvedValue({
+      enqueued: false,
+      job: createIdentityJob({ status: "running", startedAt: now }),
+    });
+    const caller = discoveryRouter.createCaller({ db: createUserDb() } as never);
+
+    await expect(caller.startRepositoryIdentityBackfill({ version: "v2" }))
+      .resolves.toEqual({
+        jobId: 9,
+        version: "v1",
+        status: "running",
+        alreadyRunning: true,
+      });
+    expect(enqueueIdentity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      userId: 7,
+      version: "v2",
+    }));
+  });
+
+  it("复用终态 one-shot version 时拒绝伪报 running", async () => {
+    enqueueIdentity.mockRejectedValue(
+      new RepositoryIdentityBackfillVersionUsedError("v1", "succeeded"),
+    );
+    const caller = discoveryRouter.createCaller({ db: createUserDb() } as never);
+
+    await expect(caller.startRepositoryIdentityBackfill({ version: "v1" }))
+      .rejects.toThrow(/new version/i);
+  });
+
+  it("将 succeeded identity job 区分为 blocked 而不是普通成功", async () => {
+    const completedAt = new Date("2026-08-18T02:05:00.000Z");
+    getLatestIdentity.mockResolvedValue(createIdentityJob({
+      status: "succeeded",
+      completedAt,
+      updatedAt: completedAt,
+      result: {
+        outcome: "blocked",
+        updated: [],
+        unresolved: [],
+        conflicts: [{ code: "DUPLICATE_GITHUB_REPOSITORY_ID" }],
+      },
+    }));
+    const caller = discoveryRouter.createCaller({ db: {} } as never);
+
+    await expect(caller.getRepositoryIdentityBackfillStatus()).resolves.toMatchObject({
+      status: "blocked",
+      version: "v1",
+      finishedAt: completedAt.toISOString(),
+      result: { outcome: "blocked" },
+      error: null,
+    });
+  });
 });
 
 function createUserDb() {
@@ -186,6 +248,31 @@ function createRadarJob(overrides: Record<string, unknown> = {}) {
       sort: "stars",
       order: "desc",
     },
+    result: null,
+    status: "queued",
+    priority: 0,
+    attempt: 0,
+    maxAttempts: 3,
+    availableAt: now,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    lastError: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  } as any;
+}
+
+function createIdentityJob(overrides: Record<string, unknown> = {}) {
+  const now = new Date("2026-08-18T02:00:00.000Z");
+  return {
+    id: 9,
+    userId: 7,
+    type: "repository.identity.backfill",
+    idempotencyKey: "repository:identity:backfill:v1",
+    payload: { requestedAt: now.toISOString(), version: "v1" },
     result: null,
     status: "queued",
     priority: 0,
