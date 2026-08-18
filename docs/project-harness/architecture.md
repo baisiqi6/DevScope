@@ -1,6 +1,6 @@
-# DevScope 架构说明
+# DevScope 架构
 
-本文描述当前代码中的实际架构，不记录尚未落地的历史方案。
+本文是当前代码架构、组件职责与依赖方向的唯一事实来源，只描述已经实现的结构。项目范围与非目标见 [scope.md](scope.md)，数据实体和演进约束见 [domain-model.md](domain-model.md)，执行状态见 [harness-checklist.json](harness-checklist.json)。
 
 ## 系统边界
 
@@ -219,6 +219,9 @@ MCP Host / Agent ──────► MCP stdio ───┘
 
 Drizzle baseline 及后续显式迁移已纳入版本控制。迁移 `0004` 把历史误用 `serial` 的外键改回
 普通 `integer`，建立用户仓库真实唯一约束，并把备注/star 时间和图边回填到用户边界。
+当前已确认的仓库稳定 ID、Release ID 容量、采集原子性、技术栈节点解耦和
+deps.dev 缓存恢复约束统一维护在 [数据领域模型](domain-model.md)，实施状态只维护在
+[Harness checklist](harness-checklist.json)。
 后续 schema 变化仍必须生成、实测和审查显式迁移；公开版前还需进行多用户数据演练。
 
 ### 实验能力
@@ -238,4 +241,4 @@ Drizzle baseline 及后续显式迁移已纳入版本控制。迁移 `0004` 把�
 - 密钥只进入服务器环境文件或密钥系统，不进入 Git；
 - 部署必须使用干净工作树、可追溯镜像和显式迁移。
 
-具体操作见 [生产运行手册](docs/PRODUCTION_RUNBOOK.md)。
+具体操作见 [运行手册](runbook.md)。

@@ -1,0 +1,174 @@
+{
+  "project": "devscope",
+  "harness_root": "docs/project-harness",
+  "updated_at": "2026-08-18",
+  "items": [
+    {
+      "id": "data-correctness-1a-release-id-bigint",
+      "title": "将 GitHub Release ID 迁移为无损 bigint",
+      "status": "doing",
+      "priority": "p0",
+      "owner": "codex",
+      "selected_in_session": "codex-20260817-release-id-bigint",
+      "updated_at": "2026-08-18",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "遵循 domain-model.md 的 Release ID 约束完成显式迁移与回归覆盖；以生产迁移前即时记录的 Release 行集为基线，ID、行数和归属保持一致，超过 int4 上限的 ID 可无损写入、读取和经 API 返回。",
+      "verification": "本地实现与证据：docs/project-harness/tasks/data-correctness-1a-release-id-bigint/verification.md；独立 review：docs/project-harness/current/review.md，continuity verdict APPROVE；生产只读预检为 integer/191 rows/21 repos，迁移与部署仍 UNVERIFIED。",
+      "handoff": "本地实现、迁移演练和独立 review 已完成；生产只读预检已锁定 191 rows/21 repos 即时基线，等待提交、CI、备份、迁移和业务抽查，生产验收前不得 mark-done。",
+      "workflow": {
+        "status": "review_approved",
+        "updated_at": "2026-08-18",
+        "branch": "main"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "release_id_migration_reviewer",
+        "phase": "changes_requested",
+        "updated_at": "2026-08-18",
+        "summary": "P1/P2 修订均已关闭；本地代码、测试、迁移锁门禁与回滚证据通过。生产仍 UNVERIFIED，批准不授予部署权限。"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/data-correctness-1a-release-id-bigint/plan.md",
+        "branch": "main",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260817-release-id-bigint",
+        "acquired_at": "2026-08-18T06:55:17Z",
+        "expires_at": "2026-08-18T08:55:17Z",
+        "ttl_minutes": 120
+      }
+    },
+    {
+      "id": "data-correctness-1b-repository-identity",
+      "title": "以 GitHub 稳定 ID 统一仓库身份",
+      "status": "todo",
+      "priority": "p0",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "同一 GitHub repository ID 在改名或转移前后只对应一个仓库实体和一个用户候选状态；回填与冲突合并可审计，无法确认时 fail closed。",
+      "verification": "",
+      "handoff": "开始前创建唯一 canonical plan，并复核生产重复候选。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    },
+    {
+      "id": "data-correctness-2-atomic-replacement",
+      "title": "使采集子数据整体原子替换",
+      "status": "todo",
+      "priority": "p0",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [
+        "data-correctness-1b-repository-identity"
+      ],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事务整体替换，失败保留旧快照，并发采集不产生空集、半份快照或交叉覆盖。",
+      "verification": "",
+      "handoff": "复用现有 jobs 或最小 PostgreSQL 锁，不新增第二套队列。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    },
+    {
+      "id": "data-architecture-3-technology-stack-entities",
+      "title": "将技术栈节点从伪仓库和伪收藏关系中分离",
+      "status": "todo",
+      "priority": "p1",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [
+        "data-correctness-2-atomic-replacement"
+      ],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "仓库列表和收藏关系只包含真实 GitHub 仓库；Vue、React、Spring Boot 等技术栈作为独立实体保留完整、可验证的图节点与依赖边。",
+      "verification": "",
+      "handoff": "按 domain-model.md 的双读验证和分阶段切换执行。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    },
+    {
+      "id": "data-correctness-4-deps-cache-recovery",
+      "title": "使 deps.dev 映射缓存区分阴性与临时失败",
+      "status": "todo",
+      "priority": "p1",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [
+        "data-architecture-3-technology-stack-entities"
+      ],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "resolved、not_found、error 状态和 TTL 语义可验证；临时失败按退避恢复，真无映射不会在每次图重建时重复请求。",
+      "verification": "",
+      "handoff": "状态字段和重试规则以 domain-model.md 为唯一设计来源。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    },
+    {
+      "id": "data-quality-5-postgres-integration-gates",
+      "title": "建立真实 PostgreSQL 迁移、事务与并发门禁",
+      "status": "todo",
+      "priority": "p0",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [
+        "data-correctness-1a-release-id-bigint",
+        "data-correctness-1b-repository-identity",
+        "data-correctness-2-atomic-replacement",
+        "data-architecture-3-technology-stack-entities",
+        "data-correctness-4-deps-cache-recovery"
+      ],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "独立 test:integration 覆盖空库迁移、历史基线升级、稳定身份、大 ID、原子回滚、并发竞争、技术栈回填、缓存状态和 jobs 租约；不连接开发库或生产库。",
+      "verification": "",
+      "handoff": "每个前置 item 同步添加其集成用例，本 item 负责补齐和固化最终门禁。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    },
+    {
+      "id": "product-6-public-multi-user-hardening",
+      "title": "公开多用户产品加固",
+      "status": "todo",
+      "priority": "p2",
+      "owner": "",
+      "selected_in_session": "",
+      "updated_at": "2026-08-17",
+      "dependencies": [
+        "data-quality-5-postgres-integration-gates"
+      ],
+      "blocked_by": [],
+      "blocked_reason": "",
+      "acceptance": "在明确公开产品决策后，完成真实会话身份、全路由授权、多用户迁移演练、配额限流、审计与生产可观测性；在此之前不得公开访问。",
+      "verification": "",
+      "handoff": "范围决策前不得启动；当前 publicProcedure 不是应用鉴权。",
+      "workflow": {
+        "status": "todo"
+      },
+      "review": null
+    }
+  ]
+}

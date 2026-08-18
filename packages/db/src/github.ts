@@ -43,7 +43,7 @@ export interface GitHubRepoInfo {
  * Release 数据
  */
 export interface GitHubRelease {
-  id: number | string;
+  id: string;
   tagName: string;
   name: string;
   body: string | null;
@@ -62,6 +62,21 @@ export interface GitHubRelease {
     browserDownloadUrl: string;
   }>;
   isPrerelease: boolean;
+}
+
+function releaseIdFromApiUrl(url: string): string {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    throw new TypeError("GitHub Release API URL is invalid");
+  }
+
+  const match = pathname.match(/\/releases\/([1-9]\d*)\/?$/);
+  if (!match) {
+    throw new TypeError("GitHub Release API URL does not contain a decimal release ID");
+  }
+  return match[1];
 }
 
 /**
@@ -720,7 +735,7 @@ export class GitHubCollector {
 
   /**
    * 获取仓库 Releases
-   * @description 获取仓库最近的 Releases，如果没有正式 releases 则返回 tags
+   * @description 获取仓库最近的正式 Releases
    */
   async getReleases(
     owner: string,
@@ -737,7 +752,9 @@ export class GitHubCollector {
 
       if (releases.length > 0) {
         return releases.map((release: any) => ({
-          id: release.id,
+          // Octokit parses JSON integer IDs as JavaScript numbers. The API URL
+          // retains the exact decimal ID even beyond Number.MAX_SAFE_INTEGER.
+          id: releaseIdFromApiUrl(release.url),
           tagName: release.tag_name,
           name: release.name || release.tag_name,
           body: release.body,
@@ -759,72 +776,7 @@ export class GitHubCollector {
         }));
       }
 
-      // 如果没有 releases，尝试获取 tags
-      console.log(`[getReleases] No releases found for ${owner}/${repo}, falling back to tags...`);
-      const { data: tags } = await this.octokit.rest.repos.listTags({
-        owner,
-        repo,
-        per_page: limit,
-      });
-
-      // 为每个 tag 生成唯一的数字 ID（基于 commit sha 的哈希）
-      const generateTagId = (sha: string): number => {
-        let hash = 0;
-        for (let i = 0; i < sha.length; i++) {
-          const char = sha.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32bit integer
-        }
-        return Math.abs(hash);
-      };
-
-      // 获取每个 tag 的详细信息
-      const tagReleases: GitHubRelease[] = [];
-      for (const tag of tags.slice(0, limit)) {
-        try {
-          // 尝试获取 tag 的 commit 信息
-          const { data: commit } = await this.octokit.rest.git.getCommit({
-            owner,
-            repo,
-            commit_sha: tag.commit.sha,
-          });
-
-          tagReleases.push({
-            id: generateTagId(tag.commit.sha),
-            tagName: tag.name,
-            name: tag.name,
-            body: commit.message || null,
-            author: commit.author?.name || "unknown",
-            createdAt: new Date(commit.committer?.date || Date.now()),
-            publishedAt: new Date(commit.committer?.date || Date.now()),
-            url: tag.commit.url,
-            htmlUrl: `https://github.com/${owner}/${repo}/releases/tag/${tag.name}`,
-            zipUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.zip`,
-            tarUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.tar.gz`,
-            assets: [], // Tags 没有 assets
-            isPrerelease: false,
-          });
-        } catch (err) {
-          // 如果获取 commit 失败，使用基本信息
-          tagReleases.push({
-            id: generateTagId(tag.commit.sha),
-            tagName: tag.name,
-            name: tag.name,
-            body: null,
-            author: "unknown",
-            createdAt: new Date(),
-            publishedAt: null,
-            url: tag.commit.url,
-            htmlUrl: `https://github.com/${owner}/${repo}/releases/tag/${tag.name}`,
-            zipUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.zip`,
-            tarUrl: `https://github.com/${owner}/${repo}/archive/refs/tags/${tag.name}.tar.gz`,
-            assets: [],
-            isPrerelease: false,
-          });
-        }
-      }
-
-      return tagReleases;
+      return [];
     } catch (error) {
       console.error(`[getReleases] Failed to fetch releases for ${owner}/${repo}:`, error);
       return [];

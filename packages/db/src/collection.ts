@@ -211,6 +211,40 @@ export async function deleteHackernewsItemsByRepoId(
 // Release 操作
 // ============================================================================
 
+const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
+
+export function normalizeGitHubReleaseId(id: number | string | bigint): bigint {
+  if (typeof id === "bigint") {
+    if (id <= 0n) {
+      throw new RangeError("GitHub Release ID must be positive");
+    }
+    if (id > POSTGRES_BIGINT_MAX) {
+      throw new RangeError("GitHub Release ID exceeds PostgreSQL bigint range");
+    }
+    return id;
+  }
+
+  if (typeof id === "number") {
+    if (!Number.isSafeInteger(id)) {
+      throw new RangeError("GitHub Release ID number must be a safe integer");
+    }
+    if (id <= 0) {
+      throw new RangeError("GitHub Release ID must be positive");
+    }
+    return BigInt(id);
+  }
+
+  if (!/^[1-9]\d*$/.test(id)) {
+    throw new TypeError("GitHub Release ID string must be a positive decimal integer");
+  }
+
+  const value = BigInt(id);
+  if (value > POSTGRES_BIGINT_MAX) {
+    throw new RangeError("GitHub Release ID exceeds PostgreSQL bigint range");
+  }
+  return value;
+}
+
 /**
  * 插入 Releases
  */
@@ -218,7 +252,7 @@ export async function insertReleases(
   db: Db,
   repoId: number,
   releaseData: Array<{
-    id: number | string;
+    id: number | string | bigint;
     tagName: string;
     name: string;
     body: string | null;
@@ -242,7 +276,7 @@ export async function insertReleases(
   if (releaseData.length === 0) return [];
 
   const values = releaseData.map(r => ({
-    id: typeof r.id === 'string' ? parseInt(r.id.slice(0, 8), 16) || Math.abs(r.id.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)) : r.id,
+    id: normalizeGitHubReleaseId(r.id),
     tagName: r.tagName,
     name: r.name,
     body: r.body,

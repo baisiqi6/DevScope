@@ -2,6 +2,8 @@
 
 DevScope 提供统一 API Client、`devscope` CLI 和 MCP stdio Server。CLI 与 MCP 都是现有 API 的薄适配层，不直接连接 PostgreSQL、GitHub、embedding 服务或 AI Provider。
 
+本文只维护 Agent 接口契约和连接方式。项目范围与鉴权边界以 [Harness scope](project-harness/scope.md) 为准，生产访问控制和隧道操作以 [运行手册](project-harness/runbook.md) 为准。
+
 ## 当前边界
 
 - 当前仍是单用户私有版；tRPC 路由中的 `publicProcedure` 不代表适合公开匿名访问。

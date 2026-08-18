@@ -1,0 +1,1 @@
+ALTER TABLE "releases" ALTER COLUMN "id" SET DATA TYPE bigint;

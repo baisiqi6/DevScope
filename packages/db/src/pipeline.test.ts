@@ -82,6 +82,7 @@ const {
   mockDeleteHackernewsItemsByRepoId,
   mockDeleteReleasesByRepoId,
   mockInsertReleases,
+  mockNormalizeGitHubReleaseId,
   mockEmbedBatch,
   mockChunkMultiple,
   mockCollectRepository,
@@ -94,6 +95,7 @@ const {
   mockDeleteHackernewsItemsByRepoId: vi.fn(),
   mockDeleteReleasesByRepoId: vi.fn(),
   mockInsertReleases: vi.fn(),
+  mockNormalizeGitHubReleaseId: vi.fn(),
   mockEmbedBatch: vi.fn(),
   mockChunkMultiple: vi.fn(),
   mockCollectRepository: vi.fn(),
@@ -139,6 +141,7 @@ vi.mock("./index", () => ({
   deleteHackernewsItemsByRepoId: mockDeleteHackernewsItemsByRepoId,
   deleteReleasesByRepoId: mockDeleteReleasesByRepoId,
   insertReleases: mockInsertReleases,
+  normalizeGitHubReleaseId: mockNormalizeGitHubReleaseId,
   repositories: {
     id: "id",
     updatedAt: "updatedAt",
@@ -164,6 +167,7 @@ describe("DataCollectionPipeline", () => {
     mockDeleteHackernewsItemsByRepoId.mockResolvedValue(undefined);
     mockDeleteReleasesByRepoId.mockResolvedValue(undefined);
     mockInsertReleases.mockResolvedValue([]);
+    mockNormalizeGitHubReleaseId.mockImplementation((id: string) => BigInt(id));
     mockGetReleases.mockResolvedValue([]);
     mockEmbedBatch.mockResolvedValue([
       [0.1, 0.2, 0.3],
@@ -394,6 +398,32 @@ describe("DataCollectionPipeline", () => {
       expect(insertedChunks).toHaveLength(2);
       expect(insertedChunks[0].embedding).toBeNull();
       expect(insertedChunks[1].embedding).toBeNull();
+    });
+
+    it("Release ID 校验失败时不删除旧 Releases", async () => {
+      mockGetReleases.mockResolvedValueOnce([{
+        id: "9223372036854775808",
+        tagName: "v-invalid",
+        name: "v-invalid",
+        body: null,
+        author: "maintainer",
+        createdAt: new Date("2026-08-18T00:00:00Z"),
+        publishedAt: new Date("2026-08-18T00:00:00Z"),
+        url: "https://api.github.com/repos/test/repo/releases/9223372036854775808",
+        htmlUrl: "https://github.com/test/repo/releases/tag/v-invalid",
+        zipUrl: null,
+        tarUrl: null,
+        assets: [],
+        isPrerelease: false,
+      }]);
+      mockNormalizeGitHubReleaseId.mockImplementationOnce(() => {
+        throw new RangeError("GitHub Release ID exceeds PostgreSQL bigint range");
+      });
+
+      await pipeline.run({ repo: "test/repo" });
+
+      expect(mockDeleteReleasesByRepoId).not.toHaveBeenCalled();
+      expect(mockInsertReleases).not.toHaveBeenCalled();
     });
   });
 

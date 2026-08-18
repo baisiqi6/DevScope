@@ -8,7 +8,7 @@
  * @module schema
  */
 
-import { pgTable, serial, text, timestamp, vector, integer, real, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
 
 // ============================================================================
 // 枚举定义
@@ -620,7 +620,7 @@ export type NewUserWatchedRepository = typeof userWatchedRepositories.$inferInse
  */
 export const releases = pgTable("releases", {
   /** Release ID（GitHub） */
-  id: integer("id").primaryKey(),
+  id: bigint("id", { mode: "bigint" }).primaryKey(),
   /** 关联的仓库 ID */
   repoId: integer("repo_id").references(() => repositories.id).notNull(),
   /** Tag 名称 (如 v1.0.0) */

@@ -43,6 +43,13 @@
       "when": 1787020879032,
       "tag": "0005_github_trending",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787036436441,
+      "tag": "0006_release_id_bigint",
+      "breakpoints": true
     }
   ]
 }

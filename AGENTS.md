@@ -8,44 +8,25 @@ DevScope 是仍在使用的单用户私有开源生态分析平台。当前目�
 
 不要把规划能力描述为已经完成，也不要把当前 `publicProcedure` 误认为可公开访问的鉴权设计。
 
-## 当前技术事实
+## 渐进读取
 
-- Node.js 20+、pnpm 9+、Turborepo；
-- Web：Next.js 15，默认端口 `3000`；
-- API：Fastify 5 + tRPC，默认端口 `3100`；
-- 数据库：PostgreSQL 16 + pgvector + Drizzle；
-- AI：DeepSeek / OpenAI-compatible；
-- Embedding：BGE-M3，当前向量维度为 1024；
-- 测试：Vitest。
+项目事实从 [Harness 导航](docs/project-harness/scope.md) 开始读取：
 
-如果文档与源码、配置或运行状态冲突，以当前源码和实测结果为准，并同步修正文档。
+1. 所有任务先读 `scope.md`、`progress.md` 和 `current/task_plan.md`；
+2. 编码任务按需读 `architecture.md`；
+3. 数据任务再读 `domain-model.md` 与对应 task plan；
+4. 本地、迁移、部署和 dogfood 操作再读 `runbook.md`；
+5. CLI/MCP 任务只在需要时读 `docs/AGENT_INTERFACES.md`。
 
-## 目录职责
+架构、数据设计、任务状态、运行步骤和接口说明分别只有上述一个事实来源。`README.md` 与本文只提供入口和强制约束，不复制可独立演进的正文。
 
-```text
-apps/web             前端页面、组件、tRPC 客户端、SSE 交互
-apps/api             Fastify、tRPC、Agent/Workflow 路由、调度器
-apps/worker          持久任务领取、租约恢复和技术雷达候选发现
-packages/ai          OpenAI-compatible AI 封装
-packages/db          数据模型、数据库访问、采集和分析管道
-packages/shared      Zod schema、共享类型、GitHub 客户端
-skills               CLI Skills
-docs                 当前有效的开发和生产文档
-```
+涉及 checklist、owner/lease、handoff、review、closeout 或跨会话恢复时，必须使用已安装的 `long-running-project-harness` skill 解释和更新协议状态，不另写一套 Harness 语义。
 
-新增功能应放在现有职责最接近的位置，避免新建重复抽象或第二套数据模型。
+## 技术、目录与开发入口
 
-## 开发流程
+当前技术栈、组件职责、依赖方向和端口只维护在 [architecture.md](docs/project-harness/architecture.md)；本地安装、启动、环境变量和命令只维护在 [runbook.md](docs/project-harness/runbook.md)。如果文档与源码、配置或运行状态冲突，以当前源码和实测结果为准，并在同一批次修正对应权威文件。
 
-```bash
-pnpm install
-cp .env.example .env
-docker compose up -d postgres
-pnpm db:push
-pnpm dev
-```
-
-开发端口固定为 Web `3000`、API `3100`。前端通过 `/api/trpc` 和 `/api/agent` 的同源路径访问后端。
+新增功能应放在架构文档定义的现有职责中，避免新建重复抽象或第二套数据模型。
 
 ## 修改原则
 
@@ -96,4 +77,4 @@ docs: 更新中文运行手册
 chore: 整理工程基线
 ```
 
-生产部署遵循 [生产运行手册](docs/PRODUCTION_RUNBOOK.md)：工作树必须干净，只允许 fast-forward 更新，不自动执行 `db:push`，不得因 DevScope 部署重启或覆盖同机的其他站点配置。
+生产部署遵循 [运行手册](docs/project-harness/runbook.md)：工作树必须干净，只允许 fast-forward 更新，不自动执行 `db:push`，不得因 DevScope 部署重启或覆盖同机的其他站点配置。

@@ -26,6 +26,11 @@ const mockRest = {
     get: vi.fn(),
     getReadme: vi.fn(),
     listCommits: vi.fn(),
+    listReleases: vi.fn(),
+    listTags: vi.fn(),
+  },
+  git: {
+    getCommit: vi.fn(),
   },
   issues: {
     listForRepo: vi.fn(),
@@ -213,6 +218,69 @@ describe("GitHubCollector", () => {
       expect(result[0].sha).toBe("abc123");
       expect(result[0].message).toBe("First commit");
       expect(result[0].author).toBe("Developer");
+    });
+  });
+
+  describe("getReleases", () => {
+    it("保留超过 int4 上限的 GitHub Release ID", async () => {
+      mockRest.repos.listReleases.mockResolvedValue({
+        data: [{
+          id: 2147483648,
+          tag_name: "v1.0.0",
+          name: "v1.0.0",
+          body: null,
+          author: { login: "maintainer" },
+          created_at: "2026-08-17T00:00:00Z",
+          published_at: "2026-08-17T00:00:00Z",
+          url: "https://api.github.com/repos/owner/repo/releases/2147483648",
+          html_url: "https://github.com/owner/repo/releases/tag/v1.0.0",
+          zipball_url: null,
+          tarball_url: null,
+          assets: [],
+          prerelease: false,
+        }],
+      });
+
+      const result = await collector.getReleases("owner", "repo");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("2147483648");
+    });
+
+    it("从 API URL 保留超过 JavaScript 安全整数的 Release ID", async () => {
+      mockRest.repos.listReleases.mockResolvedValue({
+        data: [{
+          id: 9007199254740992,
+          tag_name: "v-safe-boundary",
+          name: "v-safe-boundary",
+          body: null,
+          author: { login: "maintainer" },
+          created_at: "2026-08-18T00:00:00Z",
+          published_at: "2026-08-18T00:00:00Z",
+          url: "https://api.github.com/repos/owner/repo/releases/9007199254740993",
+          html_url: "https://github.com/owner/repo/releases/tag/v-safe-boundary",
+          zipball_url: null,
+          tarball_url: null,
+          assets: [],
+          prerelease: false,
+        }],
+      });
+
+      const result = await collector.getReleases("owner", "repo");
+
+      expect(result[0].id).toBe("9007199254740993");
+    });
+
+    it("没有 Release 时不再用 tag 哈希伪造 Release ID", async () => {
+      mockRest.repos.listReleases.mockResolvedValue({ data: [] });
+      mockRest.repos.listTags.mockResolvedValue({
+        data: [{ name: "v1.0.0", commit: { sha: "abcdef" } }],
+      });
+
+      const result = await collector.getReleases("owner", "repo");
+
+      expect(result).toEqual([]);
+      expect(mockRest.repos.listTags).not.toHaveBeenCalled();
     });
   });
 
