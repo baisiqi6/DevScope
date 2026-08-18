@@ -114,8 +114,12 @@ pnpm db:studio
 运行中会续租，异常中断后的过期任务会被恢复。健康分析需要 AI 配置，图谱依赖回填和 Radar
 发现需要 `GITHUB_TOKEN`。Trending 默认每天 `06:15`（`SCHEDULER_TIMEZONE`）抓取三个周期，
 也可以从“发现”页面手动启动；Radar 默认每天 `06:00` 创建搜索任务，也可以从对应页签手动
-启动。两种入口共享同一条可恢复、可防重的 `radar.discover.github` 任务。Radar 结果只写入
-`radar_candidates`，不会自动进入正式仓库列表。
+启动。定时与手动入口分别共享对应的可恢复、防重任务。Radar 结果只写入 `radar_candidates`，
+不会自动进入正式仓库列表。
+
+Trending 优先抓取 `github.com/trending`。当部署网络无法连接 GitHub HTML 站点时，Worker
+会回退读取 `raw.githubusercontent.com/isboyjc/github-trending-api` 的 MIT 许可快照；只有通过
+严格结构校验且发布时间不超过 48 小时的数据才会写入数据库。
 
 新增迁移 `0005_github_trending.sql` 创建 Trending 快照和条目表。生产环境执行前仍需按
 [生产运行手册](PRODUCTION_RUNBOOK.md) 完成备份、迁移审查和回滚准备，不要使用 `db:push`。

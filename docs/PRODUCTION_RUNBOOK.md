@@ -107,9 +107,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ```bash
 curl --fail http://127.0.0.1:3100/trpc/health
 curl --fail http://127.0.0.1:3000/
+curl --fail --max-time 20 https://raw.githubusercontent.com/isboyjc/github-trending-api/main/data/daily/all.json > /dev/null
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 worker
 ```
+
+若 `github.com/trending` 在生产网络不可达，上述 GitHub 托管快照必须可达且保持新鲜，否则
+Trending 任务会按设计失败并保留上一份成功快照，不能用 Radar 的 GitHub Search 结果代替。
 
 公网侧应验证：
 
