@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-18
-> 基线：`main@b64d6a0`
+> 基线：`main@2b18ebf`
 > 部署形态：Standalone
-> 当前状态：首个数据 Correctness item 已通过独立 review，等待单独授权的生产验收
+> 当前状态：首个数据 Correctness item 已通过独立 closeout review 并关闭
 
 ## 已完成
 
@@ -15,6 +15,10 @@
 - 删除 tag hash 伪 Release 降级，在本地 PostgreSQL 完成 188 条历史 fixture 升级与大 ID 往返演练；
 - focused tests、全仓 lint/typecheck/test/build 与迁移再生成检查全部通过。
 - 独立 reviewer 首轮提出 JavaScript safe integer 与迁移锁门禁问题；修订后 continuity 复核为 `APPROVE`。
+- PR #27 已通过 CI 并合并，手动部署 workflow run 32112032164 已完成生产备份、显式迁移和应用发布；
+- 生产 `releases.id` 已变为 `bigint`，迁移前备份与在线库 191 条有序 `(id, repo_id)` 行集哈希一致；
+- 生产 API/Web/Worker/PostgreSQL/Nginx 健康，未认证访问为 401，Keychain + SSH tunnel 的认证 health 为 `ok`。
+- 独立 closeout reviewer 再次核对 Git、Actions、两份备份、在线数据库和服务证据后给出 `APPROVE`；Harness 已将 item 标记为 `done`。
 
 ## 已验证基线
 
@@ -32,11 +36,11 @@
 
 ## 当前 handoff
 
-- 当前 item：`data-correctness-1a-release-id-bigint`；
+- 最近完成 item：`data-correctness-1a-release-id-bigint`；
 - Canonical plan：`tasks/data-correctness-1a-release-id-bigint/plan.md`；
 - Verification：`tasks/data-correctness-1a-release-id-bigint/verification.md`；
-- 独立 correctness/迁移 review 已批准；在生产验收完成前不得标记 `done`；
-- 尚未授权生产迁移或部署，生产状态保持 `UNVERIFIED`。
+- 独立 correctness/迁移 review 与生产 closeout review 均已批准，生产验收已经落盘；
+- 当前没有激活中的 item；下一步按 checklist 选择 `data-correctness-1b-repository-identity`，先建立并复核唯一 canonical plan，再开始实现。
 
 ## Harness 初始化验证
 
