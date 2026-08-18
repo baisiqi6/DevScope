@@ -41,6 +41,7 @@ import {
 } from "@devscope/shared";
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
 import { graphRouter } from "./router/graph";
+import { discoveryRouter } from "./router/discovery";
 import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
 import { v4 as uuidv4 } from "uuid";
 
@@ -118,6 +119,9 @@ export const appRouter = router({
 
   // 仓库关系图谱
   graph: graphRouter,
+
+  // GitHub Trending 与 DevScope 发现榜
+  discovery: discoveryRouter,
 
   /**
    * 获取用户关注的仓库列表

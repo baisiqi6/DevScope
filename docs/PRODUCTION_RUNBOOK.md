@@ -56,6 +56,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 `/home/devscope/backups/devscope/`，再显式执行 `db:migrate`。未应用迁移时，Worker schema
 检查会阻止部署继续。
 
+迁移 `0005_github_trending.sql` 新增 GitHub Trending 快照、排名和查询索引。部署包含发现榜时，
+必须将 `apply_database_migration` 设为 `true`；工作流会同时核对 `jobs`、`radar_candidates`、
+`github_trending_snapshots` 和 `github_trending_entries` 四张 Worker 必需表。
+
 迁移 `0004_tidy_giant_man.sql` 会去重并重建用户仓库唯一约束、回填现有仓库关联和图边
 `userId`、迁移备注/star 时间，并移除历史外键列错误的 `serial` defaults/sequences。执行前必须
 确认备份可恢复；执行后抽查仓库列表、备注、图谱和 workflow 历史，再启动 Worker。

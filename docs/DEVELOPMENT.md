@@ -108,10 +108,17 @@ pnpm db:studio
 ## 技术雷达 Worker
 
 本地 `pnpm dev` 会同时启动 API、Web 和 Worker。scheduler 仅在
-`ENABLE_SCHEDULER=true` 时创建每日 GitHub Search 任务；Worker 可以独立运行并消费
-`jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild` 和 `radar.discover.github`，
+`ENABLE_SCHEDULER=true` 时创建每日 GitHub Search 与 GitHub Trending 任务；Worker 可以独立运行
+并消费 `jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild`、`radar.discover.github` 和
+`trending.sync.github`，
 运行中会续租，异常中断后的过期任务会被恢复。健康分析需要 AI 配置，图谱依赖回填和 Radar
-发现需要 `GITHUB_TOKEN`；当前发现结果只写入 `radar_candidates`，不会自动进入正式仓库列表。
+发现需要 `GITHUB_TOKEN`。Trending 默认每天 `06:15`（`SCHEDULER_TIMEZONE`）抓取三个周期，
+也可以从“发现”页面手动启动；Radar 默认每天 `06:00` 创建搜索任务，也可以从对应页签手动
+启动。两种入口共享同一条可恢复、可防重的 `radar.discover.github` 任务。Radar 结果只写入
+`radar_candidates`，不会自动进入正式仓库列表。
+
+新增迁移 `0005_github_trending.sql` 创建 Trending 快照和条目表。生产环境执行前仍需按
+[生产运行手册](PRODUCTION_RUNBOOK.md) 完成备份、迁移审查和回滚准备，不要使用 `db:push`。
 
 ## CLI 与 MCP
 

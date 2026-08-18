@@ -20,6 +20,7 @@ import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 import { closeDb, createDb, reconcileStaleExecutions } from "@devscope/db";
 import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
+import { fastifyOptions } from "./server-options";
 
 // ============================================================================
 // 服务器初始化
@@ -29,12 +30,7 @@ import { parseTRPCQueryInput, unwrapTRPCInput } from "./trpc-input";
  * 创建 Fastify 服务器实例
  * @description 配置日志记录器和 body parser
  */
-const fastify = Fastify({
-  /** 启用请求日志 */
-  logger: true,
-  /** 配置 body parser */
-  bodyLimit: 10 * 1024 * 1024, // 10MB
-});
+const fastify = Fastify(fastifyOptions);
 
 // ============================================================================
 // tRPC 路由配置（手动实现，支持批量请求）
