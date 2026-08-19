@@ -382,12 +382,13 @@
       "handoff": "可与数据库整改并行；先用 Token Plan key 做脱敏 contract probe，再做最小兼容修复与 canary，不能只改环境变量直接全量生产切换。",
       "plan_path": "docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md",
       "workflow": {
-        "status": "running",
+        "status": "review_requested",
         "updated_at": "2026-08-19",
         "branch": "codex/minimax-m3-default"
       },
       "artifacts": {
-        "branch": "codex/minimax-m3-default"
+        "branch": "codex/minimax-m3-default",
+        "review_packet": "docs/project-harness/current/review-packet.md"
       },
       "lease": {
         "owner": "codex",
@@ -395,6 +396,9 @@
         "acquired_at": "2026-08-19T07:46:17Z",
         "expires_at": "2026-08-19T09:46:17Z",
         "ttl_minutes": 120
+      },
+      "review": {
+        "decision": null
       }
     }
   ]

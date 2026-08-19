@@ -2,24 +2,24 @@
 
 ## Subject
 
-- Checklist item: `data-quality-5-postgres-integration-gates`
+- Checklist item: `platform-ai-7-minimax-m3-default`
 - Reviewer: `reviewer-impl`
 - Updated at: `2026-08-19`
-- Canonical plan path: `docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md`
 
 ## Item Snapshot
 
-- Title: 建立真实 PostgreSQL 迁移、事务与并发门禁
+- Title: 将分析模型默认切换到 MiniMax M3
 - Status: doing
-- Workflow status: review_approved
-- Priority: p0
+- Workflow status: running
+- Priority: p1
 - Owner: codex
-- Session: codex-20260819-pg-gates
-- Dependencies: data-architecture-3-technology-stack-entities, data-correctness-4-deps-cache-recovery
+- Session: codex-20260819-minimax
+- Dependencies: None
 
 ## Acceptance
 
-root test:integration 在隔离 PostgreSQL 16 + pgvector 与 CI service 中覆盖 migration、constraint、transaction、advisory lock、lease 和真实双连接交错；危险连接 fail closed，不接触开发/生产库。
+通过现有 OpenAI-compatible seam 将 API/Worker 切到 MiniMax-M3；complete/stream/structured/tool/cancel 真实探针和自动测试通过，secret 不落盘，DeepSeek rollback 可用，BGE-M3 embedding 不变。
 
 ## Verification
 
@@ -27,7 +27,7 @@ root test:integration 在隔离 PostgreSQL 16 + pgvector 与 CI service 中覆�
 
 ## Handoff
 
-Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。
+可与数据库整改并行；先用 Token Plan key 做脱敏 contract probe，再做最小兼容修复与 canary，不能只改环境变量直接全量生产切换。
 
 ## Review Inputs
 
@@ -40,128 +40,119 @@ Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可
 ## Canonical Plan Content
 
 ```md
-# 真实 PostgreSQL 迁移、事务与并发持续门禁
+# 将分析模型默认切换到 MiniMax M3
 
 ## Item
 
-- Checklist item：`data-quality-5-postgres-integration-gates`
-- Priority：P0
-- 前置：Phase A closeout、deps.dev cache recovery closeout（均已 done）
-- 状态：plan review 第一轮 `changes_requested`，findings 已修订待复核；现有集成用例 34 个（collection 10 + stack 14 + deps-cache 10）
+- Checklist item：`platform-ai-7-minimax-m3-default`
+- Priority：P1
+- 可与数据整改并行，不阻断 Phase A/B/C
 
 ## Outcome
 
-把现有按任务临时运行的 PostgreSQL integration scripts/tests 收敛为一个开发机与 CI 共用的 `pnpm test:integration` 门禁。它使用隔离的 PostgreSQL 16 + pgvector，覆盖真实 migration、constraint、transaction、advisory lock、lease 和双连接强制交错；任何时候都不能连接开发库或生产库。
+复用现有 OpenAI-compatible seam，把 DevScope 的文本补全、流式输出、结构化分析和 Agent tool calling 从当前 DeepSeek 生产配置切到用户的 MiniMax Token Plan，模型为 `MiniMax-M3`。BGE-M3 embedding 保持不变；本 item 不改向量维度、embedding endpoint 或数据库 schema。
 
-## Current Gap
+## Confirmed Provider Contract
 
-- `packages/db/src/collection.integration.test.ts` 与 `technology-stack-entities.integration.test.ts` 已证明真实数据库用例有价值，但仍是分散资产；
-- `.github/workflows/ci.yml` 目前没有 PostgreSQL service，也没有正式 `test:integration` step；
-- 大量快速测试 mock Drizzle builder，无法证明 DDL、partial index、JSONB、timestamp precision、`FOR UPDATE SKIP LOCKED`、rollback 和 advisory-lock 行为；
-- 本 item 不重写现有测试框架，只把成熟 fixture、runner 和 CI 生命周期规范化。
+截至 2026-08-18，MiniMax 官方文档确认：
 
-## Isolation Contract
+- OpenAI-compatible endpoint：国际站 `https://api.minimax.io/v1`，中国大陆站对应 `https://api.minimaxi.com/v1`；必须使用签发 Token Plan key 的同站 endpoint，不能混用；
+- model ID：`MiniMax-M3`；
+- `/v1/chat/completions` 支持 non-stream、stream 与 function tools；
+- 推荐参数为 `max_completion_tokens`，`max_tokens` 已标记 deprecated；
+- M3 默认 adaptive thinking，可能把 thinking 放入 `content`，也支持 `reasoning_split`；
+- 官方当前 OpenAI-compatible reference 未声明 `response_format: {type: "json_object"}`。
 
-- 默认使用 `pgvector/pgvector:pg16`，与项目开发/生产大版本一致；
-- `TEST_DATABASE_URL` 只允许指向 admin 入口（`postgres` 库）；测试库名一律由 runner 唯一派生（`devscope_test_<random>`）并记录，**不接受显式复用**（防并发冲突与 cleanup 违约）；禁止 `devscope`、`template*` 等业务/系统库名；
-- 只有显式的 `TEST_DATABASE_URL` 可启用 integration tests；host/database allowlist、`NODE_ENV=test` 与 `TEST_DATABASE_DESTRUCTIVE=1` sentinel 任一不满足即拒绝运行；not-configured 在本地=skip、在 CI（`INTEGRATION_REQUIRED=1`，仅 integration job 注入）=fail closed；quality job 不注入任何 `TEST_DATABASE_*` 变量；
-- 集成文件单进程串行执行（`fileParallelism: false` + singleFork）：多个集成文件共享同一派生库，文件级并发会互相清理数据；unit config 排除 `*.integration.test.ts` 保持 `pnpm test` 快速；
-- test setup 只允许删除自己创建并记录的临时 database/schema；cleanup 使用明确目标，不接受通配符或环境变量空值；
-- 并发测试必须使用至少两个独立连接，不能用单连接 promise 顺序伪装竞争；
-- 外网、真实 GitHub、deps.dev、AI provider 和生产 credentials 一律不参与。
+因此不能把“OpenAI-compatible”理解成所有扩展参数完全等价。实现前必须用用户 Token Plan key 运行脱敏 contract probe；token 只进入本地/生产 secret store，不写 Git、Harness、日志或命令历史。
+
+官方参考：
+
+- [MiniMax OpenAI Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai)
+- [MiniMax M3 model](https://www.minimax.io/models/text/m3)
+- [MiniMax model list API（中国大陆站）](https://platform.minimaxi.com/docs/api-reference/models/openai/list-models)
+
+## Architecture Decision
+
+保留 `OPENAI_COMPATIBLE_API_KEY`、`OPENAI_COMPATIBLE_BASE_URL`、`OPENAI_COMPATIBLE_MODEL` 为唯一优先配置边界；`DEEPSEEK_*` 暂作显式 rollback compatibility，不新增 `MINIMAX_*` 变量、Provider registry、Strategy hierarchy 或第二套 AI client。
+
+仅在 live probe 证明参数差异时，给现有 client 增加最小 capability 配置/适配：
+
+- generation length 统一发 `max_completion_tokens`；若需兼容旧 provider，在内部做一个可测试的 request builder，而不是在调用点散落 provider name 判断；
+- M3 structured output 优先选择官方支持且 probe 成功的方式。若 `response_format` 不被接受，则移除该未声明参数，使用严格 JSON prompt + thinking separation/disable + `JSON.parse` + 现有 Zod validation；禁止用正则剥离 `<think>` 后假装结构化成功；
+- tool calling 必须保留 tool call ID、arguments、multi-round history 与 AbortSignal；不为 M3 另写 Agent loop；
+- reasoning 内容不得进入 JSON parser、用户最终报告或日志中的敏感上下文。
 
 ## Execution Plan
 
-### 1. Inventory and canonical runner
+### 1. Secret and endpoint preflight
 
-- 盘点现有 integration tests、migration runner、Docker Compose、CI 与 package scripts；
-- 选择最小公共入口：root `pnpm test:integration` 调用 DB package 的 integration config；
-- 复用 Vitest、Drizzle migration 和现有 fixture helper，不引入 Testcontainers 等新框架，除非独立 plan review 证明 CI service 无法满足隔离/并发要求；
-- 把连接建立、migration、fixture、强制交错和 cleanup helper 放在 `packages/db`，其他 package 只通过公开 test helper 使用。
+由用户在 MiniMax Token Plan 控制台生成/取得 key，并通过现有生产 secret 安装流程写入：
 
-### 2. Migration matrix
-
-drizzle migrator 只按 `created_at` 跳过、不比对 hash，且在 vitest vite-node 环境下不可用；因此 runner 自管迁移应用：按 journal 顺序逐文件单事务执行 SQL，并手写 `drizzle.__drizzle_migrations` 行（hash=文件 SHA-256，created_at=journal.when，与生产逐条一致）。至少覆盖：
-
-1. 空库从 `0000` 顺序迁移到最新，pgvector extension 与 migration metadata 一致；
-2. **0004 baseline 升级**：`applyMigrationRange(0..3)` 后按 0004 之前的时点形态播种 era fixture（0004 本身执行 dedupe/回填，fixture 必须先于它存在）——重复 `(user_id, repo_id)` 的 watch 行、无 `user_id` 的 repo_relationships 边、接近 int4 上限的 releases 行（0006 前 int4）、重复 `github_repo_id` 的 radar_candidates 行（0007 合并语义）、`source_repo` null 与非空混合的 package_repo_mappings 行（0009 回填）——再 `applyMigrationRange(4..latest)` 续迁，断言 dedupe/回填/类型扩大摘要；
-3. **drift 检测由 runner 自建**：`verifyMigrationJournal` 按顺序比对库内 hash 行与本地文件 SHA-256，多余/缺失/不一致即 fail closed；用例覆盖一致通过与篡改检测（临时副本模拟历史文件变更）；
-4. Release bigint、repository stable ID、atomic replacement、technology-stack expand、deps-cache migration 的数据前后摘要（即上述 fixture 的断言口径）；
-5. Phase C 实现后追加 cleanup 与 restore rehearsal；未实现的未来 migration 不在本 item 伪造测试。
-
-### 3. Transaction and concurrency matrix
-
-复用/新增映射（现有 34 例 = collection 10 + technology-stack 14 + deps-cache 10）：
-
-| 矩阵条目 | 归属 |
-|---|---|
-| chunks/HN/releases failure 保旧、`success([])` 清旧、rollback | 复用（collection 10 例） |
-| technology-stack atomic replacement、backfill checkpoint、lost lease 零写入 | 复用（stack 14 例） |
-| deps.dev 三态/TTL/预算 fail-retry | 复用（deps-cache 10 例） |
-| collection-vs-collection advisory lock 交错结果 | 复用（既有 Promise.all 用例作结果断言） |
-| **barrier 证明两条事务实际重叠**（一事务持锁、另一事务在 pg_locks 中观测到等待） | 新增 |
-| **jobs `FOR UPDATE SKIP LOCKED` 双连接**：两条连接同时领取、同 job 只一方成功 | 新增 |
-| **renewJobLease / recoverExpiredJobs**（现仅 mock 覆盖） | 新增 |
-| **terminal receipt 部分唯一索引**（active singleton） | 新增 |
-| **Release ID > 2147483647 无损往返**（现用例未超限） | 新增 |
-| **repository rename/transfer 冲突合并与唯一索引**（rename 路径从未集成验证） | 新增 |
-
-每个竞态用例设置短 statement/test timeout 防止 CI 挂死。
-
-### 4. CI integration
-
-- `quality` job 保持现状（不注入 `TEST_DATABASE_*`）；
-- 独立 `integration` job：service `pgvector/pgvector:pg16`（固定 major tag；health check 通过后运行），env 注入 `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres`、`TEST_DATABASE_DESTRUCTIVE=1`、`NODE_ENV=test`、`INTEGRATION_REQUIRED=1`；
-- 两 job 并行且都作为 PR/`main` 必需门禁；**branch protection 的 required check 由 operator 在合并前于 GitHub 仓库设置中添加**（不在 ci.yml 能力内，作为交付步骤记录）；
-- 固定 Node 22 / pnpm 9.15.4 / pgvector:pg16；test 日志输出 database name、migration range、case 名与耗时，不输出连接密码；job timeout 20 分钟、单测 timeout 30s、cleanup 在 always 路径（globalSetup teardown）。
-
-
-
-### 5. RED, implementation and review
-
-1. 先证明危险 database name、缺 sentinel/NODE_ENV 会 fail closed；缺少 `TEST_DATABASE_URL` 在本地 skip、在 CI（`INTEGRATION_REQUIRED=1`）fail；migration drift 由 `verifyMigrationJournal` 检出；
-2. 让现有 integration cases 经统一 runner 运行，再补齐矩阵中的缺口；
-3. `pnpm test:integration` 连续运行两次，证明无残留状态；
-4. 本地/CI 都运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:integration`、`pnpm build`；
-5. 独立 Reviewer 检查隔离、强制交错真实性、flakiness、timeout 和 secret handling；
-6. PR/CI 全绿后合并，本 item 不需要生产 deploy 或生产数据库写入。
-
-## Files In Scope
-
-- `packages/db/src/test-integration/`：guard、runner（含 `verifyMigrationJournal`）、global-setup、setup-file 及其单测；
-- `packages/db/vitest.config.ts`（unit 排除 integration）、`packages/db/vitest.integration.config.ts`（新）；
-- `packages/db/package.json` 与 root `package.json` 的 `test:integration` scripts；
-- 新增 `packages/db/src/migration.integration.test.ts`、`packages/db/src/concurrency.integration.test.ts`；
-- `.github/workflows/ci.yml`（integration job）；
-- `.env.example`（TEST_DATABASE_* 说明）与 [runbook.md](../../runbook.md)（本地 docker pg16 流程、变量语义、CI 必跑 vs 本地可选差异、required check 操作步骤）。
-
-## Local Gates
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:<port>/postgres \
-  TEST_DATABASE_DESTRUCTIVE=1 NODE_ENV=test pnpm test:integration
+```text
+OPENAI_COMPATIBLE_API_KEY=<secret>
+OPENAI_COMPATIBLE_BASE_URL=https://api.minimax.io/v1
+OPENAI_COMPATIBLE_MODEL=MiniMax-M3
 ```
 
-连续运行两次 `test:integration`，断言无残留数据库。
+如果 key 来自中国大陆站，Base URL 改为 `https://api.minimaxi.com/v1`。在不打印 key 的前提下调用 `GET /v1/models`，确认同一 key 可见 `MiniMax-M3`。禁止把真实值写入 `.env.example`、PR、CI artifact 或聊天记录。
 
-## Handoff Rules For Later Items
+### 2. Live compatibility probe
 
-- Phase B/C 与后续 schema/transaction 改动必须在同一 PR 增加对应 integration case；
-- `test:integration` 失败不能通过 `continue-on-error`、重试掩盖、测试 skip 或 mock 降级绕过；
-- 若 CI provider 故障，可记录基础设施 blocker，但不得宣称功能门禁通过；
-- 本 item 只建立基线，不把公开多用户/RLS 或性能压测混入。
+使用最小、无业务数据的请求依次验证：
+
+1. non-stream 文本补全；
+2. stream chunk 拼接与正常终止；
+3. `max_completion_tokens`；
+4. 单 tool call、多 tool round、tool arguments JSON；
+5. structured JSON：分别验证官方支持参数与严格 prompt 路径，确认 thinking 不污染 JSON；
+6. AbortSignal、timeout、401、429、5xx 和 malformed response；
+7. usage 的 prompt/completion token 统计缺失时不崩溃。
+
+probe 结果只记录状态、延迟、HTTP/error class 和脱敏 schema outcome，不保存完整 prompt/response。
+
+### 3. RED tests and minimal code changes
+
+- 为 request builder 固化 `max_completion_tokens`，防止各调用点继续发送 deprecated 参数；
+- 构造带 thinking 的 structured response，证明旧 `JSON.parse(content)` 失败，再实现不依赖 tag stripping 的兼容路径；
+- tool calling 测试覆盖工具定义、arguments validation、多个 round、取消和 max round；
+- 保持 `resolveOpenAICompatibleConfig` 的优先级与 DeepSeek rollback tests；
+- `.env.example` 改为 provider-neutral 示例，并在注释中给出 MiniMax M3 非秘密值；
+- `docker-compose.yml` 继续透传 generic vars，DeepSeek fallback 是否保留由 compatibility test 决定；
+- 更新 architecture/runbook：生产默认改为 MiniMax M3，embedding 仍为 BGE-M3 1024。
+
+### 4. Quality and dogfood gates
+
+- focused `packages/ai` tests 与受影响 API/Worker tests；
+- `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
+- 独立 implementation review，重点检查 structured output fail closed、secret leakage、provider coupling 和 rollback；
+- staging/local 真实 Token Plan dogfood：至少一次 repository health analysis、一次 SSE Agent tool flow、一次 durable `analysis.health` Worker flow；
+- 输出必须经过现有 Zod schema，数据库只提交完整 workflow report，失败不能伪装 completed。
+
+### 5. Production canary and rollback
+
+1. 记录当前 DeepSeek 配置键名、镜像 revision、成功报告基线和回滚值，不记录 secret；
+2. 安装 MiniMax secret，先只重启/切换单一可控 consumer 做 canary，确认 API/Worker 不出现 revision/config split；
+3. 验证 health、外层 401、认证 MCP、一次非流式分析、一次流式 Agent、一次 Worker job；
+4. 观察 error rate、latency、empty output、Zod failure、tool-loop exhaustion 与 token usage；
+5. canary 通过后再把 API/Worker 都切到 `MiniMax-M3`；
+6. 任一 gate 失败，恢复上一组 `OPENAI_COMPATIBLE_*`/`DEEPSEEK_*` 值并重启受影响服务；数据库无 migration，无需数据回滚；
+7. 独立 production closeout approved 后更新 production verification。
+
+## Non-Goals
+
+- 不替换 BGE-M3 embedding，不改 pgvector 1024 维；
+- 不引入多 provider 动态路由、自动 fallback、模型 A/B 平台或计费系统；
+- 不把 MiniMax Token Plan key 交给浏览器或前端；
+- 不在本 item 调整 prompts 的业务内容或重做分析产品 UX；
+- 不与技术栈 schema migration 或 cleanup 同批部署。
 
 ## Exit Criteria
 
-- root `pnpm test:integration` 在本地隔离库和 CI PostgreSQL service 行为一致；
-- migration、transaction、并发、lease 和恢复矩阵真实通过；
-- 危险连接与不安全 cleanup fail closed；
-- PR 必需检查包含独立 integration job，且现有 quick tests 保持快速；
-- 运行两次无残留、无 flaky retry、无 secrets，独立 implementation review approved。
+- 生产 API/Worker 的 generic config 指向正确站点的 `MiniMax-M3`；
+- complete、stream、structured output、tool calling、cancel/error paths 均通过真实 probe 与自动测试；
+- structured result 继续 `JSON.parse` + Zod fail closed，thinking 不污染结果；
+- secrets 未进入 Git/日志/artifact，DeepSeek rollback 已演练；
+- BGE-M3 embedding 与数据库向量契约完全不变，独立 production closeout approved。
 ```
 
 ## Review Focus

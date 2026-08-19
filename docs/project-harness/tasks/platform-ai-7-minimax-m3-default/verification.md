@@ -50,6 +50,10 @@ Endpoint：`https://api.minimaxi.com/v1`（大陆站）。预检 `GET /v1/models
 - 全仓门禁：lint 13/13、typecheck 14/14、test 11/11、build 9/9。
 - 真实 probe 证据如上两表（脱敏：未记录完整 prompt/response 与 key）。
 
+## Implementation Review（2026-08-19）
+
+首轮 verdict：**approved**（无 P0-P2）。5 条 P3 处置：P3-1（probe 范围仅 M3 当前代，正则对 M2.x 生效——已在此记录，若未来默认切 M2.x 需重新 probe）；P3-2（maxTokens 0 语义从静默回退收紧为显式发送，无害）；P3-3（SDK cast 由单测逐键固化，可选交叉类型留后续）；P3-5（.env.example 风格已统一）；P3-4（Agent×MiniMax 端到端请求体断言已补）。
+
 ## 未验证项
 
 - 生产部署与 canary（API/Worker 切换、SSE Agent flow、durable Worker flow、DeepSeek 回滚演练）——按 plan 需用户显式授权后执行；
