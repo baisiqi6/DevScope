@@ -665,19 +665,30 @@ export interface TechnologyStackShadowComparison {
   missingInLegacy: string[];
 }
 
-function projectionKeys(rows: TechnologyStackProjectionRow[], topN: number): string[] {
+/**
+ * top-N 技术栈选择语义的唯一实现：按使用仓库数降序、stack name 升序 tie-break。
+ * shadow compare 与 new 读投影必须复用本函数，保证零差异时 UI 输出一致。
+ */
+export function selectTopTechnologyStackSlugs(
+  rows: TechnologyStackProjectionRow[],
+  topN: number,
+): Set<string> {
   const usage = new Map<string, { name: string; sources: Set<string> }>();
   for (const row of rows) {
     const entry = usage.get(row.slug) ?? { name: row.stackName, sources: new Set<string>() };
     entry.sources.add(row.githubRepositoryId);
     usage.set(row.slug, entry);
   }
-  const selected = new Set([...usage.entries()]
+  return new Set([...usage.entries()]
     .sort(([, left], [, right]) =>
       right.sources.size - left.sources.size || left.name.localeCompare(right.name),
     )
     .slice(0, topN)
     .map(([slug]) => slug));
+}
+
+function projectionKeys(rows: TechnologyStackProjectionRow[], topN: number): string[] {
+  const selected = selectTopTechnologyStackSlugs(rows, topN);
   return rows
     .filter((row) => selected.has(row.slug))
     .map((row) => `${row.githubRepositoryId}|${row.slug}|${digest(
