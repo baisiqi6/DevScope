@@ -69,3 +69,12 @@ RED tests 与实现设计（watched source join 读模型、`stack:<slug>` node�
 - **P3-7**：commit 语义错位（核心实现在 docs commit 中）已记录，不重写历史。
 
 修复后：unit 全绿（db 233、worker 12、api 41 等）、integration **51/51**（49+2 新增）、全仓 lint 13/typecheck 14/test 11/build 9 通过。
+
+## 生产三阶段 rollout（2026-08-19，用户授权）
+
+- **Stage 1（compat 部署）**：镜像 = `git archive origin/main@8cd17c3` 干净源码的本地 amd64 构建（save/scp/load，绕开 ghcr 网络故障）；服务器代码经 git bundle ff 到 8cd17c3；legacy 读下健康全绿（api/web 200、401、worker 无错误）。
+- **Stage 2（dogfood）**：legacy 读图谱 62 节点（40 repo + 13 reference + 9 language）/173 边，与 Phase A closeout 基线逐项一致（新代码 legacy 模式行为不变）；`getRepositories` 40 真实仓库、0 个 `tech-stack/*` 伪行（正向条件生产行为正确）。
+- **Stage 3（mode 切换）**：`.env` 追加 `TECHNOLOGY_STACK_STORAGE_MODE=new_read_dual_write` 并重启 api/worker；启动一致性检查通过（新表已回填 79 relations、legacy 13 refs，无 cleaned+legacy/未回填组合）；**新读投影实测**：40 repo + 9 language + 13 `technology_stack` 节点（reference 消失、`stack:<slug>` id 就位、零悬空边）、173 边；
+- **切换后 rebuild**：job `succeeded`（shadow_compare 在 new_read 模式下执行且零差异——读切换期 drift 门生效）；receipt：dependencyEdges=93、similarityEdges=40、cacheHits=22023、externalRequests=**5**（warm cache：deps cache freshness 生效，冷启动基线 3061）；worker 近 10 分钟零 error。
+- 数据不变量：40 真实 / 13 reference / 53 watched / 13 stacks / 79 rts（全部与切换前一致）。
+- **Rollback observation window 开始**：2026-08-19T13:45Z 起，至 Phase C 启动前；回退 = 删除 `.env` 中 `TECHNOLOGY_STACK_STORAGE_MODE` 行 + 重启 api/worker（恢复 legacy 读，数据无损——dual-write 全程未停）。
