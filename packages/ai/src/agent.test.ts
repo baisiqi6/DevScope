@@ -41,6 +41,25 @@ describe("DevScopeAgent", () => {
     expect(createAgent()).toBeInstanceOf(DevScopeAgent);
   });
 
+  it("MiniMax 模型：Agent 循环请求注入 thinking disabled 与 max_completion_tokens", async () => {
+    vi.stubEnv("OPENAI_COMPATIBLE_API_KEY", "test-api-key");
+    vi.stubEnv("OPENAI_COMPATIBLE_BASE_URL", "https://api.minimaxi.com/v1");
+    vi.stubEnv("OPENAI_COMPATIBLE_MODEL", "MiniMax-M3");
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: "ok", tool_calls: undefined } }],
+    });
+
+    await createAgent().run("test");
+
+    const body = mockCreate.mock.calls[0][0];
+    expect(body.model).toBe("MiniMax-M3");
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.max_completion_tokens).toBeDefined();
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.response_format).toBeUndefined();
+    expect(Array.isArray(body.tools)).toBe(true);
+  });
+
   it("Agent 与 AIProvider 使用相同的模型环境变量优先级", async () => {
     vi.stubEnv("OPENAI_COMPATIBLE_MODEL", "compatible-model");
     vi.stubEnv("DEEPSEEK_MODEL", "deepseek-model");

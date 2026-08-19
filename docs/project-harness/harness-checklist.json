@@ -369,18 +369,37 @@
     {
       "id": "platform-ai-7-minimax-m3-default",
       "title": "将分析模型默认切换到 MiniMax M3",
-      "status": "todo",
+      "status": "doing",
       "priority": "p1",
-      "owner": null,
-      "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "owner": "codex",
+      "selected_in_session": "codex-20260819-minimax",
+      "updated_at": "2026-08-19",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "通过现有 OpenAI-compatible seam 将 API/Worker 切到 MiniMax-M3；complete/stream/structured/tool/cancel 真实探针和自动测试通过，secret 不落盘，DeepSeek rollback 可用，BGE-M3 embedding 不变。",
       "verification": "",
       "handoff": "可与数据库整改并行；先用 Token Plan key 做脱敏 contract probe，再做最小兼容修复与 canary，不能只改环境变量直接全量生产切换。",
-      "plan_path": "docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md"
+      "plan_path": "docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md",
+      "workflow": {
+        "status": "review_requested",
+        "updated_at": "2026-08-19",
+        "branch": "codex/minimax-m3-default"
+      },
+      "artifacts": {
+        "branch": "codex/minimax-m3-default",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260819-minimax",
+        "acquired_at": "2026-08-19T07:46:17Z",
+        "expires_at": "2026-08-19T09:46:17Z",
+        "ttl_minutes": 120
+      },
+      "review": {
+        "decision": null
+      }
     }
   ]
 }

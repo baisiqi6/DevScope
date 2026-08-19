@@ -9,6 +9,10 @@
  */
 
 import OpenAI from "openai";
+import {
+  buildChatRequestBody,
+  resolveProviderCapabilities,
+} from "./request-builder";
 import { z } from "zod";
 import { GitHubClient, repositoryAnalysisSchema } from "@devscope/shared";
 import { resolveOpenAICompatibleConfig } from "./config.js";
@@ -611,12 +615,19 @@ export class DevScopeAgent {
       console.log(`[DevScopeAgent.runOpenAICompatible] Messages count: ${messagesWithSystem.length}`);
       console.log(`[DevScopeAgent.runOpenAICompatible] Tools count: ${this.getToolDefinitions().length}`);
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        messages: messagesWithSystem as any,
-        tools: this.getToolDefinitions() as any,
-      }, signal ? { signal } : undefined);
+      const requestBody = buildChatRequestBody(
+        {
+          model: this.model,
+          messages: messagesWithSystem as any,
+          maxTokens: this.maxTokens,
+          tools: this.getToolDefinitions() as any,
+        },
+        resolveProviderCapabilities(this.model),
+      );
+      const response = await this.openaiClient.chat.completions.create(
+        requestBody as any,
+        signal ? { signal } : undefined,
+      );
 
       console.log(`[DevScopeAgent.runOpenAICompatible] Received model response`);
       console.log(`[DevScopeAgent.runOpenAICompatible] Usage:`, response.usage);

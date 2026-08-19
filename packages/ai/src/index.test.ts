@@ -101,6 +101,62 @@ describe("AIProvider", () => {
     }));
   });
 
+  it("MiniMax 模型：complete 注入 thinking disabled 并使用 max_completion_tokens", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: "你好" } }],
+    });
+    const minimax = new AIProvider({
+      provider: "openai-compatible",
+      apiKey: "test-api-key",
+      baseURL: "https://api.minimaxi.com/v1",
+      defaultModel: "MiniMax-M3",
+      maxTokens: 2048,
+    });
+
+    await minimax.complete("打个招呼");
+    const body = mockCreate.mock.calls[0][0];
+    expect(body.max_completion_tokens).toBe(2048);
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it("MiniMax 结构化输出：不发 response_format，thinking disabled 保证纯 JSON", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ score: 88 }) } }],
+    });
+    const minimax = new AIProvider({
+      provider: "openai-compatible",
+      apiKey: "test-api-key",
+      baseURL: "https://api.minimaxi.com/v1",
+      defaultModel: "MiniMax-M3",
+      maxTokens: 2048,
+    });
+
+    const result = await minimax.structuredComplete("分析", { schema: z.object({ score: z.number() }) });
+    expect(result.score).toBe(88);
+    const body = mockCreate.mock.calls[0][0];
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it("content 被 thinking 污染时结构化输出 fail closed（不做标签剥离）", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: '<think>推理过程……</think>{"score": 88}' } }],
+    });
+    const minimax = new AIProvider({
+      provider: "openai-compatible",
+      apiKey: "test-api-key",
+      baseURL: "https://api.minimaxi.com/v1",
+      defaultModel: "MiniMax-M3",
+      maxTokens: 2048,
+    });
+
+    await expect(
+      minimax.structuredComplete("分析", { schema: z.object({ score: z.number() }) }),
+    ).rejects.toThrow();
+  });
+
   it("拒绝不符合 Schema 的结构化输出", async () => {
     const schema = z.object({ score: z.number().max(100) });
     mockCreate.mockResolvedValueOnce({

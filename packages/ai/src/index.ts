@@ -11,6 +11,10 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { resolveOpenAICompatibleConfig } from "./config.js";
+import {
+  buildChatRequestBody,
+  resolveProviderCapabilities,
+} from "./request-builder.js";
 
 // ============================================================================
 // 类型定义
@@ -154,12 +158,18 @@ export class AIProvider {
     }
     messages.push({ role: "user", content: prompt });
 
-    const response = await this.openaiClient.chat.completions.create({
-      model: options.model || this.defaultModel,
-      messages: messages as any,
-      max_tokens: options.maxTokens || this.maxTokens,
-      temperature: options.temperature,
-    });
+    const model = options.model || this.defaultModel;
+    const body = buildChatRequestBody(
+      {
+        model,
+        messages: messages as any,
+        maxTokens: options.maxTokens,
+        defaultMaxTokens: this.maxTokens,
+        temperature: options.temperature,
+      },
+      resolveProviderCapabilities(model),
+    );
+    const response = await this.openaiClient.chat.completions.create(body as any);
 
     return response.choices[0]?.message?.content || "";
   }
@@ -190,13 +200,24 @@ export class AIProvider {
     }
     messages.push({ role: "user", content: prompt });
 
-    const stream = await this.openaiClient.chat.completions.create({
-      model: options.model || this.defaultModel,
-      messages,
-      max_tokens: options.maxTokens || this.maxTokens,
-      temperature: options.temperature,
-      stream: true,
-    });
+    const model = options.model || this.defaultModel;
+    // builder 输出含 provider 扩展键（thinking 等），SDK 参数类型不覆盖；
+    // stream 分支的返回类型在 SDK 侧由 stream:true 重载决定，此处显式还原
+    const stream = (await this.openaiClient.chat.completions.create(
+      buildChatRequestBody(
+        {
+          model,
+          messages,
+          maxTokens: options.maxTokens,
+          defaultMaxTokens: this.maxTokens,
+          temperature: options.temperature,
+          stream: true,
+        },
+        resolveProviderCapabilities(model),
+      ) as any,
+    )) as unknown as AsyncIterable<{
+      choices: Array<{ delta?: { content?: string } }>;
+    }>;
 
     for await (const chunk of stream) {
       const text = chunk.choices[0]?.delta?.content;
@@ -265,13 +286,22 @@ export class AIProvider {
       content: `${prompt}\n\n任务名称：${toolName}\n任务说明：${toolDescription}\n请以 JSON 格式返回结果，符合以下 schema:\n${JSON.stringify(jsonSchema)}`,
     });
 
-    const response = await this.openaiClient.chat.completions.create({
-      model: completionOptions.model || this.defaultModel,
-      messages: messages as any,
-      max_tokens: completionOptions.maxTokens || this.maxTokens,
-      temperature: completionOptions.temperature,
-      response_format: { type: "json_object" },
-    });
+    const model = completionOptions.model || this.defaultModel;
+    // provider 差异（thinking disabled / response_format / token 参数名）统一由
+    // request-builder 决定；污染 content 在此 fail closed，不做标签剥离
+    const response = await this.openaiClient.chat.completions.create(
+      buildChatRequestBody(
+        {
+          model,
+          messages: messages as any,
+          maxTokens: completionOptions.maxTokens,
+          defaultMaxTokens: this.maxTokens,
+          temperature: completionOptions.temperature,
+          structured: true,
+        },
+        resolveProviderCapabilities(model),
+      ) as any,
+    );
 
     const content = response.choices[0]?.message?.content || "{}";
     const parsed = JSON.parse(content);
