@@ -5,6 +5,10 @@ on:
   # 在 CI、迁移和配置对账全部完成前，只允许手动部署。
   workflow_dispatch:
     inputs:
+      technology_stack_legacy_cleanup:
+        description: 'Phase C 显式维护窗口操作：删除技术栈 legacy 伪数据（需独立授权，默认关闭）'
+        type: boolean
+        default: false
       apply_database_migration:
         description: '备份数据库并显式执行已审查的 Drizzle 迁移'
         required: true
@@ -199,3 +203,71 @@ jobs:
             docker image prune -f
 
             echo "Deployment completed successfully!"
+
+  technology-stack-cleanup:
+    if: github.event.inputs.technology_stack_legacy_cleanup == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    steps:
+      - name: Refuse concurrent migration and cleanup
+        run: |
+          if [ "${{ github.event.inputs.apply_database_migration }}" = "true" ]; then
+            echo "technology_stack_legacy_cleanup 与 apply_database_migration 互斥"
+            exit 1
+          fi
+
+      - name: Preflight validation (read-only)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /home/devscope/DevScope
+            grep -q '^TECHNOLOGY_STACK_STORAGE_MODE=new_only$' .env || { echo "mode 不是 new_only，拒绝 cleanup"; exit 1; }
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api \
+              node packages/db/dist/cleanup-cli.mjs --validate
+
+      - name: Backup before cleanup
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            cd /home/devscope/DevScope
+            backup_dir="/home/devscope/backups/devscope"
+            backup_file="$backup_dir/pre-cleanup-$(date +%Y%m%d-%H%M%S).dump"
+            install -d -m 700 "$backup_dir"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+              pg_dump -U postgres -d devscope --format=custom > "$backup_file"
+            chmod 600 "$backup_file"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+              pg_restore --list < "$backup_file" | grep -c "TABLE DATA" && echo "backup readable"
+
+      - name: Execute cleanup (maintenance window)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -e
+            cd /home/devscope/DevScope
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop api worker
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api \
+              node packages/db/dist/cleanup-cli.mjs --execute
+            sed -i 's/^TECHNOLOGY_STACK_STORAGE_MODE=new_only$/TECHNOLOGY_STACK_STORAGE_MODE=legacy_cleaned/' .env
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api worker
+            sleep 12
+            curl -sf -m 10 http://127.0.0.1:3100/trpc/health >/dev/null || { docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 api; exit 1; }
+            curl -s -o /dev/null -w "unauth:%{http_code}\n" http://127.0.0.1:80/
+            echo "cleanup 完成；生产摘要与 MCP 核对按 runbook 维护窗口清单执行"

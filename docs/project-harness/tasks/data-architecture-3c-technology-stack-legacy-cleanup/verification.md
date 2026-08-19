@@ -39,3 +39,13 @@
 - 测试：phase-c-newonly.integration 3 例（P0 行数不变/单向包含 pass+missing fail/digest 豁免）+ marker 矩阵 3 新例（13/13）+ 既有全量回归——unit 全绿、integration **54/54**、全仓四门禁通过。
 
 待第二批：legacy 物理删除面（getRepoGraphDataLegacy/旧 compare/backfill 机制）、cleanup 独立脚本+receipt 守卫 journal、deploy workflow opt-in job、rollback rehearsal、implementation review。
+
+## 实现第二批：cleanup 操作与 workflow（2026-08-19）
+
+- **cleanup 独立脚本**（technology-stack-cleanup.ts）：只读前置校验（mode=new_only、active job 排空、基线单向包含、FK 断言清单——chunks/hn/releases/**group_members（cascade 显式拦截）**/rts 对伪仓库引用为 0、legacy 栈边 (gid, slug) 一一映射核验）→ 单事务删除（legacy 栈边→伪 watched→伪 repositories 顺序服从外键，写 cleanup receipt 表）→ 事务后 receipt 守卫 DROP COLUMN is_reference。任何 gate 失败在破坏性操作前退出。
+- **受控 CLI**（cleanup-cli.ts，构建为 dist/cleanup-cli.mjs）：`--validate`（preflight 只读）/`--execute`（维护窗口），mode 从环境读取并要求 new_only；由 deploy workflow 显式调用，不经 journal。
+- **deploy workflow opt-in job**（technology-stack-cleanup）：`technology_stack_legacy_cleanup` 输入默认 false；与 `apply_database_migration` 互斥首步 fail；`concurrency: production`；四步（preflight 校验→pg_dump 备份可读验证→停 api/worker 执行+切 mode legacy_cleaned+重启→health/401 验证）；全部 command_timeout 有界。
+- **集成 6 例**（phase-c-cleanup.integration）：gate×4（mode/active job/group_members cascade/基线 missing）+ 执行语义（伪数据清零、真实数据保持、列移除、receipt 落盘）+ 回滚 rehearsal（语义可恢复性：列+伪形态+边重建后真实数据未动）。
+- 全套 integration **60/60**、全仓四门禁通过。
+
+待第三批（生产执行前完成）：schema 列删除+journal receipt 守卫 DO block+大删除面（getRepoGraphDataLegacy/旧 compare/backfill 机制/共享 reference kind）、implementation review、PR/CI、用户维护窗口授权。
