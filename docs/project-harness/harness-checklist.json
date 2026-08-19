@@ -131,11 +131,11 @@
     {
       "id": "data-architecture-3-technology-stack-entities",
       "title": "技术栈实体分离 Phase A 生产收口",
-      "status": "todo",
+      "status": "done",
       "priority": "p1",
       "owner": null,
       "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-correctness-2-atomic-replacement",
         "data-correctness-4-deps-cache-recovery"
@@ -143,35 +143,35 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "expand/backfill/dual-write/shadow compatibility 的生产证据经独立 closeout 复核；new/legacy 投影保持零差异，系统仍处于 legacy_shadow_dual_write，未提前进入 Phase B。",
-      "verification": "",
+      "verification": "Phase A 生产收口：双写/shadow 零差异独立重算确认、backfill #28 terminal、legacy 数据在位、服务健康；独立 closeout review APPROVE；Phase B 未启动",
       "handoff": "先完成 data-correctness-4-deps-cache-recovery，再做 Phase A 独立 production closeout；批准后进入正式 PostgreSQL 门禁，不得直接切 Phase B。",
       "workflow": {
-        "status": "handoff_requested",
-        "updated_at": "2026-08-18",
-        "branch": "codex/data-architecture-3-technology-stack-entities",
-        "handoff_from": "codex",
-        "handoff_target": "next-agent"
+        "status": "closed",
+        "updated_at": "2026-08-19",
+        "branch": "main",
+        "handoff_from": "codex"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "release_id_migration_reviewer",
-        "phase": "review_approved",
-        "updated_at": "2026-08-18",
-        "summary": "Production backfill fail-closed exposed legacy microsecond updated_at versus JavaScript millisecond token precision; minimal date_trunc(milliseconds) fix preserves stable-ID/SBOM stale guards, PostgreSQL 14/14 and full gates pass, production retry remains pending."
+        "reviewer": "reviewer-phase-a",
+        "phase": "closeout_requested",
+        "updated_at": "2026-08-19",
+        "summary": "closeout 复核全部一致：投影零差异（保 multiplicity 语义独立重算）、Hard Stop 数据在位、mode 未切换、无 active/lease 问题；APPROVE（3 条 P3 记录性）"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md",
-        "branch": "codex/data-architecture-3-technology-stack-entities",
+        "branch": "main",
         "review_packet": "docs/project-harness/current/review-packet.md",
-        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
-        "session": "codex-20260818-technology-stack-entities",
-        "acquired_at": "2026-08-18T15:35:10Z",
-        "expires_at": "2026-08-18T16:05:10Z",
-        "ttl_minutes": 30,
-        "released_at": "2026-08-18T15:37:47Z"
+        "session": "codex-20260819-phase-a-closeout",
+        "acquired_at": "2026-08-19T05:40:45Z",
+        "expires_at": "2026-08-19T07:40:45Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-08-19T05:51:10Z"
       }
     },
     {

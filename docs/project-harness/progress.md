@@ -80,7 +80,8 @@
 ## 当前 handoff
 
 - 最近完成 item：`data-correctness-4-deps-cache-recovery`（**已 done**：PR #39 + 生产迁移 0009 + 冷/暖 rebuild + production closeout APPROVE，全链路闭环）；
-- 串行链下一项：`data-architecture-3-technology-stack-entities` 的 Phase A production closeout（依赖已解除）；
+- `data-architecture-3-technology-stack-entities` Phase A **已 done**（2026-08-19 closeout APPROVE：投影零差异保 multiplicity 语义独立重算、backfill/graph receipts 在位、legacy 数据未被触碰、mode 未切换）；
+- 串行链下一项：`data-quality-5-postgres-integration-gates`（真实 PostgreSQL 持续门禁）；Phase B/C 仍以其为前置；
 - PR #39 已通过 CI 并合并到 main（merge commit 见 Git 历史）；
 - Canonical plan：`tasks/data-correctness-4-deps-cache-recovery/plan.md`；两轮 plan review approved；
 - Implementation review 第一轮 changes_requested（P1 canonicalization 降级证据擦除等 10 条）已全部修复，continuity 复核 approved（evt-20260819T025237Z-c836a215）；

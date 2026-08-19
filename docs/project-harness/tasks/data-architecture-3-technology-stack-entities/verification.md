@@ -97,3 +97,19 @@ graph job #9 从 `2026-08-18T14:20:25.255Z` 运行到 `15:31:09.406Z`，attempt 
 graph job #9 共耗时约 70 分 44 秒。生产 40 个真实仓库当时包含 19007 个唯一 SBOM package/version，首次运行补齐约 6000 个 deps.dev cache miss；3053 个外部 GitHub target 达到 canonicalization 门槛并被串行请求。`resolveViaDepsDev` 和 `GitHubClient.getCanonicalFullName` 缺少完整 timeout/budget 边界，canonical freshness 未持久化，graph status 也没有 stage progress。
 
 该问题没有破坏本次 shadow correctness，但属于进入 Phase B 前必须处理的 P1。唯一执行计划为 [依赖解析缓存恢复与外呼预算计划](../data-correctness-4-deps-cache-recovery/plan.md)；不得在本文件维护第二套方案。
+
+## Phase A closeout 复核（2026-08-19）
+
+前置 Hard Stop `data-correctness-4-deps-cache-recovery` 已于同日完成生产 closeout（PR #39 + 迁移 0009 + 冷/暖 rebuild），本项复核在其之后读取生产即时状态：
+
+- 生产 HEAD `916bc66`（含 Phase A 代码 + deps-cache 修复）；迁移账本 10 条（0000-0009）；
+- 宿主 `.env` 未设 `TECHNOLOGY_STACK_STORAGE_MODE`，compose 以 `${VAR:-legacy_shadow_dual_write}` fallback 显式注入容器，生效模式 `legacy_shadow_dual_write` 未被切换；
+- backfill receipt：job #28 `succeeded`（terminal，未复用/重置），job #27 保持 `dead`；
+- graph receipt：job #9 `succeeded`（attempt 1，dependencyEdges 93 / similarityEdges 40，含 stages/budget/counters 结果结构）；
+- **new/legacy 投影零差异（SQL 独立复核）**：按 (github_repository_id, slug) 聚合、packages 排序签名双向 EXCEPT 均为 0 diff（79 行对 79 行；379/379 packages evidence；25/25 distinct sources）。注：直接文本比较存在 39 行数组顺序差异（写入端聚合顺序不同），sorted 语义（与 shadow compare 实现一致）下为零差异；
+- 数据不变量：真实仓库 40、reference 13、watched 53、dependency 93、similarity 40、technology_stacks 13、chunks 34599；
+- 无 active job、无过期 lease；服务健康与访问控制证据沿用同日同 revision 的验证（API/Web 200、公网 401、Keychain 认证 health ok、认证列表 40 个真实仓库零伪行）。
+
+## Phase A closeout verdict（2026-08-19）
+
+独立 closeout reviewer（fresh context，全程只读）重算了全部证据：PR/deploy SHA 祖先关系、迁移账本、mode fallback 链、backfill/graph receipts、投影零差异（采用保留 multiplicity 的排序签名，双向 EXCEPT 为 0）、Hard Stop 数据在位、无 active/过期 lease、服务健康。Verdict：`APPROVE`，无 P0-P2；3 条 P3 为记录措辞与跨文件时间线说明（P3-1 措辞已随批修正；graph job #9 的时间戳差异源于前置 item 的授权重跑，幂等全量重建后零差异已再次确认）。本 verdict 不授权 Phase B；`data-quality-5-postgres-integration-gates` 仍为其前置。
