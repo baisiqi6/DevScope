@@ -4,8 +4,7 @@ CREATE TABLE IF NOT EXISTS "technology_stack_baseline_receipts" (
 	"github_repository_id" text NOT NULL,
 	"slug" text NOT NULL,
 	"packages_digest" text NOT NULL,
-	"frozen_at" timestamp NOT NULL,
-	CONSTRAINT "technology_stack_baseline_receipts_user_repo_stack_unique" UNIQUE ("user_id","github_repository_id","slug")
+	"frozen_at" timestamp NOT NULL
 );--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "technology_stack_cleanup_receipts" (
 	"id" serial PRIMARY KEY NOT NULL,

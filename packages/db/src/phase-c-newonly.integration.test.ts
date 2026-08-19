@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, sql } from "drizzle-orm";
 import pg from "pg";
@@ -145,5 +145,33 @@ describeIntegration("phase C new_only frozen baseline", () => {
     await expect(compareBaselineToCurrent(db, userId)).resolves.toEqual(
       expect.objectContaining({ equal: true }),
     );
+  });
+
+  it("端到端：基线 missing 时 rebuild 在提交后抛错，冻结形态不被半清理", async () => {
+    const { refRow } = await seedWithLegacyRows();
+    await snapshotLegacyTechnologyStackBaseline(db, userId);
+    // 模拟新表事实在窗口内无法由本轮 detection 恢复（SBOM 也清空）→ 单向包含 missing
+    await db.execute(sql`delete from repository_technology_stacks`);
+    await db.execute(sql`update repositories set sbom_packages = null`);
+
+    await expect(recomputeDependencyEdges(db, userId, {
+      resolveMapping: vi.fn().mockResolvedValue({
+        status: "not_found", sourceRepo: null, retryAfterSeconds: null, errorSummary: null,
+      }),
+      settings: { pacingMs: 0 },
+    })).rejects.toThrow(/单向包含失败/);
+
+    // 抛错发生在提交之后，但 legacy 冻结形态（栈边/伪行/伪 watch）全程不被 rebuild 触碰
+    const legacyEdges = await db.select().from(schema.repoRelationships).where(and(
+      eq(schema.repoRelationships.userId, userId),
+      eq(schema.repoRelationships.edgeType, "dependency"),
+      sql`${schema.repoRelationships.evidence}->>'resolvedBy' = 'tech-stack-catalog'`,
+    ));
+    expect(legacyEdges).toHaveLength(1);
+    const refStill = await db.select().from(schema.repositories).where(eq(schema.repositories.id, refRow.id));
+    expect(refStill).toHaveLength(1);
+    const fakeWatch = await db.select().from(schema.userWatchedRepositories).where(
+      eq(schema.userWatchedRepositories.repoId, refRow.id));
+    expect(fakeWatch).toHaveLength(1);
   });
 });

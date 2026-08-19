@@ -18,6 +18,12 @@ import {
 const connectionString = process.env.TEST_DATABASE_URL;
 const describeIntegration = connectionString ? describe : describe.skip;
 const PREFIX = "phase-c-cu/";
+// 模拟 cleanup revision 的支持集：cleanup 后服务以 legacy_cleaned 重启
+const CLEANUP_REVISION_INPUT = {
+  mode: "new_only",
+  userId: 0,
+  supportedModes: ["new_only", "legacy_cleaned"] as const,
+};
 
 function snapshot(id: string, fullName: string): RepositoryCollectionSnapshot {
   return {
@@ -96,9 +102,18 @@ describeIntegration("phase C cleanup operation", () => {
 
   it("gate：mode 不是 new_only 时拒绝", async () => {
     await seedCleanable();
-    const v = await validateTechnologyStackCleanup(db, { mode: "new_read_dual_write", userId });
+    const v = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, mode: "new_read_dual_write" });
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toContain("new_only");
+  });
+
+  it("gate：revision 支持集不含 legacy_cleaned 时拒绝（new_only revision 死锁防护）", async () => {
+    await seedCleanable();
+    // 本代码 revision（new_only-only）的编译期默认支持集——cleanup 会把服务切到
+    // legacy_cleaned，执行 revision 必须先支持它（implementation review P1-1）
+    const v = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toContain("legacy_cleaned");
   });
 
   it("gate：active job 未排空时拒绝", async () => {
@@ -107,7 +122,7 @@ describeIntegration("phase C cleanup operation", () => {
       userId, type: "graph.rebuild", idempotencyKey: "k", payload: {}, status: "running",
       leaseOwner: "w", leaseExpiresAt: new Date(Date.now() + 60_000),
     });
-    const v = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
+    const v = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toContain("active job");
   });
@@ -115,10 +130,10 @@ describeIntegration("phase C cleanup operation", () => {
   it("gate：group_members 引用伪仓库时显式拒绝（cascade 拦截）", async () => {
     const { refRow } = await seedCleanable();
     const [group] = await db.insert(schema.repositoryGroups).values({
-      userId, name: "g", color: "#fff", sortOrder: 0,
+      userId, name: "g", color: "#fff", orderIndex: 0,
     }).returning();
-    await db.insert(schema.groupMembers).values({ groupId: group.id, repoId: refRow.id, sortOrder: 0 });
-    const v = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
+    await db.insert(schema.groupMembers).values({ groupId: group.id, repoId: refRow.id, orderIndex: 0 });
+    const v = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toContain("group_members");
     await db.delete(schema.groupMembers);
@@ -128,14 +143,14 @@ describeIntegration("phase C cleanup operation", () => {
     const { committed } = await seedCleanable();
     await db.delete(schema.repositoryTechnologyStacks).where(
       eq(schema.repositoryTechnologyStacks.repositoryId, committed.repository.id));
-    const v = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
+    const v = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toMatch(/一一映射|单向包含/);
   });
 
   it("执行：完整 cleanup 后伪数据清零、真实数据保持、列被移除、receipt 落盘", async () => {
     const { committed } = await seedCleanable();
-    const result = await executeTechnologyStackCleanup(db, { mode: "new_only", userId });
+    const result = await executeTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
     expect(result.validation.ok).toBe(true);
     expect(result.validation.counts.pseudoRepositories).toBe(1);
     expect(result.validation.counts.pseudoWatched).toBe(1);
@@ -175,11 +190,34 @@ describeIntegration("phase C cleanup operation", () => {
     expect(graph.nodes.some((n) => n.kind === "repo")).toBe(true);
   });
 
+  it("补删完成路径：删除事务已提交但列仍在时，重跑只补列删除且不写第二条 receipt", async () => {
+    await seedCleanable();
+    await executeTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
+    // 模拟 DROP COLUMN 前中断：手工恢复列（数据与 receipt 已提交）
+    await db.execute(sql`
+      alter table repositories add column if not exists is_reference boolean default false not null
+    `);
+
+    const again = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
+    expect(again.ok).toBe(true);
+    expect(again.alreadyCleaned).toBe(true);
+
+    const result = await executeTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
+    expect(result.droppedColumn).toBe(true);
+    const receipts = await db.execute<{ n: string }>(sql`
+      select count(*)::text as n from technology_stack_cleanup_receipts`);
+    expect(Number(receipts.rows![0].n)).toBe(1);
+    const col = await db.execute<{ n: string }>(sql`
+      select count(*)::text as n from information_schema.columns
+      where table_name='repositories' and column_name='is_reference'`);
+    expect(Number(col.rows![0].n)).toBe(0);
+  });
+
   it("回滚 rehearsal：备份恢复语义（重建伪形态 + 列）后业务路径可用", async () => {
     const { committed, refRow } = await seedCleanable();
     const beforeEdges = await db.select().from(schema.repoRelationships);
 
-    await executeTechnologyStackCleanup(db, { mode: "new_only", userId });
+    await executeTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
 
     // 模拟“恢复 cleanup 前备份”：还原列 + 伪形态（真实备份演练在 runbook 维护窗口执行，
     // 这里验证语义可恢复性——同 schema/数据形态可重建）
@@ -188,6 +226,9 @@ describeIntegration("phase C cleanup operation", () => {
       fullName: "tech-stack/react", name: "React", owner: "tech-stack",
       url: "https://react.dev", embeddingStatus: "completed",
     }).onConflictDoNothing().returning({ id: schema.repositories.id });
+    await db.insert(schema.userWatchedRepositories).values({
+      userId, repoId: restored.id, repoFullName: "tech-stack/react", enableDailyReport: false,
+    }).onConflictDoNothing();
     await db.insert(schema.repoRelationships).values(
       beforeEdges.map((e) => ({
         userId: e.userId, sourceRepoId: e.sourceRepoId,
@@ -196,10 +237,12 @@ describeIntegration("phase C cleanup operation", () => {
       })),
     ).onConflictDoNothing();
 
-    const real = await db.execute<{ n: string }>(sql`
-      select count(*)::text as n from repositories where id = ${committed.repository.id}
-        and github_repository_id is not null`);
-    expect(Number(real.rows![0].n)).toBe(1);
-    void refRow;
+    // 恢复后的业务路径：新表读投影照常工作——伪形态回来了但正向条件不读它，
+    // reference kind 不重新出现，真实仓库与 stack 节点完整
+    const graph = await getRepoGraphData(db, userId);
+    expect(graph.nodes.some((n) => n.fullName === committed.repository.fullName)).toBe(true);
+    expect(graph.nodes.some((n) => n.id === "stack:react")).toBe(true);
+    expect(graph.nodes.every((n) => n.kind !== "reference")).toBe(true);
+    expect(graph.edges.filter((e) => e.target === "stack:react")).toHaveLength(1);
   });
 });

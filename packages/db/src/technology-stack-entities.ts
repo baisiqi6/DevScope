@@ -31,6 +31,15 @@ export function assertTechnologyStackStorageModeSupported(
   }
 }
 
+/**
+ * 本代码 revision 声明支持的存储模式（API/Worker 启动断言与 cleanup 前置
+ * gate 的单一来源）。new_only revision：legacy writer/读路径已删，不能声称
+ * dual-write；legacy_cleaned 随 cleanup revision 加入。
+ */
+export const TECHNOLOGY_STACK_SUPPORTED_MODES: readonly TechnologyStackStorageMode[] = [
+  "new_only",
+];
+
 const technologyStackPackageSchema = z.object({
   system: z.string().trim().min(1),
   name: z.string().trim().min(1),
@@ -186,11 +195,14 @@ export interface TechnologyStackProjectionRow {
 }
 
 /**
- * 进程启动时的存储模式一致性检查（Phase B 分层：启动 fail closed）：
- * - 任一双写模式下，新表必须存在（缺表 = 迁移未应用）；
+ * 进程启动时的存储模式一致性检查（分层 fail closed）：
+ * - cleaned marker：is_reference 列不存在 = 已 cleanup（唯一合法 mode 是 legacy_cleaned）；
+ * - 列存在 + legacy_cleaned：仅当伪仓库计数为 0 时放行（cleanup 删除事务已提交
+ *   但 DROP COLUMN 前崩溃的补删窗口，以及从未存在 legacy 表示的 fresh 重放库——
+ *   implementation review P1-2 拍板：伪数据为 0 时不存在需要守护的冻结形态）；
+ * - 任一双写/读模式下，新表必须存在（缺表 = 迁移未应用）；
  * - legacy 影子模式下 legacy 数据已被清（cleaned）时拒绝启动（回退窗口不存在）；
  * - new_read 模式下新表为空但 legacy 仍有技术栈 reference 时拒绝启动（未回填）。
- * shadow 的逐 source drift 检查仍在 rebuild job 内（任务失败语义）。
  */
 export async function assertStorageModeStartupConsistency(
   db: Db,
@@ -200,7 +212,9 @@ export async function assertStorageModeStartupConsistency(
   const marker = await db.execute<{ col_exists: boolean }>(sql`
     select exists(
       select 1 from information_schema.columns
-      where table_name = 'repositories' and column_name = 'is_reference'
+      where table_schema = 'public'
+        and table_name = 'repositories'
+        and column_name = 'is_reference'
     ) as col_exists
   `);
   const columnExists = !!marker.rows?.[0]?.col_exists;
@@ -209,12 +223,6 @@ export async function assertStorageModeStartupConsistency(
     throw new Error(
       `is_reference 列已不存在（已 cleanup）但 mode=${mode}：列不存在时唯一合法 mode 是 legacy_cleaned`,
     );
-  }
-  if (mode === "legacy_cleaned") {
-    throw new Error("mode=legacy_cleaned 但 is_reference 列仍存在（未执行 cleanup）");
-  }
-  if (mode !== "legacy_shadow_dual_write" && mode !== "new_read_dual_write" && mode !== "new_only") {
-    return;
   }
   const tables = await db.execute<{ stacks_exists: boolean; relations_exists: boolean }>(sql`
     select to_regclass('public.technology_stacks') is not null as stacks_exists,
@@ -235,6 +243,14 @@ export async function assertStorageModeStartupConsistency(
   const c = counts.rows?.[0];
   const legacyCount = Number(c?.legacy_stack_refs ?? 0);
   const newCount = Number(c?.new_relations ?? 0);
+  if (mode === "legacy_cleaned") {
+    if (legacyCount > 0) {
+      throw new Error(
+        "mode=legacy_cleaned 但 is_reference 列与 legacy 伪数据仍存在（未执行 cleanup），拒绝启动",
+      );
+    }
+    return;
+  }
   if (mode === "legacy_shadow_dual_write" && legacyCount === 0 && newCount > 0) {
     throw new Error(
       "数据库技术栈 legacy 表示已被清空但 mode 仍为 legacy_shadow_dual_write（cleaned+legacy 组合），拒绝启动",

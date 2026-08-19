@@ -17,15 +17,17 @@
 
 **cleanup 的执行载体与 journal 调和**：破坏性操作（DELETE + `DROP COLUMN`）由 opt-in workflow 调用的独立脚本执行（单事务：写 receipt + 执行删除）。schema 中的 `is_reference` 列定义随 new_only revision 移除，`db:generate` 产出的 journal migration 中的 `DROP COLUMN` 语句**改写为 receipt 守卫的 `DO` block**——存在 cleanup receipt 行（且 `to_regclass` 守卫 receipt 表存在，兼容全新环境重放）才执行 `DROP COLUMN`，否则 no-op 跳过。receipt 表本身声明进 schema（CREATE TABLE 非破坏性，journal 化无妨）。由此：常规 migrate 结构上跳过破坏性部分、fresh DB 重放安全、drizzle snapshot 与 schema 保持一致。**互斥**：cleanup 输入与 `apply_database_migration=true` 同时为 true 时 workflow 首步即 fail。
 
-**cleaned marker = `is_reference` 列存在性**（`information_schema.columns` 检查，与 `to_regclass` 同风格）：
+**cleaned marker = `is_reference` 列存在性**（`information_schema.columns` 检查，带 `table_schema='public'` 过滤，与 `to_regclass` 同风格）：
 
-- 列存在：`legacy_shadow_dual_write | new_read_dual_write | new_only` 放行（保留现有子检查），`legacy_cleaned` → 启动 fail；
-- 列不存在：仅 `legacy_cleaned` 放行，其余任何 mode（含缺省回落值）→ 启动 fail。
+- 列存在：`legacy_shadow_dual_write | new_read_dual_write | new_only` 放行（保留现有子检查）；`legacy_cleaned` 仅当伪仓库计数为 0 时放行——覆盖 cleanup 删除事务已提交但 DROP COLUMN 前中断的补删窗口，以及从未存在 legacy 表示的 fresh 重放库（implementation review P1-2 拍板：伪数据为 0 时不存在需要守护的冻结形态）；
+- 列不存在：仅 `legacy_cleaned` 放行，其余任何 mode（含缺省回落值）→ 启动 fail；
+- journal 0010 在 fresh 重放库上保留该列（receipt 守卫 no-op）属预期行为，由 migration matrix 集成用例断言钉住。
 
-**分 revision supported set**（与启动矩阵共同生效）：
+**分 revision supported set**（与启动矩阵共同生效；单一来源为 `TECHNOLOGY_STACK_SUPPORTED_MODES`）：
 
 - new_only revision：仅支持 `new_only`（legacy writer/旧 compare 已删，不能声称 dual-write）；部署与 `.env` mode 翻转为 `new_only` **同批**（compose 重启窗口内完成）；
 - cleanup revision：支持 `{new_only, legacy_cleaned}`；
+- **revision gate（implementation review P1-1）**：`cleanup-cli --validate` 校验执行 revision 的支持集含 `legacy_cleaned`，否则在破坏性步骤前拒绝——防止在 new_only revision 上触发 cleanup 后不存在任何可启动 mode；
 - 终态 revision：仅 `legacy_cleaned`，`.env` 固定该值；`getRepoGraphData` 中 new_only/legacy_cleaned 的显式 throw 替换为新表读路径（读语义与 new_read 相同）。
 
 **保留代码的谓词改写清单**（这些站点显式改写，不是"自动满足"）：收窄删除判据只用自包含的 `evidence->>'resolvedBy' = 'tech-stack-catalog'`（不读 is_reference；legacy 数据中指向 reference 行的边必然如此标记）；启动检查 counts SQL 的 `is_reference = true` 改写为 `github_repository_id IS NULL AND full_name LIKE 'tech-stack/%'`；`repo-graph.ts` 内部 6-7 处 `isReference` 读写站点（L184/222/365-375/513/699/1165 一带）换 `isRealGitHubRepository` 或删除。

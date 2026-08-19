@@ -22,6 +22,12 @@ env:
   IMAGE_NAME_WORKER: baisiqi6/devscope/worker
   IMAGE_NAME_WEB: baisiqi6/devscope/web
 
+# Phase C（implementation review P2-2）：deploy 与 cleanup 共享 production 并发组，
+# 普通部署 run 与 cleanup 维护窗口 run 互相排队，不并发触碰生产
+concurrency:
+  group: production
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

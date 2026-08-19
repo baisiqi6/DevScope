@@ -9,7 +9,6 @@ import {
   enqueueJob,
   renewJobLease,
   recoverExpiredJobs,
-  TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
   commitRepositoryCollectionSnapshot,
   type RepositoryCollectionSnapshot,
 } from "./index";

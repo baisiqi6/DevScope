@@ -1,6 +1,10 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "./index";
 import { compareBaselineToCurrent } from "./baseline-compare";
+import {
+  TECHNOLOGY_STACK_SUPPORTED_MODES,
+  type TechnologyStackStorageMode,
+} from "./technology-stack-entities";
 
 // ============================================================================
 // Phase C：技术栈 legacy 数据清理（独立 opt-in 脚本，非 journal 迁移）
@@ -16,12 +20,21 @@ export interface CleanupValidationInput {
   mode: string;
   userId: number;
   /** 单用户平台：排空检查覆盖全部 active job */
+  /**
+   * 调用方 revision 声明支持的存储模式（默认取本 revision 的编译期常量）。
+   * cleanup 把服务切到 legacy_cleaned，执行 revision 必须支持它，
+   * 否则 cleanup 后不存在可启动 mode（implementation review P1-1 gate）。
+   * 集成测试显式传入模拟 cleanup revision 的 supported set。
+   */
+  supportedModes?: readonly TechnologyStackStorageMode[];
 }
 
 export interface CleanupValidation {
   ok: boolean;
   reasons: string[];
   pseudoRepositoryIds: number[];
+  /** 数据删除与 receipt 已提交、仅剩 DROP COLUMN 的补删完成路径 */
+  alreadyCleaned: boolean;
   counts: {
     legacyStackEdges: number;
     pseudoWatched: number;
@@ -34,7 +47,7 @@ export interface CleanupValidation {
 
 const PSEUDO_PREDICATE = sql`github_repository_id is null and full_name like 'tech-stack/%'`;
 
-/** 只读前置校验：mode、任务排空、FK 断言清单、基线单向包含、删除集合计算。 */
+/** 只读前置校验：mode、revision 支持集、任务排空、FK 断言清单、基线单向包含、删除集合计算。 */
 export async function validateTechnologyStackCleanup(
   db: Db,
   input: CleanupValidationInput,
@@ -43,6 +56,13 @@ export async function validateTechnologyStackCleanup(
 
   if (input.mode !== "new_only") {
     reasons.push(`mode=${input.mode}：cleanup 只允许在 new_only 下执行`);
+  }
+
+  const supportedModes = input.supportedModes ?? TECHNOLOGY_STACK_SUPPORTED_MODES;
+  if (!supportedModes.includes("legacy_cleaned")) {
+    reasons.push(
+      `当前 revision 支持集 [${supportedModes.join(", ")}] 不含 legacy_cleaned：cleanup 后服务无法启动，需先部署 cleanup revision`,
+    );
   }
 
   const activeJobs = await db.execute<{ n: string }>(sql`
@@ -64,8 +84,16 @@ export async function validateTechnologyStackCleanup(
     select id from repositories where ${PSEUDO_PREDICATE}
   `);
   const pseudoIds = (pseudo.rows ?? []).map((r) => r.id);
-  if (pseudoIds.length === 0) {
-    reasons.push("未发现伪仓库集合（可能已清理过）");
+
+  // 补删完成路径：删除事务已提交（receipt 落盘、伪数据清零）但 DROP COLUMN
+  // 前中断——允许重跑只补列删除，不写第二条 receipt（implementation review P3-3）
+  const priorReceipt = await db.execute<{ n: string }>(sql`
+    select count(*)::text as n from technology_stack_cleanup_receipts
+  `).catch(() => null);
+  const alreadyCleaned = pseudoIds.length === 0
+    && Number(priorReceipt?.rows?.[0]?.n ?? 0) > 0;
+  if (pseudoIds.length === 0 && !alreadyCleaned) {
+    reasons.push("未发现伪仓库集合且无 cleanup receipt（无可清理形态）");
   }
 
   // FK 断言清单：对伪仓库的引用必须显式为 0（不依赖 FK 碰巧拒绝或 cascade）
@@ -144,6 +172,7 @@ export async function validateTechnologyStackCleanup(
     ok: reasons.length === 0,
     reasons,
     pseudoRepositoryIds: pseudoIds,
+    alreadyCleaned,
     counts: {
       legacyStackEdges: Number(c?.legacy_edges ?? 0),
       pseudoWatched: Number(c?.pseudo_watched ?? 0),
@@ -175,45 +204,59 @@ export async function executeTechnologyStackCleanup(
   }
 
   await db.transaction(async (tx) => {
-    // 顺序服从外键：边 → watched → repositories
-    await tx.execute(sql`
-      delete from repo_relationships e
-      using repositories t
-      where e.target_repo_id = t.id
-        and e.edge_type = 'dependency'
-        and e.evidence->>'resolvedBy' = 'tech-stack-catalog'
-        and ${PSEUDO_PREDICATE}
-    `);
-    await tx.execute(sql`
-      delete from user_watched_repositories w
-      using repositories r
-      where w.repo_id = r.id and ${PSEUDO_PREDICATE}
-    `);
-    await tx.execute(sql`
-      delete from repositories where ${PSEUDO_PREDICATE}
-    `);
-    // receipt：journal 中的 DO block 依赖此表此行执行 DROP COLUMN
-    await tx.execute(sql`
-      create table if not exists technology_stack_cleanup_receipts (
-        id serial primary key,
-        executed_at timestamp not null,
-        legacy_stack_edges integer not null,
-        pseudo_watched integer not null,
-        pseudo_repositories integer not null
-      )
-    `);
-    await tx.execute(sql`
-      insert into technology_stack_cleanup_receipts
-        (executed_at, legacy_stack_edges, pseudo_watched, pseudo_repositories)
-      values (now(), ${validation.counts.legacyStackEdges},
-              ${validation.counts.pseudoWatched}, ${validation.counts.pseudoRepositories})
-    `);
+    if (validation.alreadyCleaned) {
+      // 补删路径：数据删除与 receipt 已在先前事务提交，此处不再触碰数据
+    } else {
+      // 顺序服从外键：边 → watched → repositories
+      await tx.execute(sql`
+        delete from repo_relationships e
+        using repositories t
+        where e.target_repo_id = t.id
+          and e.edge_type = 'dependency'
+          and e.evidence->>'resolvedBy' = 'tech-stack-catalog'
+          and ${PSEUDO_PREDICATE}
+      `);
+      await tx.execute(sql`
+        delete from user_watched_repositories w
+        using repositories r
+        where w.repo_id = r.id and ${PSEUDO_PREDICATE}
+      `);
+      await tx.execute(sql`
+        delete from repositories where ${PSEUDO_PREDICATE}
+      `);
+      // receipt：journal 中的 DO block 依赖此表此行执行 DROP COLUMN
+      await tx.execute(sql`
+        create table if not exists technology_stack_cleanup_receipts (
+          id serial primary key,
+          executed_at timestamp not null,
+          legacy_stack_edges integer not null,
+          pseudo_watched integer not null,
+          pseudo_repositories integer not null
+        )
+      `);
+      await tx.execute(sql`
+        insert into technology_stack_cleanup_receipts
+          (executed_at, legacy_stack_edges, pseudo_watched, pseudo_repositories)
+        values (now(), ${validation.counts.legacyStackEdges},
+                ${validation.counts.pseudoWatched}, ${validation.counts.pseudoRepositories})
+      `);
+    }
   });
 
-  // DROP COLUMN 在事务后执行（DDL 需独立锁窗口；receipt 已持久化）
+  // DROP COLUMN 在事务后执行（DDL 需独立锁窗口；receipt 已持久化）；
+  // 返回值来自 information_schema 实测而非假定（implementation review P3-3）
   await db.execute(sql`
     alter table repositories drop column if exists is_reference
   `);
+  const dropped = await db.execute<{ col_exists: boolean }>(sql`
+    select exists(
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'repositories'
+        and column_name = 'is_reference'
+    ) as col_exists
+  `);
+  const droppedColumn = !dropped.rows?.[0]?.col_exists;
 
-  return { validation, droppedColumn: true };
+  return { validation, droppedColumn };
 }

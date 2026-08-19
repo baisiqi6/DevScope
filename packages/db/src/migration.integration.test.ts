@@ -236,6 +236,19 @@ describeIntegration("migration matrix on PostgreSQL", () => {
 
       // 7) journal 与本地文件一致
       expect(await verifyMigrationJournal(matrixUrl!)).toEqual([]);
+
+      // 8) 0010 fresh 重放语义（implementation review P1-2 书面拍板）：
+      //    无 cleanup receipt 时 DROP COLUMN 守卫 no-op——重放库保留 is_reference 列，
+      //    但 receipt 表已就位；真实删列只由 cleanup 脚本执行
+      const col = await client.query<{ n: number }>(`
+        select count(*)::int as n from information_schema.columns
+        where table_schema = 'public' and table_name = 'repositories' and column_name = 'is_reference'
+      `);
+      expect(col.rows[0].n).toBe(1);
+      const receipts = await client.query<{ n: number }>(
+        "select count(*)::int as n from technology_stack_cleanup_receipts",
+      );
+      expect(receipts.rows[0].n).toBe(0);
     } finally {
       await client.end();
     }

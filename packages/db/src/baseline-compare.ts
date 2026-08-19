@@ -47,8 +47,7 @@ export async function snapshotLegacyTechnologyStackBaseline(
       slug text not null,
       packages_digest text not null,
       frozen_at timestamp not null,
-      constraint technology_stack_baseline_receipts_user_repo_stack_unique
-        unique (user_id, github_repository_id, slug)
+      unique (user_id, github_repository_id, slug)
     )
   `);
   // 清除该用户旧快照（裁定更新路径也走这里）

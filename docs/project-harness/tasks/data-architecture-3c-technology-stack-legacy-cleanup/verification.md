@@ -61,3 +61,16 @@
 - 残余 `is_reference` 站点扫描：仅 marker 矩阵 information_schema 查询、cleanup 脚本自身 DROP、0010 守卫块、cleanup revision 待删的 contract 字段——全部为 plan 保留项。
 
 待第四批（cleanup revision）：supported `{new_only, legacy_cleaned}`、shared reference kind/`isReference` 字段与 Web 双 kind 删除；随后 implementation review 汇总 → PR/CI → 生产执行（需用户维护窗口授权）。
+
+## Implementation review 修复（2026-08-19，独立 reviewer CHANGES_REQUESTED 后）
+
+- **P1-1（cleanup 死锁防护）**：`TECHNOLOGY_STACK_SUPPORTED_MODES` 常量成为 API/Worker 启动断言与 cleanup 前置 gate 的单一来源；`cleanup-cli --validate` 校验执行 revision 支持集含 `legacy_cleaned`，否则在破坏性步骤前拒绝（当前 new_only revision 即被拒）。集成测试以 `supportedModes` 显式模拟 cleanup revision，另有一例断言本 revision 默认支持集触发拒绝。
+- **P1-2（marker 终态语义矛盾）**：marker 矩阵扩展——列存在 + 伪仓库计数为 0 时放行 `legacy_cleaned`（覆盖 DROP COLUMN 前中断的补删窗口与 fresh 重放库）；journal 0010 fresh 重放保留列的行为由 migration matrix 新断言钉住（第 8 项）；plan 权威文本同步修订。
+- **P3-3（幂等补删）**：validate 识别"数据已删+receipt 已落盘+列仍在"的补删完成路径（`alreadyCleaned`）；execute 该路径不再触碰数据、不写第二条 receipt；`droppedColumn` 返回 information_schema 实测值。
+- **P2-1**：runbook 新增 `TECHNOLOGY_STACK_STORAGE_MODE` 环境变量说明与"技术栈 new_only 切换与 cleanup 维护窗口"完整流程（同批翻转、前置条件、回滚、补删）。
+- **P2-2**：deploy workflow 顶层 `concurrency: production`（deploy 与 cleanup run 互斥排队）。
+- **P2-4/P2-5**：回滚 rehearsal 改为真实调用 getRepoGraphData 断言业务路径（伪形态恢复后 reference kind 不重现）；新增端到端用例——基线 missing 时 rebuild 提交后抛错且冻结形态不被触碰。
+- **P3**：marker 查询加 `table_schema='public'`；0010 撤销手工内联约束（回归生成形态，消除冗余同名索引）；jobs.test/concurrency.test 死 import 清理；phase-c-cleanup fixture `sortOrder`→`orderIndex`。
+- **P2-3（preflight SHA/revision/长事务 gate）**：revision 支持集已结构性覆盖最危险项；SHA/长事务核对写入 runbook 维护窗口前置条件清单，随 cleanup revision 批次的 workflow 终稿一并落地。
+- **P3-6（identity 缺失真实仓库静默跳过）**：生产前提（identity backfill applied）下无差异，记录为已知等价前提，不单独处理。
+- 回归：unit 232/232、integration **51/51×2**、lint/typecheck/test/build 全绿。

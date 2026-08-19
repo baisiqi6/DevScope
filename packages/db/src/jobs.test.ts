@@ -4,7 +4,6 @@ import {
   enqueueJob,
   enqueueRestartableJob,
   enqueueRepositoryIdentityBackfillJob,
-  enqueueTechnologyStackEntitiesBackfillJob,
   failJob,
   recoverExpiredJobs,
   renewJobLease,

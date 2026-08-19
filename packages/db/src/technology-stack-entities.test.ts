@@ -99,10 +99,19 @@ describe("assertStorageModeStartupConsistency", () => {
     }
   });
 
-  it("marker 矩阵：列存在但 mode=legacy_cleaned 时 fail", async () => {
+  it("marker 矩阵：列存在但 legacy 伪数据仍在时 legacy_cleaned fail", async () => {
     const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
     await expect(
-      assertStorageModeStartupConsistency(mockDb({ columnExists: true }), "legacy_cleaned"),
+      assertStorageModeStartupConsistency(mockDb({ columnExists: true, legacyRefs: 13 }), "legacy_cleaned"),
     ).rejects.toThrow(/未执行 cleanup/);
+  });
+
+  it("marker 矩阵：列存在但伪数据为 0 时 legacy_cleaned 放行（补删窗口与 fresh 重放库）", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    // cleanup 删除事务已提交但 DROP COLUMN 前崩溃，或从未存在 legacy 表示的
+    // fresh 重放库：不存在需要守护的冻结形态（implementation review P1-2）
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: true, legacyRefs: 0 }), "legacy_cleaned"),
+    ).resolves.toBeUndefined();
   });
 });
