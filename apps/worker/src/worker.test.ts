@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeJob } from "./worker";
+import { executeJob, runWorker } from "./worker";
 import {
   GITHUB_DISCOVERY_JOB,
   GITHUB_TRENDING_SYNC_JOB,
@@ -123,6 +123,45 @@ describe("Worker 任务执行", () => {
       pooledRepos: 5,
       sbomBackfilled: 2,
     });
+  });
+
+  it("图谱重建任务把 jobId/workerId 传给 rebuild 依赖（lease 进度与提交复核）", async () => {
+    const rebuildGraph = vi.fn().mockResolvedValue({
+      similarityEdges: 0,
+      dependencyEdges: 0,
+      pooledRepos: 0,
+      sbomBackfilled: 0,
+    });
+    const job = createJob({
+      type: GRAPH_REBUILD_JOB,
+      id: 42,
+      idempotencyKey: "graph:rebuild",
+      payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+    });
+
+    await executeJob({} as any, job, { rebuildGraph, workerId: "worker-a" });
+
+    expect(rebuildGraph).toHaveBeenCalledTimes(1);
+    const [dbArg, userIdArg, jobContext] = rebuildGraph.mock.calls[0];
+    expect(dbArg).toBeDefined();
+    expect(typeof userIdArg).toBe("number");
+    expect(jobContext).toEqual({ jobId: 42, workerId: "worker-a" });
+  });
+
+  it("runWorker 在非法外呼配置上启动即失败（fail closed，不进入轮询）", async () => {
+    const previous = process.env.GRAPH_DEPS_CONCURRENCY;
+    process.env.GRAPH_DEPS_CONCURRENCY = "64";
+    try {
+      await expect(
+        runWorker({} as any, { workerId: "w", pollIntervalMs: 1 }, () => true)
+      ).rejects.toThrow(/GRAPH_DEPS_CONCURRENCY/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GRAPH_DEPS_CONCURRENCY;
+      } else {
+        process.env.GRAPH_DEPS_CONCURRENCY = previous;
+      }
+    }
   });
 
   it("将三个 GitHub Trending 周期保存为独立快照", async () => {

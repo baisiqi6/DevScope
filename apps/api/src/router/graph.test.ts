@@ -110,6 +110,48 @@ describe("graph router 持久重建任务", () => {
     }
   });
 
+  it("running 任务透传 lease owner 写入的 stage 进度", async () => {
+    mockGetJob.mockResolvedValue(createJob({
+      status: "running",
+      progress: {
+        stage: "deps_resolution",
+        completed: 120,
+        total: 400,
+        cacheHits: 280,
+        cacheMisses: 120,
+        externalRequests: 120,
+        timeouts: 0,
+        retryableErrors: 1,
+      },
+    }));
+
+    const status = await caller.getRebuildGraphStatus();
+
+    expect(status.status).toBe("running");
+    expect(status.progress).toEqual({
+      stage: "deps_resolution",
+      completed: 120,
+      total: 400,
+      cacheHits: 280,
+      cacheMisses: 120,
+      externalRequests: 120,
+      timeouts: 0,
+      retryableErrors: 1,
+    });
+  });
+
+  it("损坏的 progress 行降级为 null 而不是让状态查询失败", async () => {
+    mockGetJob.mockResolvedValue(createJob({
+      status: "running",
+      progress: { nonsense: true },
+    }));
+
+    const status = await caller.getRebuildGraphStatus();
+
+    expect(status.status).toBe("running");
+    expect(status.progress).toBeNull();
+  });
+
   it("没有历史任务时返回 idle", async () => {
     mockGetJob.mockResolvedValue(null);
     await expect(caller.getRebuildGraphStatus()).resolves.toEqual({
@@ -118,6 +160,7 @@ describe("graph router 持久重建任务", () => {
       finishedAt: null,
       result: null,
       error: null,
+      progress: null,
     });
   });
 
@@ -166,6 +209,7 @@ function createJob(overrides: Record<string, unknown> = {}) {
     availableAt: now,
     leaseOwner: null,
     leaseExpiresAt: null,
+    progress: null,
     lastError: "graph failed",
     startedAt: now,
     completedAt: now,
