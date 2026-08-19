@@ -5,7 +5,7 @@
 - Checklist item：`data-quality-5-postgres-integration-gates`
 - Priority：P0
 - 前置：Phase A closeout、deps.dev cache recovery closeout（均已 done）
-- 状态：plan review 第一轮 `changes_requested`，findings 已修订待复核；现有集成用例 34 个（collection 10 + stack 14 + deps-cache 10）
+- 状态：已完成——PR #40 合并（CI quality+integration 双绿），两轮 plan + 两轮 implementation review approved，closeout APPROVE；最终 43 例（34 既有 + 3 迁移矩阵 + 6 并发矩阵）
 
 ## Outcome
 
