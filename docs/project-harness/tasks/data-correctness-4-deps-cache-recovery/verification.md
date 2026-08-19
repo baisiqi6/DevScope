@@ -55,3 +55,56 @@
 - Verdict：`approved`（evt 见 events.jsonl）；10 条 findings 全部 closed，无 P0–P2 新发现。
 - 遗留 P3：(a) 事务内 assertLease 的真实 PG 用例已补（见下）；(b) 连接拒绝用例端口假设已改为 listen-then-close；(c) 计数笔误已修正；(d) 集成 fixture 撞唯一约束的既有脆弱性移交 `data-quality-5-postgres-integration-gates`。
 - 第二轮后补充：集成测试新增「事务内 FOR UPDATE 租约复核拒绝 lost-lease 提交」用例（真实 PostgreSQL）。
+
+## 生产验收（2026-08-19，已获用户授权）
+
+### Preflight（只读）
+
+- 服务器 worktree 干净，HEAD `3fa0d9c`；容器 api/web/worker/postgres/nginx 全部健康；
+- 无 active graph/backfill job；无长事务；备份目录 29G 可用；
+- 迁移账本 9 条（0000-0008）；缓存基线 19282 行（598 null）；
+- 生产未设 `TECHNOLOGY_STACK_STORAGE_MODE`，默认即 `legacy_shadow_dual_write`，mode 不变。
+
+### 部署与迁移
+
+- Deploy workflow run `32211735473`（main@916bc66，`apply_database_migration=true`）build+deploy 均 success；
+- 迁移前备份 `/home/devscope/backups/devscope/pre-migration-20260819-112522.dump`（127MB，权限 600；`pg_restore --list` 可读，20 张表 TABLE DATA 完整）；
+- 迁移账本 10 条；`0009` journal hash `b8496c01…` 与仓库文件 SHA-256 一致；
+- 回填结果：`resolved` 18684（全部带 30 天复查点）+ `error` 598（全部带 15 分钟退避）= 19282，与基线逐行对账；
+- CHECK 约束、`github_repo_name_canonicalizations` 表、`jobs.progress` 列均存在；
+- 部署后 api/web 容器重建（nginx/postgres 未动），Worker 日志零 error。
+
+### 冷 rebuild（job #9 restart，attempt 1）
+
+- 运行 03:30:37–03:40:25 UTC，**588 秒**（对照 2026-08-18 同规模串行基线约 70 分钟）；
+- 计数：cacheHits 19005 / cacheMisses 3056 / externalRequests 3061 / timeouts 0 / retryableErrors 0；
+- 预算：github 3054/6000、depsDev 7/10000——单次 attempt 收敛；
+- 阶段时长：embedding 1.9s、sbom 2.9s、similarity 57ms、deps_resolution 1.5s、github_canonicalization 577.7s（3049 个 target 全量首查）、atomic_commit 0.6s、shadow_compare 129ms；
+- job `succeeded` 即 legacy/新表技术栈投影 shadow compare equal。
+
+### Warm rebuild（同日 03:49–03:51）
+
+- **88 秒**；cacheHits 21307 / externalRequests 721 / timeouts 0；
+- 预算：github 132/6000、depsDev 589/10000；
+- 剩余外呼全部可解释：598 个迁移期 `error` 行到期重试（depsDev 589）——其中 589 个转权威 `not_found`（证明历史 null 行多数是真阴性）、9 个仍为可重试 error；github 132 中约 127 为 canonicalization 到期/新行复查（按 checked_at 窗口核对），其余约 5 次为 SBOM 阶段计入 GitHub 预算的请求（sbomBackfilled=0 但该阶段有 2.66s 时长）；
+- 缓存终态：`package_repo_mappings` resolved 18691 + not_found 589 + error 9；`github_repo_name_canonicalizations` resolved 3157 + not_found 19。
+
+### 数据不变量（gate 6）
+
+真实仓库 40、reference 13、watched 53（40 真实 + 13 影子期技术栈）、dependency 边 93、similarity 边 40、`repository_technology_stacks` 79、`technology_stacks` 13、chunks 34599（dogfood 持续采集后的当前值，未使用固定常量）。
+
+### 服务与访问（gate 7）
+
+- 服务器内部 API/Web health 200；公网入口未认证 401（Nginx 80）；
+- SSH tunnel → Nginx 未认证 401、Keychain Basic Auth 注入后 `/trpc/health` `status: ok`；
+- 认证 `getRepositories`（MCP repository list 等价路径）返回 40 个全部真实 GitHub 仓库、0 个 `tech-stack/` 伪行。
+
+### 未验证项
+
+- 无。生产门禁 1-8 全部完成，等待独立 production closeout review。
+
+## Production closeout（2026-08-19）
+
+- 独立 closeout reviewer（fresh context，全程只读）对 Git/CI/部署 revision/迁移 hash/备份可读性/在线缓存终态/数据不变量/服务健康/计划边界共 18 项做了实测核对，全部与本文档声称一致；
+- 三个关键语义在生产数据层直接验证：`not_found` 589 行的 `fetched_at` 全部落在 warm rebuild 外呼窗口（非迁移直转）；9 个残留 error 行全部到期可重试且未被伪造阴性；legacy reference/watches/edges 未被清理、mode 未切换；
+- Verdict：`APPROVE`（4 条 P3 记录精度/证据保留建议，无阻塞；P3-2 归因已随批补正）。

@@ -177,10 +177,10 @@
     {
       "id": "data-correctness-4-deps-cache-recovery",
       "title": "使依赖解析缓存可恢复且具备外呼预算",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260818-deps-cache-recovery",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-19",
       "dependencies": [
         "data-correctness-2-atomic-replacement"
@@ -188,33 +188,35 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。",
-      "verification": "db 101 + worker 18 + api 全套 + HTTP 9 + 隔离 PostgreSQL 34/34 串行；lint/typecheck/test/build/db:generate 再生成通过；两轮 plan review 与两轮 implementation review 均 approved",
+      "verification": "四轮代码审查 + 生产 8 项门禁全部通过：迁移 0009 hash 一致、回填 18684+598 逐行对账、冷 rebuild 588s/暖 88s（外呼全部可解释）、数据不变量 40/13/53/93/40/79/13、401/认证健康/真实仓库列表、closeout review APPROVE",
       "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-19",
         "handoff_from": "",
         "branch": "codex/deps-cache-recovery"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "reviewer-impl",
-        "phase": "changes_requested",
+        "reviewer": "reviewer-closeout",
+        "phase": "closeout_requested",
         "updated_at": "2026-08-19",
-        "summary": "continuity 复核 46ce3a4：10 条 findings 全部 closed，无 P0-P2 新发现；4 条 P3 中 a/b/c 已随批处理，d（集成 fixture 唯一约束脆弱性）移交 data-quality-5"
+        "summary": "生产 closeout：18 项实测全部一致；not_found 权威转换语义在生产数据层验证；APPROVE（4 条 P3 记录性建议，P3-2 已补正）"
       },
       "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
       "artifacts": {
         "handoff_packet": "docs/project-harness/current/handoff-packet.md",
         "branch": "codex/deps-cache-recovery",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260818-deps-cache-recovery",
         "acquired_at": "2026-08-19T02:58:13Z",
         "expires_at": "2026-08-19T04:58:13Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-19T04:01:20Z"
       }
     },
     {

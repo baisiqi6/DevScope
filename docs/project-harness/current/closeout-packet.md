@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `data-correctness-2-atomic-replacement`
-- Reviewer: `release_id_migration_reviewer`
-- Updated at: `2026-08-18`
-- Canonical plan path: `docs/project-harness/tasks/data-correctness-2-atomic-replacement/plan.md`
+- Checklist item: `data-correctness-4-deps-cache-recovery`
+- Reviewer: `reviewer-closeout`
+- Updated at: `2026-08-19`
+- Canonical plan path: `docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md`
 
 ## Item Snapshot
 
-- Title: 使采集子数据整体原子替换
+- Title: 使依赖解析缓存可恢复且具备外呼预算
 - Status: doing
 - Workflow status: closeout_requested
-- Priority: p0
+- Priority: p1
 - Owner: codex
-- Session: codex-20260818-atomic-replacement
-- Dependencies: data-correctness-1b-repository-identity
+- Session: codex-20260818-deps-cache-recovery
+- Dependencies: data-correctness-2-atomic-replacement
 
 ## Acceptance
 
-chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事务整体替换，失败保留旧快照，并发采集不产生空集、半份快照或交叉覆盖。
+resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。
 
 ## Verification
 
-
+db 101 + worker 18 + api 全套 + HTTP 9 + 隔离 PostgreSQL 34/34 串行；lint/typecheck/test/build/db:generate 再生成通过；两轮 plan review 与两轮 implementation review 均 approved
 
 ## Handoff
 
-复用现有 jobs 或最小 PostgreSQL 锁，不新增第二套队列。
+按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。
 
 ## Review Inputs
 
@@ -40,217 +40,182 @@ chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事�
 ## Canonical Plan Content
 
 ```md
-# 使采集子数据整体原子替换
+# 依赖解析缓存恢复与外呼预算计划
 
-## Item
+> Item：`data-correctness-4-deps-cache-recovery`
+> Priority：P1
+> 状态：已领取；plan review 两轮完成，第一轮 `changes_requested` 已修订，第二轮 `approved`
+> 前置：`data-correctness-2-atomic-replacement`
+> 阻断：`data-architecture-3-technology-stack-entities` 的 Phase B
 
-- Checklist item：`data-correctness-2-atomic-replacement`
-- Owner：`codex`
-- Session：`codex-20260818-atomic-replacement`
-- Updated at：2026-08-18
+## Outcome
 
-## Goal
+让 graph rebuild 的 deps.dev 映射与 GitHub repository canonicalization 同时满足：临时失败可恢复、真阴性可缓存、单次外呼有超时/并发/总量预算、长任务有可观测进度、最终 graph 写入继续 fail closed。修复后不得改变技术栈目录、top-N、edge evidence、repository identity 或 Phase A 新旧投影语义。
 
-将仓库采集生成的 `repo_chunks`、`hackernews_items` 与 `releases` 作为经过验证的来源快照，在同一个短 PostgreSQL 事务中按来源整体替换；成功空结果清除旧数据，来源失败保留旧快照，并阻止并发采集或后台 embedding 把较旧版本覆盖到较新版本之上。
+## 生产触发证据
 
-## Confirmed Root Causes
+2026-08-18 的 Phase A graph job #9 从 `14:20:25.255Z` 运行到 `15:31:09.406Z`，总计约 70 分 44 秒，最终成功：
 
-1. 当前三类数据均只在 `items.length > 0` 时执行删除和插入，`success([])` 会错误保留旧数据；
-2. 当前删除与插入是两个独立提交，插入失败会留下空集；
-3. `GitHubCollector.getReleases` 与 `fetchHackerNews` 把网络失败吞成 `[]`，调用方无法区分真空结果与失败；
-4. API 的 `activeRepositoryCollections` 只保护单进程请求，Scheduler 与其他 API 实例不受保护；
-5. 后台 embedding 再次独立删除、插入 chunks，存在空窗、部分结果丢失和同版本重复执行的问题；
-6. `repositories.updated_at` 可以复用为已提交采集快照的版本令牌，但当前流程在分块前先 upsert，失败轮次也会推进它；必须把 metadata upsert、token 分配与子快照提交合并到最终事务，且由 PostgreSQL 分配严格单调、可由 JavaScript `Date` 无损往返的毫秒值；
-7. Scheduler pooling、API `syncEmbeddingStatus`、独立 `sync-embedding-status.ts` 与图重建 backfill 都能写 repository embedding 或状态，必须全部纳入版本护栏。
+- 40 个真实仓库包含 19007 个唯一 SBOM package/version；首次运行补齐约 6000 个 deps.dev cache miss；
+- 3053 个外部 GitHub target 达到当前 `CANONICALIZATION_MIN_INDEGREE=2` 门槛，逐个串行 canonicalize；
+- `resolveViaDepsDev` 使用无显式 timeout 的原生 `fetch`；`getCanonicalFullName` 也没有 timeout；
+- deps.dev 网络错误与权威无映射都可能落为 `source_repo=null`，无法按失败类型恢复；
+- GitHub canonicalization 没有持久 freshness，warm rebuild 仍会重复外呼；
+- job lease 持续健康、数据库没有长事务，证明瓶颈位于事务外网络阶段；但 status API 只有 running/terminal，没有 stage/total/completed。
 
-## Design
+以上数字是日期化生产基线，不得硬编码为长期产品常量。
 
-### 来源结果语义
+## Authority And Sequencing
 
-- chunks 来源属于主 GitHub 采集：GitHub 拉取或分块失败使整个采集失败，不执行任何子数据替换；合法空 chunks 是 `success([])`；
-- Hacker News 与 Releases 是可选来源：正常 HTTP 响应在事务外通过 Zod 与 Release ID 边界校验后映射为 `success(items)`，其中空数组仍是成功；请求、响应解析或字段校验失败映射为 `failure(error)`；配置明确禁用的来源映射为 `skipped`，不写数据也不产生告警；
-- SBOM 同样使用 `success(packages) | failure(error) | skipped`：成功空包列表清除旧 SBOM，失败或禁用保留旧值；
-- optional source failure 不删除其上一份成功快照，并写入结构化日志及 `CollectionResult.warning`；本 item 不增加通用采集运行表。若后续把采集迁入现有 `jobs`，由 job receipt 承担持久运行记录。
-- SBOM 的 404 映射为 `success([])`；合法 envelope 映射为 `success(parsed packages)`；malformed 200、网络或解析错误映射为 `failure(error)`；
-- 多个 optional failure 按固定来源顺序（Hacker News、Releases、SBOM）聚合为一个兼容现有 API 的 warning string；API 原样返回，Scheduler 逐来源写结构化日志。
+下一位 Worker 按以下顺序执行；不得跳过独立 review、直接进入 Phase B，或顺手重做 graph UI：
 
-### 严格单调的已提交采集版本
+1. 只读复核最新 `main`、本计划、当前生产 migration/job/cache 基线；
+2. 请求独立 plan review，关闭 correctness、rate-limit、lease、migration 和 rollback finding；
+3. 以 RED tests 固化失败分类、TTL、timeout、并发、预算、进度和 warm-run 行为；
+4. 做最小实现与显式 migration，完成隔离 PostgreSQL 和全仓门禁；
+5. 请求独立 implementation review，修完全部 P0–P3；
+6. PR/CI 通过后合并；生产备份并显式迁移，部署兼容 revision；
+7. 运行一次受预算约束的 rebuild，再运行一次 warm-cache rebuild，核对新旧技术栈投影和业务不变量；
+8. 只记录证据，不切 `new_read_dual_write`；交回 Reviewer 做 production closeout。
 
-- GitHub repository、HN、Releases、SBOM 的网络读取、runtime validation 与文本分块全部先在事务外完成；此阶段不得修改 repository row 或 embedding authority；
-- 最终事务先用 GitHub stable ID 派生 PostgreSQL advisory key，因此新仓库还没有 `repoId` 时也能跨进程串行；随后在同一事务中完成 repository identity/metadata upsert、子数据替换与 embedding 初态；
-- 对已有仓库，在当前仓库行锁内用 PostgreSQL 表达式写入 `GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond') RETURNING updated_at`；
-- 该值精确到毫秒，数据库内严格大于上一版本，并可由 node-postgres `Date` 无损往返；不得继续使用应用侧 `new Date()` 作为采集版本；
-- 新仓库 INSERT 不依赖 `defaultNow()`，显式写入 `date_trunc('milliseconds', clock_timestamp()::timestamp)` 并以实际 `RETURNING updated_at` 作为首个 token，保证数据库没有 node-postgres `Date` 无法往返的微秒余数；并发创建仍由现有唯一约束 fail closed；
-- 只有最终快照事务成功才推进 token；准备失败或事务回滚不会使上一快照及其 embedding 失去 authority；
-- 版本 token 只表示仓库采集快照代际。embedding progress、终态、pooling、状态修复、SBOM backfill 和已完成的 identity backfill 均不得推进或回退它。技术栈 reference rows 不参与真实仓库采集 token；
-- 审计并移除真实仓库非采集 writer 对 `updatedAt` 的赋值：当前 SBOM backfill 与 one-shot identity backfill 不再写该字段；reference row 自身的 `updatedAt` 不属于此 token 边界。
+本计划不授权删除 legacy reference/watches/edges、切换 graph read contract、执行 Phase C cleanup 或修改同机其他站点。
 
-### 原子快照提交
+## Required Semantics
 
-在 `packages/db/src/collection.ts` 增加一个直接领域函数，接收全部已验证的事务外准备结果：
+### deps.dev resolution state
 
-- GitHub stable identity、repository metadata、可选 SBOM outcome；
-- 必定成功准备完成的 chunks；
-- HN/Releases 的 `success(items) | failure(error) | skipped` 结果；
-- 本轮 embedding 初始状态。函数返回已提交 repository 与严格单调 token；事务前不存在本轮 token。
+以 [domain-model.md](../../domain-model.md) 为唯一领域定义，为 `package_repo_mappings` 增加最小状态：
 
-函数只做数据库工作，并在一个短事务中：
+- `resolved`：权威响应含 `SOURCE_REPO`；保存 canonical package key 与 source repository；
+- `not_found`：只有权威 404 或成功响应明确无 `SOURCE_REPO` 才能进入；使用长 TTL；
+- `error`：timeout、DNS/TLS/network、429、5xx、非法响应等；保存脱敏短错误和短 `retry_after`；
+- `retry_after` 记录下一次允许外呼的时间：`error` 为短退避，`not_found` 为长 TTL 复查点，`resolved` 为其长 TTL 复查点；未到期不得重复外呼；
+- 不得把 transient failure 写成永久 `null`，不引入第四状态。
 
-1. 获取固定 namespace + GitHub stable ID hash 的 `pg_advisory_xact_lock`；
-2. 按 stable ID 优先、fullName 回退执行现有 identity conflict 检查与 repository upsert，在行锁内分配并返回新 token；
-3. 只替换 `success` 来源；空数组执行 delete 且不 insert；`failure`/`skipped` 来源不触碰旧行；
-4. chunks 的替换、repository mean 清空和 embedding 状态重置在同一事务中完成；
-5. 非空 chunks写 `pending/0/N`，并清理 started/completed/error；空 chunks 写非 claim 终态 `completed/0/0`，清理 started/error、记录本次 completed time；两者均同步设置 `repositories.embedding=null`；
-6. 任意 repository upsert、delete、insert 或状态更新失败时整体回滚，旧 metadata、token、子数据、mean 与 embedding authority 全部不变。
+`resolved` 的复查语义（对齐 domain-model「只在到期或规范名称校正时更新」）：
 
-事务内不执行 GitHub、HN、模型 embedding、SBOM 或其他网络请求，也不做文本分块；版本安全 pooling 允许在锁内使用 PostgreSQL vector aggregate 读取并聚合同一稳定快照。
+- TTL 内的 warm rebuild 对该行零 deps.dev 外呼，直接使用缓存 `source_repo`；
+- 只在 TTL 到期或 canonical rename 校正涉及该目标时复查；复查失败降级为 `error` + 短 `retry_after`，并把旧值搬入 `last_resolved_repo` 保留 resolution evidence，不清空语义也不伪造权威；
+- cache 读取规则统一为：`resolved`（TTL 内）按缓存值使用；`not_found`（复查点前）与 `error`（`retry_after` 前）不外呼、按无映射参与本次图计算；到期后按可重试 miss 处理；`error` 行的 `last_resolved_repo` 只是证据，不得当作权威映射使用。
 
-### 并发与后台 embedding
+迁移语义（已拍板，不留实现期决策）：
 
-- 最终事务返回的严格单调 `updatedAt` 是已提交快照版本；PostgreSQL advisory transaction lock 使多个进程的同仓库提交串行化，每轮都整体提交并取得不同 token，不能出现三类表各自来自不同并发提交的交叉快照；
-- 后台 embedding 入口只接收 `repoId + expectedToken`，不得接收调用方可任意组合的 chunks；claim 在同一个短事务中取得 stable-ID advisory lock 与 repository row lock，严格校验 token、CAS `pending → processing`，并读取返回该 token 对应的完整 chunks；未 claim 到的重复或旧版本执行直接退出；
-- API 使用 collection final transaction 返回的 token 启动 embedding；Scheduler 必须先读取候选 repository token，再调用 claim，不能在外部预读 chunks 或采用“先读 chunks、后重读 token”的顺序；模型网络计算只使用 claim 返回的不可混配快照；
-- embedding 方法返回 `applied | stale | not_claimed | failed` 的结构化 outcome。API/Scheduler 只有在采集 `completed` 且原子快照已提交时才能启动 embedding；Scheduler 只有 `applied` 才计成功，不再在方法返回后执行无条件 pooling；
-- embedding 网络计算和 repository mean 计算继续在事务外；mean 只使用成功生成且 chunkType 为 `readme | description` 的向量。最终 chunks、repository mean 与 embedding 终态复用同一仓库锁和版本令牌，在同一事务中写入；单个 embedding 失败保留对应 chunk 且 embedding 为 `null`，不再丢失文本；
-- embedding 最终写失败时事务回滚，保留快速采集产生的完整无向量 chunks，并以条件状态更新记录 `failed`；旧版本 embedding 的进度和终态更新均不得修改新版本状态。
-- `poolRepoEmbedding`/图重建 backfill 必须先取得相同 advisory lock 与 repository row lock，只在锁内重新确认 `embeddingStatus=completed` 后读取稳定 chunks、用 PostgreSQL vector aggregate 计算 mean 并写回；不得保留锁外 read-compute-write；
-- API 与独立脚本统一复用版本安全的 status reconcile 领域函数：先取得相同锁与 row lock，再在事务内统计 chunks、CAS 更新状态；不得保留只按 `repoId` 的无条件写者。
-- SBOM backfill 在网络前捕获非空 stable ID、token 与待回填 JSON baseline；网络后取得相同 stable-ID advisory lock 与 row lock，只有 token 未变、字段仍与 baseline `IS NOT DISTINCT FROM` 且仍满足 missing/legacy 条件时才写入，否则返回 `stale | no_op`。它不推进 token，不得只按 `repoId` 更新。
+- 非空 `source_repo` 历史行 → `resolution_status='resolved'`；
+- 历史 `source_repo=null` 行（日期化基线约 302 行）→ `resolution_status='error'` + 以迁移执行时间为基准的短 `retry_after`；禁止解释为 `not_found`；
+- `resolution_status` 列 DEFAULT 固定为 `'error'`：回滚窗口内旧镜像写入的新 `source_repo=null` 行不会被新代码误读为权威结论，代价仅是重查一次；
+- 历史行用确定性条件 UPDATE 回填，不让 `db:generate` 的朴素 DEFAULT 解释存量数据；重复执行迁移不改变已回填行的状态；
+- CHECK 约束：`resolution_status='resolved'` 当且仅当 `source_repo IS NOT NULL`（降级证据只存在于 `last_resolved_repo`，不污染该约束）。
 
-### Pipeline 与调用方 outcome
+### External request budget
 
-- `completed`：原子快照已经提交；可以附带 optional source warning。只有该状态允许 API 创建 watched relation、读取本轮 chunks 并尝试启动 embedding，Scheduler 才计本轮采集成功；
-- `failed`：主 GitHub 拉取、分块、数据库或验证失败；不得创建 watched relation、启动旧 chunks embedding、重置状态或计成功；
-- collection 不再在事务前预留 token。并发轮次由 final transaction 串行整体提交，因此正常 collection outcome 只需 `completed | failed`；embedding 与其他派生写者仍用 `stale` 表示 token 已被更新快照取代；
-- embedding outcome 与 collection outcome 分开，不用 `embeddingInBackground` 伪装已完成；后台任务是否真正 applied 由结构化日志和最终状态反映。
+- deps.dev 与 GitHub 请求均使用显式 AbortSignal timeout；timeout 必须有默认值和严格范围校验；`getCanonicalFullName` 同步补上 timeout；
+- 预算口径覆盖一次 graph attempt 内的全部外部 HTTP：deps.dev resolution、GitHub canonicalization 和 SBOM backfill 阶段的 GitHub 请求都计入预算并进入进度计数，不允许阶段外游离请求；
+- 预算按 provider 分列（deps.dev 上限、GitHub 上限），任一耗尽即在 graph 原子提交前 fail closed；已写入的独立 cache receipt 可供下一次重试复用；
+- 默认预算必须让日期化冷启动基线（约 6000 deps.dev miss + 3053 canonicalization + SBOM 请求）在单次 attempt 内收敛并留 headroom；若未来数据规模增长导致预算内无法完成，`failJob` 重试与终态重启（`enqueueRestartableJob`）是设计内恢复路径，须在 runbook 记录操作步骤；
+- 对 package key 和 target fullName 先去重，再使用小型 bounded worker pool；默认并发为保守个位数，且在并发之外保留最小请求间隔 pacing，避免 GitHub secondary rate limit；禁止无界 `Promise.all`；
+- 429/rate-limit 必须保留 retry evidence，尊重响应 `Retry-After` 暂停对应 provider 的后续请求并写可解释 receipt，不得继续打满配额；GitHub core 必须保留运维 headroom；
+- 配置项只覆盖 timeout、concurrency、pacing、request budget 和 TTL/backoff；解析语义不允许由环境变量切换；非法配置启动时 fail closed；
+- 网络等待始终位于业务 graph transaction 之外，最终提交继续复核 stable ID、collection token、SBOM baseline 与 lease authority。
+
+默认值由实现者基于生产 19007/约 6000/3053 基线提出并经 review 确认；不得为了让测试变快而采用生产不可用的极端值。
+
+### Canonicalization freshness
+
+- GitHub fullName canonicalization 的持久 freshness 落在紧邻新表（如 `github_repo_name_canonicalizations`：小写 `full_name` 唯一键、`canonical_full_name`、`resolution_status`、`retry_after`、`last_error`、`checked_at`）；404 归一为 `not_found` + 长 TTL（沿用原名），网络失败为 `error` + 短退避。不把 fullName 键过载进 `package_repo_mappings` 的 `(system, name, version)` 唯一键，也不新建通用第二套 cache/service；
+- 同一 target 在一次 rebuild 最多请求一次；freshness 未到期的行直接使用持久 `canonical_full_name`，到期后允许复查；
+- rename 结果批量、确定性回写相关 `package_repo_mappings.source_repo`（只改命名，不改 resolution 状态），不得擦除 package resolution evidence；rename 复查失败保持原 fullName 维持既有 best-effort graph 行为，但必须留下可重试状态；
+- `resolved` 的 canonicalization 行复查失败按 deps.dev 同款语义降级 `error` 并保留旧值证据。
+
+### Progress And Receipts
+
+`graph.getRebuildGraphStatus` 增加向后兼容的 optional progress，至少包含：
+
+- `stage`：`embedding | similarity | sbom | deps_resolution | github_canonicalization | atomic_commit | shadow_compare`；
+- 当前 stage 的 `completed/total`；
+- `cacheHits/cacheMisses/externalRequests/timeouts/retryableErrors` 的脱敏计数；
+- terminal result 保留现有字段，并增加各 stage duration 与预算消耗摘要。
+
+进度存储载体固定为 `jobs` 表新增 nullable `progress` 列（显式迁移），与 `result` 分离；写入只能由当前 lease owner 通过 `WHERE id = … AND lease_owner = … AND lease_expires_at > now()` 的条件 UPDATE 完成（参照 technology-stack-entities 的 lease-authoritative 先例）。进度更新不能成为业务事实来源；lost lease 后旧 Worker 不得继续刷新进度或提交 graph——原子提交路径必须复核 lease authority，lost lease 的提交尝试被拒绝。
 
 ## Test-Driven Implementation
 
 ### RED tests
 
-1. 真实事务 helper：非空替换、三来源成功空集、optional failure/skipped 保留、非法 optional payload 隔离、repository/insert/status 任一步失败整体回滚且 token 不推进；
-2. 并发：强制两个提交使用同一应用时间，数据库仍分配严格递增 token；新仓库首个 token 没有微秒余数且经 node-postgres `Date` 回传可 claim；用两个独立连接验证 stable-ID lock 串行，每轮结果整体提交且最终结果不交叉；
-3. Pipeline：HN/Releases 网络或字段校验失败不再伪装成空结果，多个 warning 顺序确定且旧快照保留；
-4. API/Scheduler：collection `failed` 不创建 watched relation、不启动 embedding、不重置状态且不计成功；
-5. embedding：入口只允许 `repoId + token`，claim 与 chunks 读取同一锁定事务；在旧 chunks 读取与 claim 之间提交新 collection 时，旧调用只能 `stale | not_claimed`，不得形成“旧 chunks + 新 token”；另覆盖单一 claim、版本失效退出、最终原子替换、部分 embedding 失败不删除 chunk，以及 progress/final/failure catch 前的新采集零写入；
-6. 同一 token 派生写竞争：两个连接强制 final-vs-pooling 与 final-vs-reconcile 交错；pooling/status 必须等待锁并读取 final 后的稳定 chunks，不能写回锁外旧统计；pending 窗口和空 chunks 均不得暴露旧 repository mean；
-7. SBOM：404 清空、合法 envelope 更新、malformed/network failure 保留；两个连接强制 collection-final-vs-SBOM-backfill 交错，旧 baseline 回填只能 `stale | no_op`；
-8. Scheduler：只把 embedding `applied` 计成功，不再在返回后无条件 pooling；API 与独立脚本的状态修复复用同一个版本安全函数。
+1. deps.dev 200+SOURCE_REPO → `resolved`；200 无 SOURCE_REPO/权威 404 → `not_found`；429/5xx/network/timeout/malformed → `error`；
+2. `error.retry_after` 前不请求，到期后重试并转 `resolved`；`not_found` 长 TTL 内不请求，到期后可复查；`resolved` TTL 内零外呼，到期复查成功刷新值；
+3. 历史 non-null/null migration fixture 的状态转换无伪造权威结论（null → `error`+短 `retry_after`，非 null → `resolved`）；重复 migration 不漂移；DEFAULT `'error'` 与 CHECK 约束生效；
+4. fake HTTP server 强制并发交错，观测到的最大并发不超过配置且保留 pacing；单请求超时后 job 可恢复，无永久 pending Promise；
+5. request budget 耗尽时 graph relation/legacy edges/shadow receipt 零写入，cache progress 可复用；下一 attempt 从 cache 继续；SBOM 阶段请求同样计入预算与进度；
+6. 同一 package key/target 在一次运行只外呼一次；freshness 未到期的第二次 warm rebuild 对 GitHub canonicalization 恰好 0 次请求、对 TTL 内 `resolved` 行 0 次 deps.dev 请求，所有剩余请求可逐条解释；
+7. 429/rate-limit 停止继续消耗预算、尊重 `Retry-After`，并产生可解释 retry receipt；日志与 API 不泄露 token、URL credential 或响应敏感内容；
+8. progress 单调、stage 合法（含 `similarity`）、旧 consumer 可忽略新增字段；lost lease 的旧 Worker 无进度/终态写入，且其 graph 原子提交被 lease authority 复核拒绝；
+9. `resolved` 复查失败降级为 `error`：`last_resolved_repo` 保留旧值证据，本轮按无映射参与图计算，`retry_after` 到期后重试恢复；
+10. canonical rename 批量回写相关 `package_repo_mappings.source_repo` 且不擦除 resolution evidence；rename 复查失败保持原 fullName 并留下可重试状态；
+11. 真实 PostgreSQL 验证 migration、TTL 转移、并发 upsert、reclaim、budget fail/retry、jobs `progress` 的 lease-authoritative 写入与最终 shadow zero-diff；
+12. 技术栈投影、repo-to-repo edges、repository/watch/group/MCP 列表回归不变。
 
-单元测试负责来源语义和编排；事务回滚、锁与竞争必须在真实 PostgreSQL 上验证。真实 PostgreSQL 的通用 CI 门禁仍由后续 `data-correctness-6-postgres-integration` 完整建设，本 item 至少提供可重复的定向演练或测试脚本，不用 mock 结论代替事务证据。
+### Implementation constraints
+
+- 不以 `any`、关闭 schema validation、延长 Worker lease 或取消 retry 掩盖根因；
+- 不在 transaction 内执行外部 HTTP；
+- 不引入 Redis、第二套 job queue、图数据库、通用 Repository layer 或新微服务；
+- 不把 2026-08-18 的生产计数写死进代码或测试；
+- 不把 GitHub canonicalization failure 误当技术栈 detection failure；
+- 不删除 job #27 的 dead receipt 或 job #9 的 succeeded receipt。
 
 ## Files In Scope
 
-- `packages/db/src/collection.ts` 及其测试；
-- `packages/db/src/pipeline.ts` 及其测试；
-- `packages/db/src/github.ts` 的 Release 失败语义及测试；
-- `packages/db/src/repo-graph.ts` 的版本安全 pooling、`packages/db/src/sync-embedding-status.ts` 的统一 status reconcile 及测试；
-- `packages/shared/src/github-client.ts` 的 SBOM runtime envelope 语义及测试；
-- `packages/db/src/repository-identity.ts`：移除 one-shot identity backfill 对采集 token 的写入，并更新测试；
-- `apps/api/src/router.ts`、`apps/api/src/scheduler.ts` 与必要测试；
-- 本 item 的 Harness plan、review、verification 与日期化 progress。
+- `packages/db/src/repo-graph.ts`、`packages/db/src/schema/index.ts`、相邻 cache/job helpers 和 tests；
+- `packages/shared/src/github-client.ts`、graph status schema 与 tests；
+- `apps/worker/src/worker.ts`、`apps/api/src/router/graph.ts` 及 tests；
+- 显式 Drizzle migration 与 metadata：`package_repo_mappings` 状态列（含 `last_resolved_repo` 证据列）+ CHECK + DEFAULT `'error'` 回填、`github_repo_name_canonicalizations` 新表（不套用同款 CHECK，降级证据保留在 `canonical_full_name` 本身）、`jobs.progress` 列；
+- `.env.example`、[runbook.md](../../runbook.md) 中新增配置（timeout/concurrency/pacing/budget/TTL）和终态重启操作步骤；
+- 本 item 的 plan/review/verification 与日期化 progress。
 
-## Out Of Scope
+## Local Gates
 
-- 不新增队列、Repository 抽象、事件溯源或采集运行通用框架；
-- 不把仓库采集整体迁移到 Worker；
-- 不处理技术栈独立表、deps.dev TTL 或公开多用户鉴权；
-- 不删除或重写当前生产数据；
-- 不修改另一会话正在维护的 dogfood 文档。
+```bash
+pnpm db:generate
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-## Verification And Deployment
+另需隔离 PostgreSQL 16 + pgvector 从 `0000` 应用全部 migration，并运行本计划的真实 HTTP/DB interleaving。测试不得连接生产数据库。
 
-- focused tests 与受影响包 typecheck；
-- `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
-- 在隔离 PostgreSQL 中用两个独立连接验证新仓库 token 精度、同毫秒 token、stable-ID 锁串行、insert rollback 不推进 token、三来源空集/失败、stale progress/final/catch 零写入、同 token final-vs-pooling/reconcile 必须锁后读取，以及 collection-final-vs-SBOM-backfill CAS；
-- 独立 implementation review、PR 与 CI；
-- 本设计不要求 schema migration，部署必须显式 `apply_database_migration=false`；
-- 部署前后核对三类表总量/按仓库分布、重复键、embedding 状态、migration rows、服务健康、访问控制和认证 MCP；
-- 生产只做正常采集 dogfood，不注入故障；对目标仓库记录采集前后的有序行摘要、SBOM packages 摘要、版本 token 和 embedding 终态，故障回滚证据来自隔离 PostgreSQL。
+## Production Gates
 
-## Production Baseline
+1. preflight：目标 SHA、干净 worktree、无 active graph/backfill job、当前 mode 仍为 `legacy_shadow_dual_write`、备份空间和长事务检查；
+2. 有 migration 时创建可读 `pg_restore --list` 的即时备份，再显式迁移；禁止 `db:push`；
+3. 部署后 API/Web/Worker revision 一致，migration row 只增加预期数量，mode 不变；
+4. 运行受预算 rebuild，记录 stage receipt、external request counts、timeouts/errors、duration 和 shadow compare；
+5. 再运行 warm-cache rebuild，要求不重复大规模 deps.dev/GitHub 外呼，且耗时显著下降；不设置依赖外网偶然性的脆弱秒级 SLA，但必须解释所有剩余请求；
+6. 动态核对 real/reference repository、watched、new/legacy stack relations、source count、packages evidence 摘要、repo-to-repo edges；不使用固定 79/25/379 作为永久常量；
+7. API/Web health 200、未认证入口 401、Keychain + SSH tunnel MCP health `ok`，MCP repository list 只含真实仓库；
+8. 独立 production closeout review 批准后才能把本 item 标记 done，并恢复 `data-architecture-3-technology-stack-entities` Phase B。
 
-2026-08-18 部署前只读快照：50 个 repository rows，其中 40 个真实仓库；35815 chunks 覆盖 40 个仓库，单仓库 1–2736；HN 当前 0 行；362 releases 覆盖 39 个仓库，单仓库 1–10。40 个真实仓库的 embedding 状态均为 `completed`；未发现重复 chunk natural key、Release ID 跨仓库冲突、active collection-like job 或超过 30 秒的长事务。该数字是日期化证据，不是固定验收常量。
+## Handoff To Reviewer
 
-## Exit Criteria
+Worker 完成后只提交以下证据包，不自行宣布 Phase B 可开始：
 
-- `success([])` 对三类来源都能清除旧数据，`failure(error)` 不清除旧数据；
-- 任意插入或终态更新失败后，上一份完整快照仍可读取；
-- 同仓库并发采集和 embedding 不产生空窗、半份快照、交叉覆盖或旧版本状态污染；准备或提交失败不推进 token，也不中断上一份有效快照的 embedding authority；
-- 数据库为每轮已存在仓库采集分配严格递增、毫秒精度的版本 token；所有 repository embedding/status 写者受 token 与锁保护；
-- embedding claim、token 校验与 chunks 读取属于同一锁定事务，调用方不能构造跨版本的 chunks/token 组合；
-- collection `failed` 的 API 与 Scheduler 调用方不产生 watched、embedding 或成功计数副作用；disabled optional source 保持 `skipped`；
-- quick snapshot 与空 chunks 都同步清除旧 repository mean；空 chunks 进入不可 claim 的明确完成态；
-- 所有网络、文本分块和模型 embedding generation 都位于事务外；锁内只允许短数据库替换、状态统计与 vector aggregate；
-- 无新增 schema migration，完整门禁、真实 PostgreSQL 定向验证、独立 review、CI、部署与生产只读复核通过。
+- PR、merge SHA、CI run、deploy run、backup/migration receipt；
+- focused/全仓/隔离 PostgreSQL 命令及结果；
+- 冷/暖两次 rebuild 的 immutable job IDs、stage receipts、duration、预算与外呼计数；
+- 新旧投影结构化比较、repository/watch/group/MCP 不变量；
+- 当前生产 revision/config/migration/health/auth；
+- 所有已知失败、降级和未验证项。
+
+Reviewer 将独立复核代码、Git、Actions、生产 DB/jobs/services 与 MCP；批准前不得切换 `new_read_dual_write`。
 ```
 
 ## Recent Progress Context
 
 ```md
-# DevScope Harness 进展
+### 上一 handoff（1b 已并入 main，存档）
 
-> 更新时间：2026-08-18
-> 基线：`main@647dc62`
-> 部署形态：Standalone
-> 当前状态：Release ID、Repository stable identity 与 group count contract items 已关闭；下一步进入采集子数据原子替换整改
 
-## 已完成
-
-- 完成项目、文档、源码、测试和生产数据库的只读基线审计；
-- 将项目范围、架构、数据模型、运行手册、任务状态和 task plan 拆成唯一事实来源；
-- 建立高风险数据整改 checklist 和第一个 Release ID 任务计划；
-- 保持 Agent/MCP 接口指南为独立接口文档，通过 Harness 单向引用。
-- 完成 `releases.id` 的 Drizzle `bigint` 映射、无损采集边界、十进制字符串 API 契约和显式迁移；
-- 删除 tag hash 伪 Release 降级，在本地 PostgreSQL 完成 188 条历史 fixture 升级与大 ID 往返演练；
-- focused tests、全仓 lint/typecheck/test/build 与迁移再生成检查全部通过。
-- 独立 reviewer 首轮提出 JavaScript safe integer 与迁移锁门禁问题；修订后 continuity 复核为 `APPROVE`。
-- PR #27 已通过 CI 并合并，手动部署 workflow run 32112032164 已完成生产备份、显式迁移和应用发布；
-- 生产 `releases.id` 已变为 `bigint`，迁移前备份与在线库 191 条有序 `(id, repo_id)` 行集哈希一致；
-- 生产 API/Web/Worker/PostgreSQL/Nginx 健康，未认证访问为 401，Keychain + SSH tunnel 的认证 health 为 `ok`。
-- 独立 closeout reviewer 再次核对 Git、Actions、两份备份、在线数据库和服务证据后给出 `APPROVE`；Harness 已将 item 标记为 `done`。
-- PR #29 已通过修订后的干净 CI 并合并，手动部署 workflow run 32121157975 完成生产备份、显式 `0007` 迁移和 compatibility 发布；
-- 生产 Radar 重复组从 1 降为 0；one-shot job 26 以 `applied` 终态为 22 个真实 GitHub 仓库回填稳定 ID，`unresolved=0`、`conflicts=0`；
-- 10 个 `tech-stack/*` reference rows 保持无 GitHub ID，正式仓库 ID、关注名称、分组成员和 Radar 不变量复核通过；
-- `REPOSITORY_IDENTITY_CUTOVER=enabled` 已只在 API 生效，生产 API/Web/Worker、Nginx 访问控制及 Keychain + SSH tunnel MCP health 均验证通过。
-- Repository stable identity 的独立 production closeout review 为 `APPROVE`，Harness 已将 `data-correctness-1b-repository-identity` 标记为 `done`；
-- 认证 MCP dogfood 暴露 `groups.list` 的 `repoCount` string/number 类型漂移，已确认是早于本次迁移的独立 P2 correctness follow-up。
-
-## 当前小项
-
-- `data-correctness-1c-group-count-contract` 已独立登记并通过 plan review；
-- RED tests 已复现 PostgreSQL `count` string 泄漏到 API 输出，最小实现改为严格 runtime normalization；
-- 未修改 schema、migration 或分组数据；focused API tests 与 typecheck 已通过，下一步为全仓门禁与独立 implementation review。
-- 全仓四项门禁与独立 implementation review 已通过，PR #31 合并为 `main@7245b5d`；
-- 无迁移 deploy run 32124923912 成功，migration rows 保持 8；认证 MCP 分组列表已恢复，7 个 `repoCount` 均为 number；
-- 部署期间并行 dogfood 会话把 group members 从 16 增至 63，本修复无 group mutation，保留全部业务写入；下一步仅做独立 closeout。
-- 独立 production closeout review 确认上述并发写入早于部署、线上数值计数与 63 条关系一致，最终 verdict 为 `APPROVE`；Harness 已将 1C 标记为 `done`。
-- `data-correctness-2-atomic-replacement` 已完成源码与生产只读基线核验：三类来源均存在空结果不清旧数据，delete/insert 分离，且 HN/Releases 把失败吞成空数组；后台 embedding 还存在第二个 chunks 替换窗口。
-- 2026-08-18 生产当前有 50 个仓库行（40 个真实仓库）、35815 chunks、0 HN items、362 releases；40 个真实仓库 embedding 均为 `completed`，未发现重复 chunk natural key、Release ID 跨仓库冲突、active collection-like job 或长事务。
-- 已形成 `tasks/data-correctness-2-atomic-replacement/plan.md`，下一步进行独立 plan review 后进入 RED tests。
-- 原子替换计划经过五轮独立 continuity review 后获 `APPROVE`；已实现 stable-ID 锁、数据库严格单调毫秒 token、三来源 structured outcome、单事务快照提交与版本安全 embedding/SBOM 派生写入。
-- 定向 DB/API 单元测试、真实 PostgreSQL 10 个事务与双连接竞争场景、全仓 lint/typecheck/test/build 均通过；未新增 migration，下一步进行独立 implementation review。
-- 独立 implementation review 首轮发现 reconcile 撤销活跃 claim、malformed SBOM 误清空与并发证据不足；已完成最小修复并把真实 PostgreSQL 定向场景扩展为 10 个，等待 continuity 复核。
-- continuity implementation review 确认四项 finding 均已关闭，未发现剩余 P0–P3 finding，最终 verdict 为 `APPROVE`；下一步提交 PR 并等待 CI。
-- PR #33 与 CI 已通过并合并为 `main@de3b917`；无迁移 deploy run `32137164791` 的 attempt 2 成功，API/Web/Worker 镜像 revision 一致，migration rows 保持 8，服务与公网 401 访问控制正常。
-- 通过 Keychain + SSH tunnel 的认证 MCP 对 `deepseek-ai/deepseek-harness` 完成正常采集 dogfood：token 严格前进，chunk/Release/HN 快照一致，成功空 SBOM 规范化为 `[]`，后台 embedding 完成 `1/1`；全库 40 个真实仓库均为 `completed`，三类一致性冲突为 0。
-- Hacker News 外部 API 本次返回 400，按 optional source warning 降级并保留旧快照，未破坏主采集；下一步仅进行独立 production closeout review 与 Harness 关闭。
-
-## 已验证基线
-
-2026-08-17 对 `main@b64d6a0` 与生产 PostgreSQL 完成只读检查：
-
-- PostgreSQL 16.13，`vector` 0.8.2；
-- `0000`–`0005` 六条迁移的 SHA-256 与生产迁移历史逐条一致；
-- 1 个用户、20 个真实仓库、10 个技术栈 reference rows；
-- 19173 个 chunks 全部含有 1024 维 embedding；
-- 未发现重复 chunk key、workflow 用户错配、图自环、非法计数或 Trending 数量错配；
-- DB 包 8 个测试文件、101 个单元测试通过，typecheck 通过；
-- 现有持久化测试主要 mock Drizzle query builder，尚无真实 PostgreSQL 集成测试。
-
-这些是日期化证据，不是永久不变的产品声明。需要依赖生产现状时必须重新验证。
-
-## 当前 handoff
 
 - 最近完成 item：`data-correctness-1a-release-id-bigint`；
 - Canonical plan：`tasks/data-correctness-1a-release-id-bigint/plan.md`；
@@ -264,6 +229,16 @@ chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事�
 - 稳定 ID 边界、ID-first repository/Radar 写入、one-shot backfill、lease 原子 apply、`0007` 合并迁移与 compatibility/cutover 已完成；
 - 首轮实现审查发现的 Radar ID 擦除、following 错误关联和终态 version 伪报问题均已修复，continuity verdict 为 `APPROVE`；
 - 全仓 lint/typecheck/test/build、真实 PostgreSQL 演练与迁移再生成检查通过；PR/CI、显式迁移、one-shot backfill、cutover 与独立 closeout 已完成；下一步先用独立小 item 修复 dogfood 暴露的 group count 契约，再进入 `data-correctness-2-atomic-replacement`。
+- 最近完成 item：`data-correctness-2-atomic-replacement`；
+- Canonical plan：`tasks/data-correctness-2-atomic-replacement/plan.md`；
+- Verification：`tasks/data-correctness-2-atomic-replacement/verification.md`；
+- 原子快照、版本安全 embedding、PR/CI、无迁移部署、生产 MCP dogfood 与独立 closeout 均已完成；下一 item 为 `data-architecture-3-technology-stack-entities`。
+- 当前 item：`data-architecture-3-technology-stack-entities`；
+- Canonical plan：`tasks/data-architecture-3-technology-stack-entities/plan.md`；
+- Verification：`tasks/data-architecture-3-technology-stack-entities/verification.md`；
+- Phase A expand、precision fix、versioned backfill、shadow zero-diff 与生产 MCP/health/auth 证据均已完成；独立 production closeout 尚未执行。下一步先完成 `data-correctness-4-deps-cache-recovery` 的恢复语义和外呼预算，再由 Reviewer 复核，不能提前进入 Phase B 或标记 done。
+- 可并行 item：`platform-ai-7-minimax-m3-default`；其 provider 迁移与数据整改使用独立 PR、部署和 closeout。
+- 后续串行 item：Phase A closeout -> `data-quality-5-postgres-integration-gates` -> Phase B -> Phase C。
 
 ## Harness 初始化验证
 
@@ -292,7 +267,7 @@ chunks、Hacker News 与 Releases 明确区分 success([]) 和 failure；短事�
 ```md
 # 当前审查
 
-`data-correctness-1c-group-count-contract` 已完成独立 closeout review，完整记录归档于 [任务审查记录](../tasks/data-correctness-1c-group-count-contract/review.md)。下一个 item 开始审查时，由 Harness 重新生成本文件。
+`data-architecture-3-technology-stack-entities` 的 Phase A expand、precision fix、versioned backfill、生产 shadow zero-diff 与 MCP/health/auth 已完成；证据见 [任务验证记录](../tasks/data-architecture-3-technology-stack-entities/verification.md)。生产 graph rebuild 虽正确成功，但 70 分 44 秒的冷缓存路径暴露外呼 timeout/budget/freshness/progress P1，唯一后续方案为 [依赖解析缓存恢复与外呼预算计划](../tasks/data-correctness-4-deps-cache-recovery/plan.md)。当前暂停在 Phase A production closeout 前；Reviewer 批准 item 4 和 Phase A closeout 前不得进入 Phase B/C 或标记整个 item 完成。
 ```
 
 ## Closeout Questions

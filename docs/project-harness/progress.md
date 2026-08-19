@@ -79,12 +79,13 @@
 
 ## 当前 handoff
 
-- 最近完成 item：`data-correctness-4-deps-cache-recovery`（代码与审查完成，待 PR/CI 与生产门禁）；
+- 最近完成 item：`data-correctness-4-deps-cache-recovery`（**已 done**：PR #39 + 生产迁移 0009 + 冷/暖 rebuild + production closeout APPROVE，全链路闭环）；
+- 串行链下一项：`data-architecture-3-technology-stack-entities` 的 Phase A production closeout（依赖已解除）；
 - PR #39 已通过 CI 并合并到 main（merge commit 见 Git 历史）；
 - Canonical plan：`tasks/data-correctness-4-deps-cache-recovery/plan.md`；两轮 plan review approved；
 - Implementation review 第一轮 changes_requested（P1 canonicalization 降级证据擦除等 10 条）已全部修复，continuity 复核 approved（evt-20260819T025237Z-c836a215）；
 - 验证：db 单测 101、worker 18、api 全套、真实 HTTP 层 9、隔离 PostgreSQL 16+pgvector 串行 34（含 in-tx FOR UPDATE 租约用例）；全仓 lint/typecheck/test/build 与迁移再生成通过；
-- 下一步：PR/CI 合并后按 plan Production Gates 执行生产部署与冷/暖 rebuild（需用户显式授权），完成后交独立 production closeout review；不切 Phase B、不清理 legacy。
+- 生产验收：冷 rebuild 588s（3061 外呼、预算 3054/6000+7/10000 单次收敛）、warm rebuild 88s（721 外呼全部可解释，598 个历史 null 行重试后 589 转权威 not_found）；服务/401/认证路径/真实仓库列表全部验证；独立 closeout review APPROVE（evt-20260819T040120Z-3daf6fbd）。
 
 ### 上一 handoff（1b 已并入 main，存档）
 
