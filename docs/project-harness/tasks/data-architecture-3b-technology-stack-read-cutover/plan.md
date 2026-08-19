@@ -56,7 +56,7 @@ API 与 Web 从 `technology_stacks` / `repository_technology_stacks` 读取技�
 - 旧 consumer 无法解析 `technology_stack` 的反例；
 - legacy/new source、relation、packages 任一漂移时拒绝 cutover；
 - unknown mode 和 cleaned+legacy mode 启动失败；
-- 真实仓库 list/group/collection/Scheduler/Radar 不应读取 technology stack 行；
+- 真实仓库 list/group/collection/Scheduler/Radar 不应读取 technology stack 行；3 处未过滤 watched-join 站点（`getRepository` 详情、`requireWatchedRepositoryByFullName`、embedding reconcile 列表）各自有对应用例；
 - 新读投影不产生悬空边（legacy 栈边被排除）与重复 repo→stack 边（只从新表合成）；
 - 读投影 top-N 与 legacy/shadow `projectionKeys` 选择语义逐 slug 一致（usage 降序 + name 升序 tie-break）；
 - 正向条件恰好覆盖当前真实行、排除 reference 行（按 baseline 不变量计数）。

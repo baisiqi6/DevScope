@@ -10,7 +10,7 @@
 
 - `data-correctness-4-deps-cache-recovery` done（production closeout APPROVE，2026-08-19）；
 - `data-architecture-3-technology-stack-entities`（Phase A）done（closeout APPROVE，投影零差异独立重算）；
-- `data-quality-5-postgres-integration-gates` done（PR #40，CI integration job 运行中）。
+- `data-quality-5-postgres-integration-gates` done（PR #40，CI 双 job 通过，closeout approved）。
 
 **生产基线**（Phase A closeout 时实测，日期化证据）：
 
@@ -20,12 +20,19 @@
 - new/legacy 投影 sorted 签名双向零差异（79 行、379 packages evidence、25 sources）；
 - 生产容器 revision：**916bc66 旧镜像运行中**（2026-08-19 网络故障期间未完成镜像更新；服务器代码 worktree 已 ff 到 59066cd，镜像待 ghcr 恢复后重试 `deploy.yml`——见 MiniMax item 的 infra blocker 记录）。Phase B 的 compatibility revision 部署将携带这次镜像更新。
 
-**consumer 现状盘点**：
+**consumer 现状盘点**（2026-08-19 逐项核对源码）：
 
-- graph contract：shared `repoGraphSchema` 的 node kind 为 `repo | reference | language`，`isReference` 字段对外暴露；Web 2D/3D 渲染按 `reference` 判断（`apps/web/src/app/graph/page.tsx`）；web 有独立 `graph-contract.test.ts`；
-- `isReference`/`is_reference` 散落：12 个源文件（web graph 页面、api router.ts/scheduler.ts/groups.ts、shared schema、db pipeline/radar/repository-identity/technology-stack-entities 等），`isReference` 引用约 85 处——正向条件收敛的主要工作量所在；
-- CLI/MCP 经 `packages/client` 的 `repoGraphSchema` 消费同一 contract；
-- mode 枚举：`parseTechnologyStackStorageMode` 当前只接受 `legacy_shadow_dual_write`（fail closed 已就位，Phase B 加入 `new_read_dual_write`）。
+- graph contract：shared `repoGraphSchema` 的 node kind **已含 `technology_stack`**（`packages/shared/src/index.ts` 的 Phase A compatibility 扩展）；legacy `reference` kind 与 `isReference` 字段在窗口内保留；
+- Web 2D/3D：已统一走 `isTechnologyStackGraphNode`（`apps/web/src/lib/repo-graph-node.ts`，canvas/canvas-3d 共 11 处调用点）双 kind 兼容；node ID 变化（`"41"` → `stack:react`）对布局缓存（按 key 容错）与详情路由（仅 repo kind 出链接）无影响；生产 Web@916bc66 已具备双 kind 兼容——**rollout step 1-3 的 consumer 兼容已由 Phase A 提前部署**；
+- CLI/MCP：实测不解析 graph contract（`apps/cli/src/cli.ts`、`apps/mcp/src/server.ts` 无 graph 端点调用；`packages/client` 不含 graph API）——无兼容改动点，仅间接受仓库列表正向条件影响；
+- `isReference`/`is_reference` 散落（源码口径，不含 dist 产物）：约 48 处 / 11 个源文件；业务过滤站点 6 处 + 未过滤 watched-join 站点 3 处（见 plan 收敛清单）；
+- mode：`parseTechnologyStackStorageMode` 接受全部四值枚举（`legacy_shadow_dual_write | new_read_dual_write | new_only | legacy_cleaned`），fail closed 收紧发生在 API/Worker 两处进程入口的 supported-set assert（当前仅接受 `legacy_shadow_dual_write`）。
+
+**正向条件不变量核验**（2026-08-19 生产实测）：
+
+- `is_reference=false AND github_repository_id IS NULL` = **0 行**；
+- `is_reference=true AND github_repository_id IS NOT NULL` = **0 行**（反向）；
+- 正向条件 `github_repository_id IS NOT NULL` 恰好覆盖 40 个真实仓库行、排除 13 个 reference 行——谓词在生产成立。
 
 ## 待 plan review 结论后继续
 
