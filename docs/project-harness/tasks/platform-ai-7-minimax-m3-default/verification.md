@@ -76,3 +76,7 @@ Endpoint：`https://api.minimaxi.com/v1`（大陆站）。预检 `GET /v1/models
 - **durable canary**：`kevinelliott/agentpipe` 健康分析 job `succeeded`，usage 正常（9249/12059 tokens），无 `<think>` 污染（thinking disabled 生效）；report 入库（可选文件缓存 EACCES 为设计内非致命）；
 - **SSE canary**：`/api/agent/workflow/stream` 完整事件链 init→tool_use×2→tool_result×2→text→report→detailed→complete；
 - 无迁移、无数据回滚需求；BGE-M3 embedding 与 pgvector 1024 维不变。
+
+## Production closeout（2026-08-19）
+
+独立 closeout reviewer 实测 15 项全部一致（PR/health/401/provider/镜像 SHA/迁移数/canary succeeded+usage/无 think 污染/report 入库/备份与回滚配置/key 零泄漏）。Verdict：APPROVE（2 条 P3 措辞：DeepSeek 回滚指 env 默认 DEEPSEEK_* 落回；SSE 逐事件为间接确认——HTTP 200 + 时长与 execution 吻合）。
