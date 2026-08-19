@@ -80,7 +80,7 @@
 ## 当前 handoff
 
 - 最近完成 item：`data-correctness-4-deps-cache-recovery`（代码与审查完成，待 PR/CI 与生产门禁）；
-- 分支：`codex/deps-cache-recovery`（base `main@8868246`，commits ec2078a + 1923904 + 46ce3a4 + 收尾）；
+- PR #39 已通过 CI 并合并到 main（merge commit 见 Git 历史）；
 - Canonical plan：`tasks/data-correctness-4-deps-cache-recovery/plan.md`；两轮 plan review approved；
 - Implementation review 第一轮 changes_requested（P1 canonicalization 降级证据擦除等 10 条）已全部修复，continuity 复核 approved（evt-20260819T025237Z-c836a215）；
 - 验证：db 单测 101、worker 18、api 全套、真实 HTTP 层 9、隔离 PostgreSQL 16+pgvector 串行 34（含 in-tx FOR UPDATE 租约用例）；全仓 lint/typecheck/test/build 与迁移再生成通过；
