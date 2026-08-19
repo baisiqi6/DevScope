@@ -331,11 +331,11 @@
     {
       "id": "data-architecture-3b-technology-stack-read-cutover",
       "title": "技术栈实体分离 Phase B：切换新模型读取",
-      "status": "todo",
+      "status": "doing",
       "priority": "p1",
-      "owner": null,
-      "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "owner": "codex",
+      "selected_in_session": "codex-20260819-phase-b",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-architecture-3-technology-stack-entities",
         "data-correctness-4-deps-cache-recovery",
@@ -346,7 +346,22 @@
       "acceptance": "API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-write 在明确 rollback window 内保持零差异，真实仓库业务路径不依赖伪仓库过滤。",
       "verification": "",
       "handoff": "三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。",
-      "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md"
+      "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md",
+      "workflow": {
+        "status": "running",
+        "updated_at": "2026-08-19",
+        "branch": "codex/phase-b-read-cutover"
+      },
+      "artifacts": {
+        "branch": "codex/phase-b-read-cutover"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260819-phase-b",
+        "acquired_at": "2026-08-19T09:16:56Z",
+        "expires_at": "2026-08-19T11:16:56Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "data-architecture-3c-technology-stack-legacy-cleanup",
