@@ -229,7 +229,7 @@ describe("Worker 任务执行", () => {
     expect(retryOptions.retryDelayMs).toBeGreaterThanOrEqual(300_000);
   });
 
-  it("shadow compare 在 new_read_dual_write 模式下同样执行（drift 即失败）", async () => {
+  it("shadow compare 在 new_read_dual_write 模式下同样执行", async () => {
     mockClaimNextJob.mockReset();
     mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
     mockCompareTechnologyStackProjection.mockClear();

@@ -348,7 +348,7 @@
       "handoff": "三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。",
       "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md",
       "workflow": {
-        "status": "changes_requested",
+        "status": "review_approved",
         "updated_at": "2026-08-19",
         "branch": "codex/phase-b-read-cutover"
       },
@@ -364,11 +364,11 @@
         "ttl_minutes": 120
       },
       "review": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "reviewer": "reviewer-impl",
-        "phase": "review_requested",
+        "phase": "changes_requested",
         "updated_at": "2026-08-19",
-        "summary": "P0: API 启动检查 closeDb 销毁全局池致 tRPC 全挂；P1: Worker 检查未 await 有竞态；P2: 9 站点/启动检查/shadow 门测试缺口；P3: edge0SourceId 残留等"
+        "summary": "continuity：P0/P1/P2/P3 全部实测关闭（独立池单例语义实证、站点 SQL 文本断言、启动检查 6 例、shadow 门 2 例、top-N 端到端）；1 条 P3 packet 快照字段随批修正"
       }
     },
     {
