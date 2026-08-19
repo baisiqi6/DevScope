@@ -74,3 +74,14 @@
 - **P2-3（preflight SHA/revision/长事务 gate）**：revision 支持集已结构性覆盖最危险项；SHA/长事务核对写入 runbook 维护窗口前置条件清单，随 cleanup revision 批次的 workflow 终稿一并落地。
 - **P3-6（identity 缺失真实仓库静默跳过）**：生产前提（identity backfill applied）下无差异，记录为已知等价前提，不单独处理。
 - 回归：unit 232/232、integration **51/51×2**、lint/typecheck/test/build 全绿。
+
+## Implementation review 终审（2026-08-19）：APPROVE
+
+独立 reviewer 对修复提交 79bc405 全量 diff 复核 + 本地实证（phase-c 15/15、单测抽查），对 marker 改写与补删路径做对抗性场景枚举后给出 APPROVE：P1-1/P1-2 以"代码 gate + 集成测试 + 权威文档"三层关闭，P2 全部处置，P3 仅余两项书面记录的后续批处置（P2-3 的 lock_timeout、P3-6 等价前提）。
+
+**带入 cleanup revision 批次（第四批）的待办**（reviewer 备注）：
+1. execute 的 DELETE 增加 `lock_timeout`/`statement_timeout`（plan 第 76 行）；
+2. runbook 补本地开发 mode 指引（db:push 建库无列，new_only revision 下仅 legacy_cleaned 可启动）；
+3. cleanup job 的 job 级 concurrency 组与顶层组冗余可清理；
+4. baseline-compare 运行期 DDL 与 0010 命名形态差异（错序窗口双唯一索引，冗余无害）；
+5. P2-3 workflow 终稿：target SHA/容器 digest 核对步骤代码化。
