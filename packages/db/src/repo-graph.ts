@@ -1,14 +1,21 @@
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "./index";
 import {
   repositories,
   repoRelationships,
   packageRepoMappings,
   githubRepoNameCanonicalizations,
+  repositoryTechnologyStacks,
+  technologyStacks,
   userWatchedRepositories,
 } from "./schema";
 import { detectTechStack, type TechStackNode } from "./tech-stack-catalog";
-import { replaceRepositoryTechnologyStacksForCurrentSnapshots } from "./technology-stack-entities";
+import {
+  parseTechnologyStackStorageMode,
+  replaceRepositoryTechnologyStacksForCurrentSnapshots,
+  selectTopTechnologyStackSlugs,
+  type TechnologyStackProjectionRow,
+} from "./technology-stack-entities";
 import {
   applySbomBackfillIfCurrent,
   poolRepositoryEmbeddingForCurrentVersion,
@@ -851,7 +858,7 @@ export async function recomputeDependencyEdges(
 
 export interface RepoGraphDataNode {
   id: string;
-  kind: "repo" | "reference" | "language";
+  kind: "repo" | "reference" | "language" | "technology_stack";
   fullName: string;
   name: string;
   language: string | null;
@@ -867,10 +874,184 @@ export interface RepoGraphDataEdge {
   score: number | null;
 }
 
-export async function getRepoGraphData(db: Db, userId: number): Promise<{
+export interface RepoGraphData {
   nodes: RepoGraphDataNode[];
   edges: RepoGraphDataEdge[];
-}> {
+}
+
+/**
+ * 图谱读取入口：按 TECH_STACK_STORAGE_MODE 分流。
+ * - legacy_shadow_dual_write：读 legacy reference 投影（现状）；
+ * - new_read_dual_write：读新表投影（真实仓库 + stack:<slug> 节点 + 合成 repo→stack 边）。
+ */
+export async function getRepoGraphData(db: Db, userId: number): Promise<RepoGraphData> {
+  const mode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
+  if (mode === "new_read_dual_write") {
+    return getRepoGraphDataFromNewTables(db, userId);
+  }
+  if (mode === "new_only" || mode === "legacy_cleaned") {
+    // 进程入口的 supported-set 已拦截；脚本路径误用时显式拒绝而不是静默回退 legacy
+    throw new Error(`getRepoGraphData 不支持 mode=${mode}（Phase C 之前的 revision）`);
+  }
+  return getRepoGraphDataLegacy(db, userId);
+}
+
+/**
+ * Phase B 新读投影：
+ * - 真实仓库 = watched join + 正向条件（githubRepositoryId IS NOT NULL，plan 拍板谓词）；
+ * - stack 节点 id=stack:<slug>、kind=technology_stack，top-N 复用 shadow 的
+ *   selectTopTechnologyStackSlugs（usage 降序 + name 升序）；
+ * - repo→stack 边只从 repository_technology_stacks 合成；
+ * - repo→repo 真实边来自 repo_relationships，legacy 技术栈边（resolvedBy=
+ *   tech-stack-catalog）投影层排除，避免悬空边与双重计数。
+ */
+export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Promise<RepoGraphData> {
+  const repos = await db
+    .select({
+      id: repositories.id,
+      fullName: repositories.fullName,
+      name: repositories.name,
+      language: repositories.language,
+      stars: repositories.stars,
+      description: repositories.description,
+    })
+    .from(repositories)
+    .innerJoin(userWatchedRepositories, eq(userWatchedRepositories.repoId, repositories.id))
+    .where(and(
+      eq(userWatchedRepositories.userId, userId),
+      isNotNull(repositories.githubRepositoryId),
+    ));
+
+  const nodes: RepoGraphDataNode[] = repos.map((r) => ({
+    id: String(r.id),
+    kind: "repo",
+    fullName: r.fullName,
+    name: r.name,
+    language: r.language,
+    stars: r.stars,
+    description: r.description,
+    isReference: false,
+  }));
+
+  // 语言节点即时合成（与 legacy 一致）
+  const languages = new Set<string>();
+  for (const r of repos) {
+    if (r.language) languages.add(r.language);
+  }
+  for (const lang of languages) {
+    nodes.push({
+      id: `lang:${lang}`,
+      kind: "language",
+      fullName: lang,
+      name: lang,
+      language: null,
+      stars: null,
+      description: null,
+      isReference: false,
+    });
+  }
+
+  // stack 事实：经 watched 真实 source 限定（租户边界），聚合 usage 后按 shadow 同款语义选 top-N
+  const repoIds = repos.map((r) => r.id);
+  const stackRows = repoIds.length > 0
+    ? await db
+      .select({
+        repoId: repositoryTechnologyStacks.repositoryId,
+        slug: technologyStacks.slug,
+        stackName: technologyStacks.name,
+        githubRepositoryId: repositories.githubRepositoryId,
+      })
+      .from(repositoryTechnologyStacks)
+      .innerJoin(technologyStacks, eq(technologyStacks.id, repositoryTechnologyStacks.technologyStackId))
+      .innerJoin(repositories, eq(repositories.id, repositoryTechnologyStacks.repositoryId))
+      .where(inArray(repositoryTechnologyStacks.repositoryId, repoIds))
+    : [];
+
+  const projectionRows: TechnologyStackProjectionRow[] = stackRows.map((row) => ({
+    githubRepositoryId: row.githubRepositoryId ?? "",
+    slug: row.slug,
+    stackName: row.stackName,
+    packages: [],
+  }));
+  const selectedSlugs = selectTopTechnologyStackSlugs(projectionRows, TECH_STACK_TOP_N);
+
+  const emittedStackSlugs = new Set<string>();
+  for (const row of stackRows) {
+    if (!selectedSlugs.has(row.slug)) continue;
+    if (emittedStackSlugs.has(row.slug)) continue;
+    emittedStackSlugs.add(row.slug);
+    nodes.push({
+      id: `stack:${row.slug}`,
+      kind: "technology_stack",
+      fullName: `tech-stack/${row.slug}`,
+      name: row.stackName,
+      language: null,
+      stars: null,
+      description: `${row.stackName} 技术栈`,
+      isReference: false,
+    });
+  }
+
+  const edges: RepoGraphDataEdge[] = [];
+  // repo→stack 边只从新表合成（每个 (repo, selected stack) 一条）
+  const seenRepoStack = new Set<string>();
+  for (const row of stackRows) {
+    if (!selectedSlugs.has(row.slug)) continue;
+    const key = `${row.repoId}:${row.slug}`;
+    if (seenRepoStack.has(key)) continue;
+    seenRepoStack.add(key);
+    edges.push({
+      source: String(row.repoId),
+      target: `stack:${row.slug}`,
+      type: "dependency",
+      score: null,
+    });
+  }
+
+  // repo→repo 真实边：排除 legacy 技术栈边（悬空边防护）
+  const storedEdges = await db
+    .select({
+      source: repoRelationships.sourceRepoId,
+      target: repoRelationships.targetRepoId,
+      type: repoRelationships.edgeType,
+      score: repoRelationships.score,
+      evidence: repoRelationships.evidence,
+    })
+    .from(repoRelationships)
+    .where(eq(repoRelationships.userId, userId));
+
+  const nodeIdSet = new Set(nodes.map((n) => n.id));
+  for (const e of storedEdges) {
+    const resolvedBy = (e.evidence as { resolvedBy?: string } | null)?.resolvedBy;
+    if (resolvedBy === "tech-stack-catalog") continue;
+    const edge: RepoGraphDataEdge = {
+      source: String(e.source),
+      target: String(e.target),
+      type: e.type as "similarity" | "dependency",
+      score: e.score,
+    };
+    // 悬空边防护：两端都必须存在于当前投影（legacy 栈边即使未标记也被排除）
+    if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
+      edges.push(edge);
+    }
+  }
+
+  // written_in 即时合成
+  for (const r of repos) {
+    if (r.language) {
+      edges.push({
+        source: String(r.id),
+        target: `lang:${r.language}`,
+        type: "written_in",
+        score: null,
+      });
+    }
+  }
+
+  return { nodes, edges };
+}
+
+async function getRepoGraphDataLegacy(db: Db, userId: number): Promise<RepoGraphData> {
   const repos = await db
     .select({
       id: repositories.id,

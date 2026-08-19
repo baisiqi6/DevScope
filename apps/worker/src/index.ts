@@ -5,6 +5,7 @@
 import "./env";
 import { hostname } from "node:os";
 import {
+  assertStorageModeStartupConsistency,
   assertTechnologyStackStorageModeSupported,
   closeDb,
   createDb,
@@ -14,10 +15,24 @@ import { runWorker } from "./worker";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  ["legacy_shadow_dual_write"],
+  // Phase B：兼容期同时接受 legacy 影子读与新表读；两进程经同一 compose 变量保持一致
+  ["legacy_shadow_dual_write", "new_read_dual_write"],
 );
 
 const db = createDb();
+
+// 启动一致性：缺表/cleaned+legacy/未回填组合 fail closed（Phase B 分层检查）。
+// 必须 await：fire-and-forget 会让 runWorker 在检查完成前领取任务。
+try {
+  await assertStorageModeStartupConsistency(
+    db,
+    parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+  );
+} catch (error) {
+  console.error("[Startup] 存储模式一致性检查失败：", error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
 const workerId = process.env.WORKER_ID || `${hostname()}:${process.pid}`;
 let stopping = false;
 

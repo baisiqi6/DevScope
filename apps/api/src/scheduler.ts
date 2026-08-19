@@ -17,6 +17,7 @@ import {
   GITHUB_TRENDING_SYNC_JOB,
   GITHUB_TRENDING_SYNC_JOB_KEY,
   repositories,
+  isRealGitHubRepository,
 } from "@devscope/db";
 import { lt, eq, or, isNull, and } from "drizzle-orm";
 import { getOrCreateCurrentUserId } from "./current-user";
@@ -52,7 +53,7 @@ export async function refreshStaleRepositories() {
       .from(repositories)
       .where(
         and(
-          eq(repositories.isReference, false),
+          isRealGitHubRepository,
           or(
             lt(repositories.lastFetchedAt, staleThreshold),
             isNull(repositories.lastFetchedAt)
@@ -177,7 +178,7 @@ export async function processPendingEmbeddings() {
       .from(repositories)
       .where(
         and(
-          eq(repositories.isReference, false),
+          isRealGitHubRepository,
           eq(repositories.embeddingStatus, "pending")
         )
       )

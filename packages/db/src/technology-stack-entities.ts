@@ -665,19 +665,75 @@ export interface TechnologyStackShadowComparison {
   missingInLegacy: string[];
 }
 
-function projectionKeys(rows: TechnologyStackProjectionRow[], topN: number): string[] {
+/**
+ * 进程启动时的存储模式一致性检查（Phase B 分层：启动 fail closed）：
+ * - 任一双写模式下，新表必须存在（缺表 = 迁移未应用）；
+ * - legacy 影子模式下 legacy 数据已被清（cleaned）时拒绝启动（回退窗口不存在）；
+ * - new_read 模式下新表为空但 legacy 仍有技术栈 reference 时拒绝启动（未回填）。
+ * shadow 的逐 source drift 检查仍在 rebuild job 内（任务失败语义）。
+ */
+export async function assertStorageModeStartupConsistency(
+  db: Db,
+  mode: TechnologyStackStorageMode,
+): Promise<void> {
+  if (mode !== "legacy_shadow_dual_write" && mode !== "new_read_dual_write") {
+    return; // new_only/legacy_cleaned 属 Phase C 之后的模式，当前 revision 不支持到那一步
+  }
+  const tables = await db.execute<{ stacks_exists: boolean; relations_exists: boolean }>(sql`
+    select to_regclass('public.technology_stacks') is not null as stacks_exists,
+           to_regclass('public.repository_technology_stacks') is not null as relations_exists
+  `);
+  const row = tables.rows?.[0];
+  if (!row?.stacks_exists || !row?.relations_exists) {
+    throw new Error(
+      `TECHNOLOGY_STACK_STORAGE_MODE=${mode} 但技术栈新表缺失：迁移 0008 未应用，拒绝启动`,
+    );
+  }
+  const counts = await db.execute<{ legacy_stack_refs: string; new_relations: string }>(sql`
+    select
+      (select count(*) from repositories where is_reference = true
+         and full_name like 'tech-stack/%')::text as legacy_stack_refs,
+      (select count(*) from repository_technology_stacks)::text as new_relations
+  `);
+  const c = counts.rows?.[0];
+  const legacyCount = Number(c?.legacy_stack_refs ?? 0);
+  const newCount = Number(c?.new_relations ?? 0);
+  if (mode === "legacy_shadow_dual_write" && legacyCount === 0 && newCount > 0) {
+    throw new Error(
+      "数据库技术栈 legacy 表示已被清空但 mode 仍为 legacy_shadow_dual_write（cleaned+legacy 组合），拒绝启动",
+    );
+  }
+  if (mode === "new_read_dual_write" && newCount === 0 && legacyCount > 0) {
+    throw new Error(
+      "new_read_dual_write 但新表为空而 legacy 技术栈行存在（未回填），拒绝启动",
+    );
+  }
+}
+
+/**
+ * top-N 技术栈选择语义的唯一实现：按使用仓库数降序、stack name 升序 tie-break。
+ * shadow compare 与 new 读投影必须复用本函数，保证零差异时 UI 输出一致。
+ */
+export function selectTopTechnologyStackSlugs(
+  rows: TechnologyStackProjectionRow[],
+  topN: number,
+): Set<string> {
   const usage = new Map<string, { name: string; sources: Set<string> }>();
   for (const row of rows) {
     const entry = usage.get(row.slug) ?? { name: row.stackName, sources: new Set<string>() };
     entry.sources.add(row.githubRepositoryId);
     usage.set(row.slug, entry);
   }
-  const selected = new Set([...usage.entries()]
+  return new Set([...usage.entries()]
     .sort(([, left], [, right]) =>
       right.sources.size - left.sources.size || left.name.localeCompare(right.name),
     )
     .slice(0, topN)
     .map(([slug]) => slug));
+}
+
+function projectionKeys(rows: TechnologyStackProjectionRow[], topN: number): string[] {
+  const selected = selectTopTechnologyStackSlugs(rows, topN);
   return rows
     .filter((row) => selected.has(row.slug))
     .map((row) => `${row.githubRepositoryId}|${row.slug}|${digest(

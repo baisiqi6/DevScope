@@ -10,6 +10,8 @@
 // 必须先加载环境变量，再求值会初始化数据库连接池的模块。
 import "./env";
 import Fastify from "fastify";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
 import { appRouter } from "./router";
@@ -19,6 +21,7 @@ import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 import {
+  assertStorageModeStartupConsistency,
   assertTechnologyStackStorageModeSupported,
   closeDb,
   createDb,
@@ -34,7 +37,8 @@ import { fastifyOptions } from "./server-options";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  ["legacy_shadow_dual_write"],
+  // Phase B：兼容期同时接受 legacy 影子读与新表读；两进程经同一 compose 变量保持一致
+  ["legacy_shadow_dual_write", "new_read_dual_write"],
 );
 
 /**
@@ -205,6 +209,25 @@ const start = async () => {
     const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
 
     console.log("=".repeat(50));
+    // 启动一致性：缺表/cleaned+legacy/未回填组合 fail closed（Phase B 分层检查）。
+    // 必须用独立短连接：全局 createDb() 是模块级单例，closeDb() 会终结
+    // context.ts 捕获的共享池，导致后续所有 tRPC 请求失败。
+    {
+      const startupPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+      const startupDb = drizzle(startupPool);
+      try {
+        await assertStorageModeStartupConsistency(
+          startupDb,
+          parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+        );
+      } catch (error) {
+        console.error("[Startup] 存储模式一致性检查失败：", error instanceof Error ? error.message : error);
+        await startupPool.end().catch(() => undefined);
+        process.exit(1);
+      }
+      await startupPool.end().catch(() => undefined);
+    }
+
     console.log("🔧 环境变量检查:");
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
@@ -218,6 +241,8 @@ const start = async () => {
     try {
       const staleMinutes = Number(process.env.WORKFLOW_STALE_MINUTES) || 30;
       const db = createDb();
+
+
       const count = await reconcileStaleExecutions(db, { staleMinutes });
       if (count > 0) {
         console.log(`[Reconciliation] 标记 ${count} 条僵尸执行为 failed`);

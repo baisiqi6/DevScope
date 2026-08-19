@@ -29,6 +29,7 @@ import {
   reconcileRepositoryEmbeddingStatus,
   userWatchedRepositories,
   type Db,
+  isRealGitHubRepository,
 } from "@devscope/db";
 import { desc, eq, sql, and, or } from "drizzle-orm";
 import {
@@ -114,6 +115,7 @@ async function requireWatchedRepositoryByFullName(
     .where(and(
       eq(userWatchedRepositories.userId, userId),
       eq(repositories.fullName, fullName),
+      isRealGitHubRepository,
     ))
     .limit(1);
 
@@ -285,7 +287,7 @@ export const appRouter = router({
             eq(userWatchedRepositories.userId, userId),
           ),
         )
-        .where(eq(repositories.isReference, false))
+        .where(isRealGitHubRepository)
         .orderBy(desc(repositories.stars))
         .limit(input.limit)
         .offset(input.offset);
@@ -323,7 +325,7 @@ export const appRouter = router({
             eq(userWatchedRepositories.userId, userId),
           ),
         )
-        .where(eq(repositories.id, input.id))
+        .where(and(eq(repositories.id, input.id), isRealGitHubRepository))
         .limit(1);
 
       if (repoList.length === 0) {
@@ -767,9 +769,10 @@ export const appRouter = router({
       }
 
       // 只同步当前用户关联的仓库；repositories 仍是可共享的 GitHub 实体。
-      const whereClause = input.repoId
-        ? eq(repositories.id, input.repoId)
-        : undefined;
+      const whereClause = and(
+        isRealGitHubRepository,
+        input.repoId ? eq(repositories.id, input.repoId) : undefined,
+      );
 
       const repoList = await db
         .select({
