@@ -82,8 +82,8 @@
 - 最近完成 item：`data-correctness-4-deps-cache-recovery`（**已 done**：PR #39 + 生产迁移 0009 + 冷/暖 rebuild + production closeout APPROVE，全链路闭环）；
 - `data-architecture-3-technology-stack-entities` Phase A **已 done**（2026-08-19 closeout APPROVE：投影零差异保 multiplicity 语义独立重算、backfill/graph receipts 在位、legacy 数据未被触碰、mode 未切换）；
 - `data-quality-5-postgres-integration-gates` **已 done**（PR #40：统一 test:integration 门禁、隔离契约 fail closed、自管迁移+drift 校验、43 例矩阵、CI integration job 首跑 56s 全绿；两轮 plan + 两轮 implementation review approved）；
-- `data-architecture-3b-technology-stack-read-cutover` 代码阶段完成（PR #42 CI 双绿合并）：新表读投影（正向条件/stack:<slug>/legacy 栈边排除/悬空防护）、top-N 单一实现、9 站点收敛、启动检查分层 fail closed；两轮 plan + 两轮 implementation review approved（P0 全局池销毁被首轮抓出并修复）；**生产 mode 切换（new_read_dual_write）待用户授权后执行三阶段 rollout**；
-- 串行链后续：Phase B 生产 rollout → Phase C（legacy cleanup，需 Phase B 观察窗口收束）；
+- `data-architecture-3b-technology-stack-read-cutover` **已 done**（2026-08-19：PR #42 + 三阶段 rollout + 切换后 rebuild 零差异 ext=5 + production closeout APPROVE 16 项实测一致）。生产现运行 `new_read_dual_write`；回退 = 删 env 行 + 重启（观察窗口至 Phase C 启动前，启动前需复核 mode/计数/日志）；
+- 当前 item：`data-architecture-3c-technology-stack-legacy-cleanup`（已领取，branch codex/phase-c-cleanup）：new_only 兼容 revision（停 legacy writer）→ 显式 opt-in cleanup workflow → 删除伪 repositories/伪 watched/legacy 栈边/is_reference 列与 compatibility 代码。**真实生产删除需用户对目标 SHA/备份/维护窗口的明确授权**（plan Destructive Authority Boundary）；
 - `platform-ai-7-minimax-m3-default` 代码阶段完成（PR #41，approved）；生产切换已获用户授权并于 2026-08-19 执行，但遇**基础设施 blocker**：生产网络对 github.com（git pull，TLS 持续失败）与 ghcr.io（docker daemon pull EOF）同时不可达。切换于同日完成：镜像经本地 amd64 构建 + save/scp/load 绕开 ghcr EOF（构建源为 main@59066cd 干净 archive；第一次误用旧代码目录构建被 canary 的 <think> 污染当场拦截并回滚），MiniMax 三行 env 生效，durable 与 SSE 两路 canary 全过（job succeeded、完整事件流、usage 正常），两次真实 DeepSeek 回滚演练。**生产现运行 MiniMax-M3**；回滚 = 删三行 env + 重启（备份在）。
 - PR #39 已通过 CI 并合并到 main（merge commit 见 Git 历史）；
 - Canonical plan：`tasks/data-correctness-4-deps-cache-recovery/plan.md`；两轮 plan review approved；

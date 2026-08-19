@@ -2,24 +2,24 @@
 
 ## Subject
 
-- Checklist item: `platform-ai-7-minimax-m3-default`
-- Reviewer: `reviewer-closeout-mm`
+- Checklist item: `data-architecture-3b-technology-stack-read-cutover`
+- Reviewer: `reviewer-pb-closeout`
 - Updated at: `2026-08-19`
-- Canonical plan path: `docs/project-harness/tasks/platform-ai-7-minimax-m3-default/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md`
 
 ## Item Snapshot
 
-- Title: 将分析模型默认切换到 MiniMax M3
+- Title: 技术栈实体分离 Phase B：切换新模型读取
 - Status: doing
 - Workflow status: closeout_requested
 - Priority: p1
 - Owner: codex
-- Session: codex-20260819-minimax
-- Dependencies: None
+- Session: codex-20260819-phase-b
+- Dependencies: data-architecture-3-technology-stack-entities, data-correctness-4-deps-cache-recovery, data-quality-5-postgres-integration-gates
 
 ## Acceptance
 
-通过现有 OpenAI-compatible seam 将 API/Worker 切到 MiniMax-M3；complete/stream/structured/tool/cancel 真实探针和自动测试通过，secret 不落盘，DeepSeek rollback 可用，BGE-M3 embedding 不变。
+API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-write 在明确 rollback window 内保持零差异，真实仓库业务路径不依赖伪仓库过滤。
 
 ## Verification
 
@@ -27,7 +27,7 @@
 
 ## Handoff
 
-可与数据库整改并行；先用 Token Plan key 做脱敏 contract probe，再做最小兼容修复与 canary，不能只改环境变量直接全量生产切换。
+三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。
 
 ## Review Inputs
 
@@ -40,119 +40,105 @@
 ## Canonical Plan Content
 
 ```md
-# 将分析模型默认切换到 MiniMax M3
+# 技术栈实体分离 Phase B：切换新模型读取
 
 ## Item
 
-- Checklist item：`platform-ai-7-minimax-m3-default`
+- Checklist item：`data-architecture-3b-technology-stack-read-cutover`
+- Target mode：`new_read_dual_write`
 - Priority：P1
-- 可与数据整改并行，不阻断 Phase A/B/C
+- 前置：Phase A closeout、deps.dev cache recovery closeout、正式 PostgreSQL integration gate
 
 ## Outcome
 
-复用现有 OpenAI-compatible seam，把 DevScope 的文本补全、流式输出、结构化分析和 Agent tool calling 从当前 DeepSeek 生产配置切到用户的 MiniMax Token Plan，模型为 `MiniMax-M3`。BGE-M3 embedding 保持不变；本 item 不改向量维度、embedding endpoint 或数据库 schema。
+API 与 Web 从 `technology_stacks` / `repository_technology_stacks` 读取技术栈事实，并输出 `technology_stack` graph contract（CLI/MCP 不直接解析 graph contract——经仓库列表的正向条件间接受益，无兼容改动点）；兼容期继续 dual-write legacy representation，使整个观察窗口内可确定性回退。真实仓库列表、收藏、分组、采集、Radar 与 Scheduler 不再依赖“排除伪仓库”的偶然过滤。
 
-## Confirmed Provider Contract
+## Authority Boundary
 
-截至 2026-08-18，MiniMax 官方文档确认：
+本 item 只授权 consumer-first contract rollout、read cutover 和 rollback-window 验证。它不授权停止 legacy writer、删除 legacy 行、移除 `repositories.is_reference`、执行 destructive migration 或切换 AI provider。
 
-- OpenAI-compatible endpoint：国际站 `https://api.minimax.io/v1`，中国大陆站对应 `https://api.minimaxi.com/v1`；必须使用签发 Token Plan key 的同站 endpoint，不能混用；
-- model ID：`MiniMax-M3`；
-- `/v1/chat/completions` 支持 non-stream、stream 与 function tools；
-- 推荐参数为 `max_completion_tokens`，`max_tokens` 已标记 deprecated；
-- M3 默认 adaptive thinking，可能把 thinking 放入 `content`，也支持 `reasoning_split`；
-- 官方当前 OpenAI-compatible reference 未声明 `response_format: {type: "json_object"}`。
+## Required Design
 
-因此不能把“OpenAI-compatible”理解成所有扩展参数完全等价。实现前必须用用户 Token Plan key 运行脱敏 contract probe；token 只进入本地/生产 secret store，不写 Git、Harness、日志或命令历史。
+### Read model
 
-官方参考：
+- 用户图谱先通过 `user_watched_repositories` 限定真实 source repositories，再 join `repository_technology_stacks`；
+- `TECH_STACK_TOP_N` 只在查询投影层计算，不裁剪全局持久事实；**读投影的选择语义必须与 legacy 写侧/shadow `projectionKeys` 复用同一函数**（按使用仓库数降序、stack name 升序 tie-break），保证 shadow 零差异时 UI 输出也与 legacy 一致；
+- 技术栈 node ID 固定为 `stack:<slug>`，kind 固定为 `technology_stack`；语言节点仍查询时合成；repo→repo 真实边来自 `repo_relationships`，**legacy 技术栈边（target 为 reference 行，即 `evidence.resolvedBy='tech-stack-catalog'`）在新读投影中排除**——repo→stack 边只从 `repository_technology_stacks` 合成，避免悬空边与双重计数；
+- **真实 repository 的正向条件固定为 `github_repository_id IS NOT NULL`**（与身份回填、`repositories_github_repository_id_unique` 唯一索引和轻量行从不写入 stable ID 的写边界一致）；禁止用 `owner <> 'tech-stack'`、fullName 前缀、sbom 存在性等替代。baseline 必须核验不变量 `is_reference=false AND github_repository_id IS NULL` 为 0 行；
+- 正向条件收敛的站点清单（6 处既有 `is_reference` 业务过滤：`apps/api/src/router.ts` 仓库列表、`scheduler.ts`×2、`router/groups.ts`、`packages/db/src/radar.ts`、`repository-identity.ts`；`repo-graph.ts` 内 dual-write/rebuild 机制性引用 Phase C 前保留）**加上 3 处当前未过滤的 watched-join 站点一并收敛**：`getRepository` 详情、`requireWatchedRepositoryByFullName`、embedding reconcile 列表（改为 watched + 正向条件，消除第二套偶然行为）；每个站点在 RED 清单有对应用例。
 
-- [MiniMax OpenAI Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai)
-- [MiniMax M3 model](https://www.minimax.io/models/text/m3)
-- [MiniMax model list API（中国大陆站）](https://platform.minimaxi.com/docs/api-reference/models/openai/list-models)
+### Contract rollout
 
-## Architecture Decision
+1. 先发布 consumer compatibility revision：shared schema 与 Web 2D/3D 同时接受 legacy `reference` 与新 `technology_stack`（生产 Web@916bc66 已具备双 kind 兼容；CLI/MCP 经实测不解析 graph contract，无兼容改动点，该结论记入 baseline）；
+2. 用旧 API + compatibility consumer、新 API + compatibility consumer 做混合 revision 测试；
+3. 所有受支持 consumer 已部署后，API 才显式进入 `new_read_dual_write`；
+4. 未知 mode、数据库已 cleaned 却配置 legacy mode、缺少新表或 shadow drift 均启动失败，不自动回退。
 
-保留 `OPENAI_COMPATIBLE_API_KEY`、`OPENAI_COMPATIBLE_BASE_URL`、`OPENAI_COMPATIBLE_MODEL` 为唯一优先配置边界；`DEEPSEEK_*` 暂作显式 rollback compatibility，不新增 `MINIMAX_*` 变量、Provider registry、Strategy hierarchy 或第二套 AI client。
+### Writer and rollback window
 
-仅在 live probe 证明参数差异时，给现有 client 增加最小 capability 配置/适配：
-
-- generation length 统一发 `max_completion_tokens`；若需兼容旧 provider，在内部做一个可测试的 request builder，而不是在调用点散落 provider name 判断；
-- M3 structured output 优先选择官方支持且 probe 成功的方式。若 `response_format` 不被接受，则移除该未声明参数，使用严格 JSON prompt + thinking separation/disable + `JSON.parse` + 现有 Zod validation；禁止用正则剥离 `<think>` 后假装结构化成功；
-- tool calling 必须保留 tool call ID、arguments、multi-round history 与 AbortSignal；不为 M3 另写 Agent loop；
-- reasoning 内容不得进入 JSON parser、用户最终报告或日志中的敏感上下文。
+- normal graph rebuild 继续在同一 source transaction 内写 new 和 legacy representation；
+- 每次 rebuild 都生成按 `(source stable ID, stack slug, sorted packages)` 比较的 shadow receipt；
+- rollback window 内旧 representation 必须持续新鲜；发现 drift 时停止推进，先修复并重新达到零差异；
+- 回退只允许显式切回上一兼容镜像与 `legacy_shadow_dual_write`，不得修改数据或猜测重建。
 
 ## Execution Plan
 
-### 1. Secret and endpoint preflight
+### 1. Baseline and plan review
 
-由用户在 MiniMax Token Plan 控制台生成/取得 key，并通过现有生产 secret 安装流程写入：
+- 核对三个前置 item 均为 `done` 且独立 review approved；
+- 记录当前 mode、migration rows、真实 repository/watched/group 数、new/legacy 投影摘要和所有受支持 consumer revision；
+- 请求独立 plan review，重点审查 tenant boundary、top-N、mixed-version contract、rollback 与 stale writer。
 
-```text
-OPENAI_COMPATIBLE_API_KEY=<secret>
-OPENAI_COMPATIBLE_BASE_URL=https://api.minimax.io/v1
-OPENAI_COMPATIBLE_MODEL=MiniMax-M3
-```
+### 2. RED tests
 
-如果 key 来自中国大陆站，Base URL 改为 `https://api.minimaxi.com/v1`。在不打印 key 的前提下调用 `GET /v1/models`，确认同一 key 可见 `MiniMax-M3`。禁止把真实值写入 `.env.example`、PR、CI artifact 或聊天记录。
+先建立失败用例：
 
-### 2. Live compatibility probe
+- new read 不经 watched source join 时会泄漏另一个用户的 stack；
+- top-N 被错误写入持久层时丢失低频事实；
+- 旧 consumer 无法解析 `technology_stack` 的反例；
+- legacy/new source、relation、packages 任一漂移时拒绝 cutover；
+- unknown mode 和 cleaned+legacy mode 启动失败；
+- 真实仓库 list/group/collection/Scheduler/Radar 不应读取 technology stack 行；3 处未过滤 watched-join 站点（`getRepository` 详情、`requireWatchedRepositoryByFullName`、embedding reconcile 列表）各自有对应用例；
+- 新读投影不产生悬空边（legacy 栈边被排除）与重复 repo→stack 边（只从新表合成）；
+- 读投影 top-N 与 legacy/shadow `projectionKeys` 选择语义逐 slug 一致（usage 降序 + name 升序 tie-break）；
+- 正向条件恰好覆盖当前真实行、排除 reference 行（按 baseline 不变量计数）。
 
-使用最小、无业务数据的请求依次验证：
+真实 PostgreSQL 用例至少覆盖两个用户的 disjoint/overlap watched set、同 stack 多 package evidence、成功空 relation 清理和 rebuild-vs-collection 强制交错。
 
-1. non-stream 文本补全；
-2. stream chunk 拼接与正常终止；
-3. `max_completion_tokens`；
-4. 单 tool call、多 tool round、tool arguments JSON；
-5. structured JSON：分别验证官方支持参数与严格 prompt 路径，确认 thinking 不污染 JSON；
-6. AbortSignal、timeout、401、429、5xx 和 malformed response；
-7. usage 的 prompt/completion token 统计缺失时不崩溃。
+### 3. Minimal implementation
 
-probe 结果只记录状态、延迟、HTTP/error class 和脱敏 schema outcome，不保存完整 prompt/response。
+- 在现有 graph query 内增加明确的 new-table projection，不引入 Repository layer、通用 graph abstraction 或第二套缓存；
+- 收紧 shared graph schema 与 2D/3D kind 判断；删除对外 `isReference` 的新 contract 使用，但 compatibility consumer 在窗口内保留 legacy 解析；
+- 把 repository truth 的正向条件集中到现有最接近的数据访问函数，逐个替换散落过滤；
+- mode 是严格枚举且进程启动时验证；**API 与 Worker 一致性的选定机制为部署时核验**（compose 单一 `TECHNOLOGY_STACK_STORAGE_MODE` 变量同时注入两进程 + 部署后核对 revisions 与 mode），进程内各自校验支持集与启动检查，不新建 DB mode ledger 或跨进程状态；
+- 启动检查与任务检查分层：mode 枚举合法、新表存在、cleaned+legacy 组合（启动时 shadow compare 得 legacyCount=0 且 newCount>0）在**进程启动**时 fail closed；shadow drift 在 **rebuild job 内**失败（既有语义）；Worker 的 shadow compare mode 门扩展到 `new_read_dual_write`（现仅 `legacy_shadow_dual_write` 分支）；
+- 添加结构化 shadow/cutover diagnostics，日志不得包含 token、密码或完整敏感 prompt。
 
-### 3. RED tests and minimal code changes
+### 4. Verification and review
 
-- 为 request builder 固化 `max_completion_tokens`，防止各调用点继续发送 deprecated 参数；
-- 构造带 thinking 的 structured response，证明旧 `JSON.parse(content)` 失败，再实现不依赖 tag stripping 的兼容路径；
-- tool calling 测试覆盖工具定义、arguments validation、多个 round、取消和 max round；
-- 保持 `resolveOpenAICompatibleConfig` 的优先级与 DeepSeek rollback tests；
-- `.env.example` 改为 provider-neutral 示例，并在注释中给出 MiniMax M3 非秘密值；
-- `docker-compose.yml` 继续透传 generic vars，DeepSeek fallback 是否保留由 compatibility test 决定；
-- 更新 architecture/runbook：生产默认改为 MiniMax M3，embedding 仍为 BGE-M3 1024。
-
-### 4. Quality and dogfood gates
-
-- focused `packages/ai` tests 与受影响 API/Worker tests；
+- focused unit/contract tests；
+- `pnpm test:integration`；
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
-- 独立 implementation review，重点检查 structured output fail closed、secret leakage、provider coupling 和 rollback；
-- staging/local 真实 Token Plan dogfood：至少一次 repository health analysis、一次 SSE Agent tool flow、一次 durable `analysis.health` Worker flow；
-- 输出必须经过现有 Zod schema，数据库只提交完整 workflow report，失败不能伪装 completed。
+- 独立 implementation review 关闭全部 P0-P3 finding；
+- PR 与 CI 通过后才能合并。
 
-### 5. Production canary and rollback
+### 5. Production rollout
 
-1. 记录当前 DeepSeek 配置键名、镜像 revision、成功报告基线和回滚值，不记录 secret；
-2. 安装 MiniMax secret，先只重启/切换单一可控 consumer 做 canary，确认 API/Worker 不出现 revision/config split；
-3. 验证 health、外层 401、认证 MCP、一次非流式分析、一次流式 Agent、一次 Worker job；
-4. 观察 error rate、latency、empty output、Zod failure、tool-loop exhaustion 与 token usage；
-5. canary 通过后再把 API/Worker 都切到 `MiniMax-M3`；
-6. 任一 gate 失败，恢复上一组 `OPENAI_COMPATIBLE_*`/`DEEPSEEK_*` 值并重启受影响服务；数据库无 migration，无需数据回滚；
-7. 独立 production closeout approved 后更新 production verification。
-
-## Non-Goals
-
-- 不替换 BGE-M3 embedding，不改 pgvector 1024 维；
-- 不引入多 provider 动态路由、自动 fallback、模型 A/B 平台或计费系统；
-- 不把 MiniMax Token Plan key 交给浏览器或前端；
-- 不在本 item 调整 prompts 的业务内容或重做分析产品 UX；
-- 不与技术栈 schema migration 或 cleanup 同批部署。
+1. 备份并记录 target SHA、现有 mode、容器 revisions 和投影摘要；
+2. 先部署 compatibility consumers，保持 legacy read；
+3. dogfood Web 2D/3D、CLI/MCP graph 与 repository/group/collection 路径；
+4. 部署/配置 API 与 Worker 为 `new_read_dual_write`，要求 revisions 和 mode 一致；
+5. 运行受预算约束的 graph rebuild，复核 new/legacy 零差异与真实业务不变量；
+6. 保持一个明确、写入量足够的 rollback observation window，记录开始/结束条件；
+7. 独立 production closeout approved 后才把 item 标记 `done`。
 
 ## Exit Criteria
 
-- 生产 API/Worker 的 generic config 指向正确站点的 `MiniMax-M3`；
-- complete、stream、structured output、tool calling、cancel/error paths 均通过真实 probe 与自动测试；
-- structured result 继续 `JSON.parse` + Zod fail closed，thinking 不污染结果；
-- secrets 未进入 Git/日志/artifact，DeepSeek rollback 已演练；
-- BGE-M3 embedding 与数据库向量契约完全不变，独立 production closeout approved。
+- 所有支持的 consumer 使用 `technology_stack` contract，node ID 稳定且无悬空边；
+- API 从新表读取，dual-write 仍维持 legacy projection 零差异；
+- repository/watch/group/collection/Radar/Scheduler 只表达真实 GitHub repository；
+- mixed revision、跨用户、top-N、并发和 rollback 演练通过；
+- Phase C 尚未启动，legacy rows 和 `is_reference` 仍完整可回退。
 ```
 
 ## Recent Progress Context

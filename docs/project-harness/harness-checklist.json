@@ -331,10 +331,10 @@
     {
       "id": "data-architecture-3b-technology-stack-read-cutover",
       "title": "技术栈实体分离 Phase B：切换新模型读取",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260819-phase-b",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-08-19",
       "dependencies": [
         "data-architecture-3-technology-stack-entities",
@@ -344,41 +344,43 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-write 在明确 rollback window 内保持零差异，真实仓库业务路径不依赖伪仓库过滤。",
-      "verification": "",
+      "verification": "PR #42 CI 双绿 + 三阶段 rollout（compat→dogfood→mode 切换）+ 切换后 rebuild 零差异（ext=5 warm）+ production closeout APPROVE；观察窗口至 Phase C 启动前，回退=删 env 行+重启",
       "handoff": "三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。",
       "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-19",
         "branch": "codex/phase-b-read-cutover"
       },
       "artifacts": {
         "branch": "codex/phase-b-read-cutover",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260819-phase-b",
         "acquired_at": "2026-08-19T09:16:56Z",
         "expires_at": "2026-08-19T11:16:56Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-19T13:57:31Z"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "reviewer-impl",
-        "phase": "changes_requested",
+        "reviewer": "reviewer-pb-closeout",
+        "phase": "closeout_requested",
         "updated_at": "2026-08-19",
-        "summary": "continuity：P0/P1/P2/P3 全部实测关闭（独立池单例语义实证、站点 SQL 文本断言、启动检查 6 例、shadow 门 2 例、top-N 端到端）；1 条 P3 packet 快照字段随批修正"
+        "summary": "16 项实测全部一致：mode 生效、新读 40+9+13 零悬空、shadow 一致(79=79)、rebuild receipt 逐项吻合、dual-write 完整性保持、worker 零 error；3 条 P3 记录性（观察窗口早期、服务器 HEAD 停 8cd17c3 docs 差异、簿记中间态）"
       }
     },
     {
       "id": "data-architecture-3c-technology-stack-legacy-cleanup",
       "title": "技术栈实体分离 Phase C：停止旧写入并清理伪数据",
-      "status": "todo",
+      "status": "doing",
       "priority": "p1",
-      "owner": null,
-      "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "owner": "codex",
+      "selected_in_session": "codex-20260819-phase-c",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-architecture-3b-technology-stack-read-cutover"
       ],
@@ -387,7 +389,22 @@
       "acceptance": "new_only 观察、显式 cleanup workflow、备份恢复演练和生产 closeout 通过；伪仓库/伪收藏/legacy stack edges/is_reference 安全移除，真实业务数据不变。",
       "verification": "",
       "handoff": "Phase B closeout 后领取；实现与演练不等于生产删除授权，真实 cleanup 需用户再次明确授权。",
-      "plan_path": "docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md"
+      "plan_path": "docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md",
+      "workflow": {
+        "status": "running",
+        "updated_at": "2026-08-19",
+        "branch": "codex/phase-c-cleanup"
+      },
+      "artifacts": {
+        "branch": "codex/phase-c-cleanup"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260819-phase-c",
+        "acquired_at": "2026-08-19T13:57:37Z",
+        "expires_at": "2026-08-19T15:57:37Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "platform-ai-7-minimax-m3-default",
