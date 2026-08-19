@@ -49,3 +49,15 @@
 - 全套 integration **60/60**、全仓四门禁通过。
 
 待第三批（生产执行前完成）：schema 列删除+journal receipt 守卫 DO block+大删除面（getRepoGraphDataLegacy/旧 compare/backfill 机制/共享 reference kind）、implementation review、PR/CI、用户维护窗口授权。
+
+## 实现第三批：new_only revision 兼容代码删除（2026-08-19）
+
+- **schema/journal**：`repositories.is_reference` 列定义移除；`technology_stack_baseline_receipts` / `technology_stack_cleanup_receipts` 声明进 schema（0010_thin_the_fury：CREATE IF NOT EXISTS + 约束命名与运行期 DDL 对齐；DROP COLUMN 改写为 cleanup receipt 守卫 DO block——`to_regclass` 收据表存在且含行且列仍在才执行，常规 migrate 与 fresh 重放结构 no-op）。migration matrix 集成用例（0004 baseline→latest）通过证明重放安全。
+- **大删除面**（随 new_only revision，plan 兼容代码删除时序）：`getRepoGraphDataLegacy` 与 mode 分流（读统一新表投影）；`recomputeDependencyEdges` 的 reference upsert/伪 watch/legacy 栈边构造/两个 GC DELETE 整体删除；dependency 全量替换无条件收窄（排除 `resolvedBy='tech-stack-catalog'`）；冻结基线单向包含比较无条件执行；Phase A 一次性 backfill 机制全链删除（db 实现/jobs 入队与类型常量/worker handler/API 两个 procedure——jobs 表部分唯一索引保留以约束历史行，并发测试改字面量验证）；旧 `compareTechnologyStackProjection(Rows)` 随 dual-write 退役。
+- **谓词改写**（plan N3 清单）：repo-graph 内部 6 处 `isReference` 站点（collectedRepos 过滤、repoByFullName、in-degree 跳过、edge 目标、backfillRepoEmbeddings/recomputeSimilarityEdges/backfillSbomPackages 范围）改为正向条件 `githubRepositoryId IS NOT NULL`（collectedRepos 用 JS 侧 null 判断）。
+- **supported set 收紧**：API/Worker 仅 `["new_only"]`（注释固定 legacy_cleaned 随 cleanup revision 加入）；部署本 revision 必须与 `.env` mode 翻转同批（compose 重启窗口）——deploy workflow 为手动 workflow_dispatch，无自动触发风险。
+- **时序澄清**：shared `repoGraphNodeSchema` 的 reference kind/`isReference` 字段与 Web 双 kind 兼容按 plan 第 62 行随 **cleanup revision**（下一批）删除，不在本批；本批 API 已不再产出 reference kind。
+- **测试**：unit 231/231（删除 backfill/shadow/legacy 断言类用例，rebuild mock 增加基线比较 execute 空表恒过）；integration **48/48×2**（含新增无列环境 RED：cleanup 执行后列已 drop 时 getRepoGraphData 关键路径正常、stack 节点来自新表、reference kind 消失）；全仓 lint/typecheck/test/build 通过。
+- 残余 `is_reference` 站点扫描：仅 marker 矩阵 information_schema 查询、cleanup 脚本自身 DROP、0010 守卫块、cleanup revision 待删的 contract 字段——全部为 plan 保留项。
+
+待第四批（cleanup revision）：supported `{new_only, legacy_cleaned}`、shared reference kind/`isReference` 字段与 Web 双 kind 删除；随后 implementation review 汇总 → PR/CI → 生产执行（需用户维护窗口授权）。
