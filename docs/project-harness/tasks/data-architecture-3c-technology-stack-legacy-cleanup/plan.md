@@ -13,7 +13,16 @@
 
 ## Destructive Authority Boundary
 
-本计划是高风险执行说明，不等于立即授权生产删除。Worker 可实现、测试和演练；真实 cleanup 仍必须取得用户对目标 SHA、备份、维护窗口和生产操作的明确授权。普通 deploy 或普通 `db:migrate` 不能隐式触发 cleanup。
+本计划是高风险执行说明，不等于立即授权生产删除。Worker 可实现、测试和演练；真实 cleanup 仍必须取得用户对目标 SHA、备份、维护窗口和生产操作的明确授权。
+
+**cleanup 不是 journal migration**：破坏性操作（DELETE + `DROP COLUMN`）由 opt-in workflow 调用的独立脚本执行（自带 receipt/marker 记录表，单事务），drizzle journal 中不含任何破坏性语句——常规 deploy 以 `apply_database_migration=true` 运行时**结构上不可能**触发 cleanup。
+
+**cleaned marker = `is_reference` 列存在性**（`information_schema.columns` 检查，与 `to_regclass` 同风格）：
+
+- 列存在：`legacy_shadow_dual_write | new_read_dual_write | new_only` 放行（保留现有子检查），`legacy_cleaned` → 启动 fail；
+- 列不存在：仅 `legacy_cleaned` 放行，其余任何 mode（含缺省回落值）→ 启动 fail。
+
+**终态配置**：cleanup 后 `.env` 固定 `TECHNOLOGY_STACK_STORAGE_MODE=legacy_cleaned`；`getRepoGraphData` 中 new_only/legacy_cleaned 的显式 throw 替换为新表读路径（读语义与 new_read 相同）。
 
 ## Required State Machine
 
@@ -32,10 +41,21 @@ new_read_dual_write
 
 ### 1. New-only compatibility revision
 
-- 先用源码扫描和 PostgreSQL query logging 证明运行 SQL 不再引用 `is_reference` 或 legacy stack rows；
-- 在“`is_reference` 列不存在、legacy 伪数据不存在”的隔离 PostgreSQL 中运行 API、Worker、graph、list、group、collection、identity、Scheduler、Radar、CLI/MCP 关键路径；
-- 停止 legacy writer，但暂不删数据；在观察窗口持续比较 new projection 与冻结的 legacy baseline；
-- 独立 review approved 后才进入 cleanup preparation。
+**legacy writer 停写与冻结基线保持（P0 语义）**：
+
+- `recomputeDependencyEdges` 的 dependency 边全量替换必须收窄到**非 legacy 栈边**（`WHERE` 排除 target 为 reference 行 / `evidence.resolvedBy='tech-stack-catalog'` 的边）——否则 new_only 首次 rebuild 会清空冻结的 legacy 栈边；
+- 事务尾部两个 GC DELETE（无边引用的 reference watched、无人引用的 reference repositories）在 new_only+ 模式下**不执行**（mode 门或随 legacy writer 一同移除）；
+- RED 固化：new_only 下执行完整 rebuild 后，legacy 栈边行数、伪 watched 行数、伪 repositories 行数**逐项不变**。
+
+**冻结基线快照与比较语义**：
+
+- 进入 new_only 前，最后一次 dual-write rebuild 通过 shadow zero-diff；随后持久化 legacy baseline 快照：full-set 的 `(githubRepositoryId, slug)` 存在性 key + packages digest（**不做 top-N 裁剪**），存独立 receipt（表或结构化文件）；
+- 观察窗口比较改为**单向包含**：baseline key ⊆ new 全集（missing 才 fail）；digest 只对 `repository_technology_stacks.updatedAt` 不晚于冻结时间的行要求一致（窗口内合法重采集导致的 digest 漂移记数不 fail）；
+- 既有 `compareTechnologyStackProjection`（双向 + is_reference 读取）随 legacy writer 一同退役；新比较不读 `is_reference`。
+
+**兼容代码删除时序**：`getRepoGraphDataLegacy`、dual-write legacy 分支、Phase A 一次性 backfill 机制、旧 compare 实现随 new_only revision 删除（隔离 PG 无列测试强制这一点）；shared `repoGraphNodeSchema` 的 `reference` kind/`isReference` 字段与 Web 双 kind 兼容随 cleanup revision 删除。
+
+**验证**：源码扫描证明运行 SQL 不再引用 `is_reference` 或 legacy stack rows（比较/启动检查改用 marker 矩阵后自动满足）；在“`is_reference` 列不存在、legacy 伪数据不存在”的隔离 PostgreSQL 中运行 API、Worker、graph、list、group、collection、identity、Scheduler、Radar、CLI/MCP 关键路径；独立 review approved 后才进入 cleanup preparation。
 
 ### 2. Dedicated cleanup operation
 
@@ -58,6 +78,7 @@ new_read_dual_write
 
 - 只删除能与新表一一映射且 packages evidence 摘要一致的 legacy stack edges；
 - 只删除能证明属于技术栈 representation、且没有真实 group/collection 语义的伪 watched/reference rows；
+- 删除前显式断言为 0（fail closed，不依赖 FK 碰巧拒绝或 cascade）：`repo_chunks`/`hackernews_items`/`releases` 对伪仓库的引用（NO ACTION 外键），以及 **`group_members` 对伪仓库的引用（cascade 外键，必须显式检查防静默级联）**；`repository_technology_stacks` 只挂真实仓库不受影响但同样断言；
 - 任何孤儿、额外引用、摘要漂移或未知 `is_reference` 用法使整个 migration fail closed；
 - 删除顺序服从外键，不使用宽泛名称前缀作为唯一判据；
 - 最后移除 `repositories.is_reference`、legacy compatibility code 与 dual-write branch。

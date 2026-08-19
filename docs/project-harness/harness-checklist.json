@@ -391,7 +391,7 @@
       "handoff": "Phase B closeout 后领取；实现与演练不等于生产删除授权，真实 cleanup 需用户再次明确授权。",
       "plan_path": "docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md",
       "workflow": {
-        "status": "running",
+        "status": "changes_requested",
         "updated_at": "2026-08-19",
         "branch": "codex/phase-c-cleanup"
       },
@@ -404,6 +404,13 @@
         "acquired_at": "2026-08-19T13:57:37Z",
         "expires_at": "2026-08-19T15:57:37Z",
         "ttl_minutes": 120
+      },
+      "review": {
+        "decision": "changes_requested",
+        "reviewer": "reviewer-plan",
+        "phase": "running",
+        "updated_at": "2026-08-19",
+        "summary": "P0: 全量替换+GC 会摧毁冻结基线（已拍板收窄+mode 门+RED）；P1: 快照单向包含语义/独立脚本防隐式触发/列存在性 marker 矩阵均已拍板写入；P2: FK 断言清单（含 group_members cascade）已补"
       }
     },
     {
