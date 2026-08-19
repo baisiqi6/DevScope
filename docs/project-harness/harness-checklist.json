@@ -234,16 +234,16 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "root test:integration 在隔离 PostgreSQL 16 + pgvector 与 CI service 中覆盖 migration、constraint、transaction、advisory lock、lease 和真实双连接交错；危险连接 fail closed，不接触开发/生产库。",
-      "verification": "",
+      "verification": "两轮 plan review + 两轮 implementation review approved；integration 43/43×2 本地 + CI integration job 首跑通过（PR #40，56s）；fail-closed 三路径实测；零残留库",
       "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
-        "status": "review_approved",
+        "status": "closeout_requested",
         "updated_at": "2026-08-19",
         "branch": "codex/pg-integration-gates"
       },
       "review": {
-        "decision": "approved",
-        "reviewer": "reviewer-impl",
+        "decision": null,
+        "reviewer": "reviewer-closeout",
         "phase": "changes_requested",
         "updated_at": "2026-08-19",
         "summary": "continuity 复核：P1（turbo 依赖闭包 build）与全部 P3 关闭，git archive CI 模拟端到端通过；1 条新 P3（release 后用 client）已随批修复，43/43 复验通过"
@@ -251,7 +251,8 @@
       "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md",
       "artifacts": {
         "branch": "codex/pg-integration-gates",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
