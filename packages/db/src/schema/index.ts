@@ -8,7 +8,7 @@
  * @module schema
  */
 
-import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ============================================================================
@@ -97,6 +97,8 @@ export const jobs = pgTable("jobs", {
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
   /** 任务结果摘要 */
   result: jsonb("result").$type<Record<string, unknown>>(),
+  /** 运行中任务的阶段进度（lease-authoritative 写入，不是业务事实来源） */
+  progress: jsonb("progress").$type<Record<string, unknown>>(),
   /** 当前状态 */
   status: jobStatusEnum("status").default("queued").notNull(),
   /** 优先级，数值越大越先执行 */
@@ -854,9 +856,17 @@ export const repoRelationships = pgTable("repo_relationships", {
   targetRepoIdIdx: index("repo_relationships_target_repo_id_idx").on(table.targetRepoId),
 }));
 
+export const packageResolutionStatusEnum = pgEnum("package_resolution_status", [
+  "resolved",
+  "not_found",
+  "error",
+]);
+
 /**
  * 包-仓库映射缓存表
- * @description 缓存 deps.dev 的包到源码仓库映射结果
+ * @description 缓存 deps.dev 的包到源码仓库映射结果。
+ * `source_repo` 只表达当前权威映射（resolved 时非空）；
+ * 降级时的旧值证据保存在 `last_resolved_repo`，不得当作权威映射使用。
  */
 export const packageRepoMappings = pgTable("package_repo_mappings", {
   id: serial("id").primaryKey(),
@@ -864,6 +874,16 @@ export const packageRepoMappings = pgTable("package_repo_mappings", {
   packageName: text("package_name").notNull(),
   packageVersion: text("package_version").notNull(),
   sourceRepo: text("source_repo"),
+  /** 默认 error：回滚窗口内旧镜像写入的 null 行不会被误读为权威结论 */
+  resolutionStatus: packageResolutionStatusEnum("resolution_status")
+    .default("error")
+    .notNull(),
+  /** 下一次允许外呼的时间：resolved/not_found 为复查 TTL，error 为短退避 */
+  retryAfter: timestamp("retry_after"),
+  /** 脱敏短错误摘要，仅 error 行非空 */
+  lastError: text("last_error"),
+  /** resolved 复查失败降级时保留的旧映射证据 */
+  lastResolvedRepo: text("last_resolved_repo"),
   fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
 }, (table) => ({
   uniquePackageVersion: uniqueIndex("package_repo_mappings_system_name_version_unique").on(
@@ -871,7 +891,39 @@ export const packageRepoMappings = pgTable("package_repo_mappings", {
     table.packageName,
     table.packageVersion
   ),
+  // resolved 当且仅当 source_repo 非空：三值状态下等价于
+  // (not_found OR error) ⟺ source_repo IS NULL，降级必须“移动”旧值而非复制。
+  resolvedImpliesSourceRepo: check(
+    "package_repo_mappings_resolved_source_check",
+    sql`(resolution_status = 'resolved') = (source_repo IS NOT NULL)`,
+  ),
 }));
+
+/**
+ * GitHub fullName canonicalization freshness 表
+ * @description 持久化 deps.dev 外部 target 的重命名归一结果，warm rebuild 零外呼。
+ * 注意：本表不设 status⟺canonical 的 CHECK——error/not_found 降级时上一次
+ * canonical 值保留在 canonical_full_name 本身作为证据。
+ */
+export const githubRepoNameCanonicalizations = pgTable("github_repo_name_canonicalizations", {
+  id: serial("id").primaryKey(),
+  /** 查找键：小写 fullName */
+  fullName: text("full_name").notNull(),
+  canonicalFullName: text("canonical_full_name"),
+  resolutionStatus: packageResolutionStatusEnum("resolution_status")
+    .default("error")
+    .notNull(),
+  retryAfter: timestamp("retry_after"),
+  lastError: text("last_error"),
+  checkedAt: timestamp("checked_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueFullName: uniqueIndex("github_repo_name_canonicalizations_full_name_unique").on(
+    table.fullName
+  ),
+}));
+
+export type GithubRepoNameCanonicalization = typeof githubRepoNameCanonicalizations.$inferSelect;
+export type NewGithubRepoNameCanonicalization = typeof githubRepoNameCanonicalizations.$inferInsert;
 
 export type RepoRelationship = typeof repoRelationships.$inferSelect;
 export type NewRepoRelationship = typeof repoRelationships.$inferInsert;

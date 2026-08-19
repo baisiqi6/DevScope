@@ -26,12 +26,20 @@ import {
   runAgentWorkflow,
   saveGitHubTrendingSnapshot,
   upsertRadarCandidate,
+  assertJobLease,
+  createJobProgressSink,
+  classifyCanonicalizationResponse,
+  fetchDepsDevOutcome,
+  resolveExternalResolutionSettings,
+  GraphRateLimitedError,
+  type CanonicalizationOutcome,
   type Db,
   type GitHubSearchRepo,
   type Job,
   type RadarInterestProfile,
-  type UpsertRadarCandidateInput,
+  type RebuildRepoGraphResult,
   type ResolveGitHubRepositoryIdentity,
+  type UpsertRadarCandidateInput,
 } from "@devscope/db";
 import { GitHubClient } from "@devscope/shared";
 import { fetchGitHubTrending } from "./github-trending";
@@ -61,12 +69,11 @@ export interface WorkerDependencies {
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => Date;
   runHealthAnalysis?: typeof runAgentWorkflow;
-  rebuildGraph?: (db: Db, userId: number) => Promise<{
-    similarityEdges: number;
-    dependencyEdges: number;
-    pooledRepos: number;
-    sbomBackfilled: number;
-  }>;
+  rebuildGraph?: (
+    db: Db,
+    userId: number,
+    jobContext?: { jobId?: number; workerId?: string }
+  ) => Promise<RebuildRepoGraphResult>;
   fetchTrending?: typeof fetchGitHubTrending;
   saveTrendingSnapshot?: typeof saveGitHubTrendingSnapshot;
   getInterestProfile?: (db: Db, userId: number) => Promise<RadarInterestProfile>;
@@ -85,6 +92,8 @@ export async function runWorker(
   shouldStop: () => boolean,
   dependencies: WorkerDependencies = {}
 ): Promise<void> {
+  // 外呼配置在启动时校验：非法值 fail closed，不进入轮询
+  resolveExternalResolutionSettings(process.env);
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const leaseDurationMs = options.leaseDurationMs ?? 5 * 60_000;
   const recoveryIntervalMs = options.recoveryIntervalMs ?? 60_000;
@@ -135,8 +144,12 @@ export async function runWorker(
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
     } catch (error) {
       try {
+        // 429 的服务端 Retry-After 必须跨 attempt 生效，避免 60s 后立刻打满配额
+        const retryDelayMs = error instanceof GraphRateLimitedError
+          ? Math.max(options.retryDelayMs ?? 60_000, error.retryAfterSeconds * 1000)
+          : options.retryDelayMs;
         const failed = await failJob(db, job.id, options.workerId, error, {
-          retryDelayMs: options.retryDelayMs,
+          retryDelayMs,
           now: now(),
         });
         console.error(
@@ -185,7 +198,11 @@ export async function executeJob(
   if (job.type === GRAPH_REBUILD_JOB) {
     graphRebuildJobPayloadSchema.parse(job.payload);
     const rebuildGraph = dependencies.rebuildGraph ?? defaultRebuildGraph;
-    return rebuildGraph(db, job.userId);
+    const result = await rebuildGraph(db, job.userId, {
+      jobId: job.id,
+      workerId: dependencies.workerId,
+    });
+    return { ...result };
   }
 
   if (job.type === GITHUB_TRENDING_SYNC_JOB) {
@@ -320,14 +337,42 @@ function startLeaseHeartbeat(
   return () => clearInterval(timer);
 }
 
-async function defaultRebuildGraph(db: Db, userId: number) {
+async function defaultRebuildGraph(
+  db: Db,
+  userId: number,
+  jobContext?: { jobId?: number; workerId?: string }
+): Promise<RebuildRepoGraphResult> {
+  // 非法外呼配置在任务开始时 fail closed，不静默使用默认值
+  const settings = resolveExternalResolutionSettings(process.env);
   const github = new GitHubClient(process.env.GITHUB_TOKEN || undefined);
+  const progress = jobContext?.jobId && jobContext?.workerId
+    ? createJobProgressSink(db, jobContext.jobId, jobContext.workerId)
+    : undefined;
+  const assertLease = jobContext?.jobId && jobContext?.workerId
+    ? (executor?: Parameters<typeof assertJobLease>[0]) =>
+      assertJobLease(executor ?? db, jobContext.jobId!, jobContext.workerId!)
+    : undefined;
+
   const result = await rebuildRepoGraph(db, userId, {
-    canonicalize: (fullName) => github.getCanonicalFullName(fullName),
+    resolveMapping: (system, packageName, packageVersion) =>
+      fetchDepsDevOutcome(system, packageName, packageVersion, settings),
+    canonicalize: (fullName) =>
+      canonicalizeViaGitHub(github, fullName, settings.githubTimeoutMs),
     fetchSbom: (fullName) => github.getSbom(fullName),
+    settings,
+    progress,
+    assertLease,
   });
+
   if (parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE)
     === "legacy_shadow_dual_write") {
+    await progress?.({
+      stage: "shadow_compare",
+      completed: 0,
+      total: 1,
+      ...(result.counters ?? {}),
+    });
+    const shadowStartedAt = Date.now();
     const comparison = await compareTechnologyStackProjection(db, userId);
     if (!comparison.equal) {
       throw new Error(`Technology stack shadow mismatch: ${JSON.stringify(comparison)}`);
@@ -335,8 +380,40 @@ async function defaultRebuildGraph(db: Db, userId: number) {
     console.log(
       `[Worker] Technology stack shadow 一致: legacy=${comparison.legacyCount}, new=${comparison.newCount}`,
     );
+    await progress?.({
+      stage: "shadow_compare",
+      completed: 1,
+      total: 1,
+      ...(result.counters ?? {}),
+    });
+    return {
+      ...result,
+      stages: [
+        ...(result.stages ?? []),
+        { stage: "shadow_compare" as const, durationMs: Date.now() - shadowStartedAt },
+      ],
+    };
   }
   return result;
+}
+
+async function canonicalizeViaGitHub(
+  github: GitHubClient,
+  fullName: string,
+  timeoutMs: number
+): Promise<CanonicalizationOutcome> {
+  const fetched = await github.getCanonicalFullNameDetailed(fullName, timeoutMs);
+  if (fetched.kind === "timeout") {
+    return { status: "error", canonicalFullName: null, retryAfterSeconds: null, errorSummary: "timeout" };
+  }
+  if (fetched.kind === "network_error") {
+    return { status: "error", canonicalFullName: null, retryAfterSeconds: null, errorSummary: "network_error" };
+  }
+  return classifyCanonicalizationResponse(
+    fetched.httpStatus,
+    fetched.body,
+    fetched.retryAfterSeconds
+  );
 }
 
 async function defaultSearchRepositories(

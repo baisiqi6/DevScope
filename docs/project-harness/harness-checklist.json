@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-08-18",
+  "updated_at": "2026-08-19",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -177,31 +177,45 @@
     {
       "id": "data-correctness-4-deps-cache-recovery",
       "title": "使依赖解析缓存可恢复且具备外呼预算",
-      "status": "todo",
+      "status": "doing",
       "priority": "p1",
-      "owner": null,
-      "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "owner": "codex",
+      "selected_in_session": "codex-20260818-deps-cache-recovery",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-correctness-2-atomic-replacement"
       ],
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。",
-      "verification": "",
+      "verification": "db 101 + worker 18 + api 全套 + HTTP 9 + 隔离 PostgreSQL 34/34 串行；lint/typecheck/test/build/db:generate 再生成通过；两轮 plan review 与两轮 implementation review 均 approved",
       "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "handoff_requested",
-        "updated_at": "2026-08-18",
+        "status": "review_approved",
+        "updated_at": "2026-08-19",
         "handoff_from": "",
-        "handoff_target": "next-agent"
+        "branch": "codex/deps-cache-recovery"
       },
-      "review": null,
+      "review": {
+        "decision": "approved",
+        "reviewer": "reviewer-impl",
+        "phase": "changes_requested",
+        "updated_at": "2026-08-19",
+        "summary": "continuity 复核 46ce3a4：10 条 findings 全部 closed，无 P0-P2 新发现；4 条 P3 中 a/b/c 已随批处理，d（集成 fixture 唯一约束脆弱性）移交 data-quality-5"
+      },
       "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
       "artifacts": {
-        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md",
+        "branch": "codex/deps-cache-recovery",
+        "review_packet": "docs/project-harness/current/review-packet.md"
       },
-      "lease": null
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260818-deps-cache-recovery",
+        "acquired_at": "2026-08-19T01:27:00Z",
+        "expires_at": "2026-08-19T03:27:00Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "data-quality-5-postgres-integration-gates",

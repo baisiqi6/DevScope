@@ -1,5 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeJob } from "./worker";
+
+const {
+  mockClaimNextJob,
+  mockFailJob,
+  mockRecoverExpiredJobs,
+  mockRenewJobLease,
+} = vi.hoisted(() => ({
+  mockClaimNextJob: vi.fn(),
+  mockFailJob: vi.fn(),
+  mockRecoverExpiredJobs: vi.fn().mockResolvedValue(0),
+  mockRenewJobLease: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@devscope/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@devscope/db")>();
+  return {
+    ...actual,
+    claimNextJob: mockClaimNextJob,
+    failJob: mockFailJob,
+    recoverExpiredJobs: mockRecoverExpiredJobs,
+    renewJobLease: mockRenewJobLease,
+  };
+});
+
+import { executeJob, runWorker } from "./worker";
 import {
   GITHUB_DISCOVERY_JOB,
   GITHUB_TRENDING_SYNC_JOB,
@@ -123,6 +147,74 @@ describe("Worker 任务执行", () => {
       pooledRepos: 5,
       sbomBackfilled: 2,
     });
+  });
+
+  it("图谱重建任务把 jobId/workerId 传给 rebuild 依赖（lease 进度与提交复核）", async () => {
+    const rebuildGraph = vi.fn().mockResolvedValue({
+      similarityEdges: 0,
+      dependencyEdges: 0,
+      pooledRepos: 0,
+      sbomBackfilled: 0,
+    });
+    const job = createJob({
+      type: GRAPH_REBUILD_JOB,
+      id: 42,
+      idempotencyKey: "graph:rebuild",
+      payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+    });
+
+    await executeJob({} as any, job, { rebuildGraph, workerId: "worker-a" });
+
+    expect(rebuildGraph).toHaveBeenCalledTimes(1);
+    const [dbArg, userIdArg, jobContext] = rebuildGraph.mock.calls[0];
+    expect(dbArg).toBeDefined();
+    expect(typeof userIdArg).toBe("number");
+    expect(jobContext).toEqual({ jobId: 42, workerId: "worker-a" });
+  });
+
+  it("runWorker 在非法外呼配置上启动即失败（fail closed，不进入轮询）", async () => {
+    const previous = process.env.GRAPH_DEPS_CONCURRENCY;
+    process.env.GRAPH_DEPS_CONCURRENCY = "64";
+    try {
+      await expect(
+        runWorker({} as any, { workerId: "w", pollIntervalMs: 1 }, () => true)
+      ).rejects.toThrow(/GRAPH_DEPS_CONCURRENCY/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GRAPH_DEPS_CONCURRENCY;
+      } else {
+        process.env.GRAPH_DEPS_CONCURRENCY = previous;
+      }
+    }
+  });
+
+  it("429 失败时按服务端 Retry-After 推迟重试而不是固定 60s", async () => {
+    const { GraphRateLimitedError, GRAPH_REBUILD_JOB } = await import("@devscope/db");
+    mockClaimNextJob.mockReset();
+    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
+    mockClaimNextJob
+      .mockResolvedValueOnce(createJob({
+        id: 7,
+        type: GRAPH_REBUILD_JOB,
+        idempotencyKey: "graph:rebuild",
+        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+      }))
+      .mockResolvedValue(null);
+
+    let stopped = false;
+    mockFailJob.mockImplementation(async () => {
+      stopped = true;
+      return { status: "retry_wait" };
+    });
+    const rebuildGraph = vi.fn().mockRejectedValue(new GraphRateLimitedError("deps.dev", 300));
+    await runWorker({} as any, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => stopped, {
+      rebuildGraph,
+      workerId: "w1",
+    });
+
+    expect(mockFailJob).toHaveBeenCalledTimes(1);
+    const retryOptions = mockFailJob.mock.calls[0][4];
+    expect(retryOptions.retryDelayMs).toBeGreaterThanOrEqual(300_000);
   });
 
   it("将三个 GitHub Trending 周期保存为独立快照", async () => {

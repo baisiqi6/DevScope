@@ -84,6 +84,13 @@ export interface Commit {
 // GitHubClient 类
 // ============================================================================
 
+function parseRetryAfterSeconds(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.min(Math.floor(seconds), 86_400);
+}
+
 /**
  * GitHub API 客户端类
  * @description 提供 GitHub API 的封装方法
@@ -211,7 +218,27 @@ export class GitHubClient {
    * 解析仓库重命名后的规范 fullName（deps.dev 等外部数据源可能返回过期名称）
    * 任何失败都返回原值，保证调用方行为不劣化
    */
-  async getCanonicalFullName(fullName: string): Promise<string> {
+  async getCanonicalFullName(fullName: string, timeoutMs = 15_000): Promise<string> {
+    const fetched = await this.getCanonicalFullNameDetailed(fullName, timeoutMs);
+    if (fetched.kind !== "response" || fetched.httpStatus !== 200) {
+      return fullName;
+    }
+    const canonical = (fetched.body as { full_name?: unknown } | null)?.full_name;
+    return typeof canonical === "string" && canonical.includes("/") ? canonical : fullName;
+  }
+
+  /**
+   * 带超时的 canonicalization 原始结果：不在此分类语义，由调用方
+   * （deps-cache 的 classifyCanonicalizationResponse）统一解释。
+   */
+  async getCanonicalFullNameDetailed(
+    fullName: string,
+    timeoutMs = 15_000
+  ): Promise<
+    | { kind: "response"; httpStatus: number; body: unknown; retryAfterSeconds: number | null }
+    | { kind: "timeout" }
+    | { kind: "network_error" }
+  > {
     const headers: Record<string, string> = {
       Accept: "application/vnd.github.v3+json",
     };
@@ -219,18 +246,29 @@ export class GitHubClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(`${this.baseUrl}/repos/${fullName}`, {
         headers,
         redirect: "follow",
+        signal: controller.signal,
       });
-      if (!response.ok) {
-        return fullName;
+      const retryAfterSeconds = parseRetryAfterSeconds(response.headers.get("retry-after"));
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
       }
-      const data = (await response.json()) as { full_name?: string };
-      return data.full_name ?? fullName;
-    } catch {
-      return fullName;
+      return { kind: "response", httpStatus: response.status, body, retryAfterSeconds };
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        return { kind: "timeout" };
+      }
+      return { kind: "network_error" };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

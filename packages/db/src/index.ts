@@ -141,4 +141,5 @@ export * from "./github-trending";
 /**
  * 仓库关系图谱
  */
+export * from "./deps-cache";
 export * from "./repo-graph";

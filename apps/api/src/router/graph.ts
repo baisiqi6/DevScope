@@ -13,6 +13,7 @@ import {
   technologyStackEntitiesBackfillJobResultSchema,
 } from "@devscope/db";
 import {
+  graphRebuildProgressSchema,
   rebuildGraphStatusSchema,
   rebuildRepoGraphResultSchema,
   repoGraphSchema,
@@ -66,11 +67,17 @@ export const graphRouter = router({
           finishedAt: null,
           result: null,
           error: null,
+          progress: null,
         };
       }
 
       const payload = graphRebuildJobPayloadSchema.parse(job.payload);
       const startedAt = (job.startedAt ?? new Date(payload.requestedAt)).toISOString();
+      // progress 由 lease owner 写入；读取时再次校验，损坏行降级为 null
+      const parsedProgress = job.progress
+        ? graphRebuildProgressSchema.safeParse(job.progress)
+        : null;
+      const progress = parsedProgress?.success ? parsedProgress.data : null;
       if (job.status === "succeeded") {
         const result = rebuildRepoGraphResultSchema.parse(job.result);
         return {
@@ -79,6 +86,7 @@ export const graphRouter = router({
           finishedAt: job.completedAt?.toISOString() ?? job.updatedAt.toISOString(),
           result,
           error: null,
+          progress,
         };
       }
 
@@ -89,6 +97,7 @@ export const graphRouter = router({
           finishedAt: job.completedAt?.toISOString() ?? job.updatedAt.toISOString(),
           result: null,
           error: job.lastError ?? (job.status === "cancelled" ? "图谱重建已取消" : "图谱重建失败"),
+          progress,
         };
       }
 
@@ -98,6 +107,7 @@ export const graphRouter = router({
         finishedAt: null,
         result: null,
         error: null,
+        progress,
       };
     }),
 

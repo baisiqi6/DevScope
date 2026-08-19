@@ -1233,20 +1233,61 @@ export type RepoGraphNode = z.infer<typeof repoGraphNodeSchema>;
 export type RepoGraphEdge = z.infer<typeof repoGraphEdgeSchema>;
 export type RepoGraph = z.infer<typeof repoGraphSchema>;
 
+export const graphRebuildStageSchema = z.enum([
+  "embedding",
+  "similarity",
+  "sbom",
+  "deps_resolution",
+  "github_canonicalization",
+  "atomic_commit",
+  "shadow_compare",
+]);
+
+export const graphRebuildProgressSchema = z.object({
+  stage: graphRebuildStageSchema,
+  completed: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  cacheHits: z.number().int().nonnegative(),
+  cacheMisses: z.number().int().nonnegative(),
+  externalRequests: z.number().int().nonnegative(),
+  timeouts: z.number().int().nonnegative(),
+  retryableErrors: z.number().int().nonnegative(),
+});
+
+export const graphStageDurationSchema = z.object({
+  stage: graphRebuildStageSchema,
+  durationMs: z.number().int().nonnegative(),
+});
+
+export const graphBudgetUsageSchema = z.object({
+  used: z.number().int().nonnegative(),
+  limit: z.number().int().nonnegative(),
+});
+
 export const rebuildRepoGraphResultSchema = z.object({
   similarityEdges: z.number(),
   dependencyEdges: z.number(),
   pooledRepos: z.number(),
   sbomBackfilled: z.number(),
+  stages: z.array(graphStageDurationSchema).optional(),
+  budget: z.object({
+    depsDev: graphBudgetUsageSchema,
+    github: graphBudgetUsageSchema,
+  }).optional(),
 });
 
-/** 异步重建状态查询的响应 */
+export type GraphRebuildStage = z.infer<typeof graphRebuildStageSchema>;
+export type GraphRebuildProgress = z.infer<typeof graphRebuildProgressSchema>;
+export type GraphStageDuration = z.infer<typeof graphStageDurationSchema>;
+
+/** 异步重建状态查询的响应；progress 向后兼容（旧 consumer 可忽略） */
 export const rebuildGraphStatusSchema = z.object({
   status: z.enum(["idle", "running", "completed", "failed"]),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
   result: rebuildRepoGraphResultSchema.nullable(),
   error: z.string().nullable(),
+  progress: graphRebuildProgressSchema.nullable(),
 });
 
 export type RebuildGraphStatus = z.infer<typeof rebuildGraphStatusSchema>;

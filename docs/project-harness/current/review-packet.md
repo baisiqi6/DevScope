@@ -2,24 +2,24 @@
 
 ## Subject
 
-- Checklist item: `data-architecture-3-technology-stack-entities`
-- Reviewer: `release_id_migration_reviewer`
-- Updated at: `2026-08-18`
-- Canonical plan path: `docs/project-harness/tasks/data-architecture-3-technology-stack-entities/plan.md`
+- Checklist item: `data-correctness-4-deps-cache-recovery`
+- Reviewer: `reviewer-impl`
+- Updated at: `2026-08-19`
+- Canonical plan path: `docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md`
 
 ## Item Snapshot
 
-- Title: 将技术栈节点从伪仓库和伪收藏关系中分离
+- Title: 使依赖解析缓存可恢复且具备外呼预算
 - Status: doing
-- Workflow status: changes_requested
+- Workflow status: review_approved
 - Priority: p1
 - Owner: codex
-- Session: codex-20260818-technology-stack-entities
+- Session: codex-20260818-deps-cache-recovery
 - Dependencies: data-correctness-2-atomic-replacement
 
 ## Acceptance
 
-仓库列表和收藏关系只包含真实 GitHub 仓库；Vue、React、Spring Boot 等技术栈作为独立实体保留完整、可验证的图节点与依赖边。
+resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。
 
 ## Verification
 
@@ -27,7 +27,7 @@
 
 ## Handoff
 
-按 domain-model.md 的双读验证和分阶段切换执行。
+按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。
 
 ## Review Inputs
 
@@ -40,167 +40,174 @@
 ## Canonical Plan Content
 
 ```md
-# 将技术栈节点从伪仓库和伪收藏关系中分离
+# 依赖解析缓存恢复与外呼预算计划
 
-## Item
+> Item：`data-correctness-4-deps-cache-recovery`
+> Priority：P1
+> 状态：已领取；plan review 两轮完成，第一轮 `changes_requested` 已修订，第二轮 `approved`
+> 前置：`data-correctness-2-atomic-replacement`
+> 阻断：`data-architecture-3-technology-stack-entities` 的 Phase B
 
-- Checklist item：`data-architecture-3-technology-stack-entities`
-- Owner：`codex`
-- Session：`codex-20260818-technology-stack-entities`
-- Updated at：2026-08-18
+## Outcome
 
-## Goal
+让 graph rebuild 的 deps.dev 映射与 GitHub repository canonicalization 同时满足：临时失败可恢复、真阴性可缓存、单次外呼有超时/并发/总量预算、长任务有可观测进度、最终 graph 写入继续 fail closed。修复后不得改变技术栈目录、top-N、edge evidence、repository identity 或 Phase A 新旧投影语义。
 
-把 React、Vue、Spring Boot 等技术栈从 `repositories` 和 `user_watched_repositories` 中移出，改为直接的技术栈实体及仓库—技术栈关系；仓库列表、收藏、分组和采集只面对真实 GitHub 仓库，关系图谱仍完整展示技术栈节点、依赖边和包/版本证据。
+## 生产触发证据
 
-## Confirmed Baseline And Root Cause
+2026-08-18 的 Phase A graph job #9 从 `14:20:25.255Z` 运行到 `15:31:09.406Z`，总计约 70 分 44 秒，最终成功：
 
-1. 当前 `recomputeDependencyEdges` 为技术栈创建 `tech-stack/<slug>` 的 `repositories.is_reference=true` 轻量行，并为每个用户创建伪 `user_watched_repositories`；
-2. 技术栈依赖边复用 `repo_relationships.target_repo_id`，因此图查询必须把伪仓库当成 `reference` 节点；技术栈同时污染仓库、收藏、关系三种领域语义；
-3. 仓库列表、Scheduler、Radar、分组和身份逻辑散布 `is_reference=false` 过滤条件；任一遗漏都会把技术栈暴露成仓库或工作任务；
-4. 生产日期化基线为 10 个技术栈伪仓库、10 条伪收藏、34 条指向技术栈的 dependency edges、203 条包/版本 evidence；50 条 watched 关系中只有 40 条是真实仓库。技术栈没有 group membership；
-5. 34 条旧技术栈边全部为合法 `resolvedBy=tech-stack-catalog` 且 `packages` 为数组，10 条伪收藏均有对应依赖边，没有孤儿；这些数字用于迁移核对，不是长期固定常量。
+- 40 个真实仓库包含 19007 个唯一 SBOM package/version；首次运行补齐约 6000 个 deps.dev cache miss；
+- 3053 个外部 GitHub target 达到当前 `CANONICALIZATION_MIN_INDEGREE=2` 门槛，逐个串行 canonicalize；
+- `resolveViaDepsDev` 使用无显式 timeout 的原生 `fetch`；`getCanonicalFullName` 也没有 timeout；
+- deps.dev 网络错误与权威无映射都可能落为 `source_repo=null`，无法按失败类型恢复；
+- GitHub canonicalization 没有持久 freshness，warm rebuild 仍会重复外呼；
+- job lease 持续健康、数据库没有长事务，证明瓶颈位于事务外网络阶段；但 status API 只有 running/terminal，没有 stage/total/completed。
 
-## Target Domain Model
+以上数字是日期化生产基线，不得硬编码为长期产品常量。
 
-### `technology_stacks`
+## Authority And Sequencing
 
-- `id`：内部主键；
-- `slug`：稳定、规范化、全局唯一，例如 `react`、`spring-boot`；
-- `name`、`url`、`description`；
-- `created_at`、`updated_at`。
+下一位 Worker 按以下顺序执行；不得跳过独立 review、直接进入 Phase B，或顺手重做 graph UI：
 
-### `repository_technology_stacks`
+1. 只读复核最新 `main`、本计划、当前生产 migration/job/cache 基线；
+2. 请求独立 plan review，关闭 correctness、rate-limit、lease、migration 和 rollback finding；
+3. 以 RED tests 固化失败分类、TTL、timeout、并发、预算、进度和 warm-run 行为；
+4. 做最小实现与显式 migration，完成隔离 PostgreSQL 和全仓门禁；
+5. 请求独立 implementation review，修完全部 P0–P3；
+6. PR/CI 通过后合并；生产备份并显式迁移，部署兼容 revision；
+7. 运行一次受预算约束的 rebuild，再运行一次 warm-cache rebuild，核对新旧技术栈投影和业务不变量；
+8. 只记录证据，不切 `new_read_dual_write`；交回 Reviewer 做 production closeout。
 
-- `repository_id`：只关联真实 `repositories`；
-- `technology_stack_id`；
-- `packages`：经过 shared schema 验证的 `{ system, name, version }[]`，保留全部桥接证据；
-- `created_at`、`updated_at`；
-- `(repository_id, technology_stack_id)` 唯一，两个外键均建立索引并使用明确 cascade 语义。
+本计划不授权删除 legacy reference/watches/edges、切换 graph read contract、执行 Phase C cleanup 或修改同机其他站点。
 
-该关系来自仓库 SBOM，属于全局仓库事实，不复制 `user_id`。唯一 writer scope 是“单个 source repository”：每次只替换一个仓库的完整 catalog detection 集合，不允许按用户或整表清空。持久化全部已识别技术栈，`TECH_STACK_TOP_N` 只在用户图查询按 watched source 的使用数过滤展示，不能决定全局事实是否存在。用户隔离由 watched source join 完成。
+## Required Semantics
 
-准备阶段记录 repository stable ID、已提交 collection token（当前 `repositories.updated_at`）和完整 SBOM JSON baseline；最终写入取得与采集相同的 stable-ID advisory lock 和 repository row lock，三者仍匹配才原子替换该 repository 的关系，否则返回结构化 `stale`，不得用旧 SBOM 覆盖新 collection。批量 source repositories 按 stable ID 全序处理；若一个事务确需多锁，也必须按同一全序获取，禁止用户顺序形成死锁。
+### deps.dev resolution state
 
-真实仓库之间的相似度和依赖继续使用 `repo_relationships`；语言节点继续查询时合成；不新增通用多态 `graph_nodes`。
+以 [domain-model.md](../../domain-model.md) 为唯一领域定义，为 `package_repo_mappings` 增加最小状态：
 
-## Graph Contract
+- `resolved`：权威响应含 `SOURCE_REPO`；保存 canonical package key 与 source repository；
+- `not_found`：只有权威 404 或成功响应明确无 `SOURCE_REPO` 才能进入；使用长 TTL；
+- `error`：timeout、DNS/TLS/network、429、5xx、非法响应等；保存脱敏短错误和短 `retry_after`；
+- `retry_after` 记录下一次允许外呼的时间：`error` 为短退避，`not_found` 为长 TTL 复查点，`resolved` 为其长 TTL 复查点；未到期不得重复外呼；
+- 不得把 transient failure 写成永久 `null`，不引入第四状态。
 
-- `RepoGraphNode.kind` 从含糊的 `reference` 改为 `technology_stack`，保留 `repo | technology_stack | language` 三类；删除对外冗余的 `isReference`；
-- 真实仓库节点 ID 暂保持现有十进制字符串，语言节点保持 `lang:<language>`，技术栈使用稳定 `stack:<slug>`，避免内部数据库 ID 泄漏和迁移前后 ID 漂移；
-- 仓库—技术栈 dependency edge 的 target 为 `stack:<slug>`；真实仓库—真实仓库 dependency edge 继续来自 `repo_relationships`；
-- 2D/3D 前端同步更新判别 token，不在本 item 重做视觉或动画；现有技术栈造型和交互保持。
+`resolved` 的复查语义（对齐 domain-model「只在到期或规范名称校正时更新」）：
 
-## Backfill Job Authority
+- TTL 内的 warm rebuild 对该行零 deps.dev 外呼，直接使用缓存 `source_repo`；
+- 只在 TTL 到期或 canonical rename 校正涉及该目标时复查；复查失败降级为 `error` + 短 `retry_after`，并把旧值搬入 `last_resolved_repo` 保留 resolution evidence，不清空语义也不伪造权威；
+- cache 读取规则统一为：`resolved`（TTL 内）按缓存值使用；`not_found`（复查点前）与 `error`（`retry_after` 前）不外呼、按无映射参与本次图计算；到期后按可重试 miss 处理；`error` 行的 `last_resolved_repo` 只是证据，不得当作权威映射使用。
 
-- 使用专用版本化 job type `technology_stack.entities.backfill`，payload 至少包含不可变 `version`；idempotency key 为 `technology-stack:entities:backfill:<version>`；
-- 数据库对该 type 的 `queued | running | retry_wait` 建立全局 active singleton，重复触发返回同一 active job；同一 version 已出现 `succeeded | dead` 等终态后禁止再次 enqueue，升级算法必须使用新 version；
-- prepare 阶段只读取、严格验证、折叠 evidence 并形成按 repository stable ID 排序的计划，零业务写入；
-- 每个 source repository 的最终 apply 在同一短事务中锁定 job row，要求 `status=running`、`lease_owner` 等于当前 Worker、`lease_expires_at > now()`；随后再取得 repository stable-ID lock 和 row lock，复核 stable ID、collection token、SBOM baseline，最后原子提交完整 relation replacement、source checkpoint 和 job result progress；
-- lease 失效、owner 改变或 repository snapshot 变旧时零写入，分别返回 `lost_lease | stale`；checkpoint 使 reclaim Worker 从最后一个已提交 source 恢复，不重复猜测已完成进度；
-- 该 job 自己在最后一个 source transaction 内写入唯一终态 receipt，Worker 通用路径不得再次 `completeJob`；实现方式复用 repository identity backfill 的 lease-authoritative 模式，但不抽象新的通用 job framework；
-- 双触发、双 Worker reclaim、heartbeat/lease 丢失、处理中恢复、终态 version 复用和 terminal receipt 唯一性必须在真实 PostgreSQL 强制交错验证。
+迁移语义（已拍板，不留实现期决策）：
 
-## Phased Migration And Cutover
+- 非空 `source_repo` 历史行 → `resolution_status='resolved'`；
+- 历史 `source_repo=null` 行（日期化基线约 302 行）→ `resolution_status='error'` + 以迁移执行时间为基准的短 `retry_after`；禁止解释为 `not_found`；
+- `resolution_status` 列 DEFAULT 固定为 `'error'`：回滚窗口内旧镜像写入的新 `source_repo=null` 行不会被新代码误读为权威结论，代价仅是重查一次；
+- 历史行用确定性条件 UPDATE 回填，不让 `db:generate` 的朴素 DEFAULT 解释存量数据；重复执行迁移不改变已回填行的状态；
+- CHECK 约束：`resolution_status='resolved'` 当且仅当 `source_repo IS NOT NULL`（降级证据只存在于 `last_resolved_repo`，不污染该约束）。
 
-兼容模式是严格枚举状态机，不接受自由字符串：
+### External request budget
 
-```text
-legacy_shadow_dual_write
-  → new_read_dual_write
-  → new_only
-  → legacy_cleaned
-```
+- deps.dev 与 GitHub 请求均使用显式 AbortSignal timeout；timeout 必须有默认值和严格范围校验；`getCanonicalFullName` 同步补上 timeout；
+- 预算口径覆盖一次 graph attempt 内的全部外部 HTTP：deps.dev resolution、GitHub canonicalization 和 SBOM backfill 阶段的 GitHub 请求都计入预算并进入进度计数，不允许阶段外游离请求；
+- 预算按 provider 分列（deps.dev 上限、GitHub 上限），任一耗尽即在 graph 原子提交前 fail closed；已写入的独立 cache receipt 可供下一次重试复用；
+- 默认预算必须让日期化冷启动基线（约 6000 deps.dev miss + 3053 canonicalization + SBOM 请求）在单次 attempt 内收敛并留 headroom；若未来数据规模增长导致预算内无法完成，`failJob` 重试与终态重启（`enqueueRestartableJob`）是设计内恢复路径，须在 runbook 记录操作步骤；
+- 对 package key 和 target fullName 先去重，再使用小型 bounded worker pool；默认并发为保守个位数，且在并发之外保留最小请求间隔 pacing，避免 GitHub secondary rate limit；禁止无界 `Promise.all`；
+- 429/rate-limit 必须保留 retry evidence，尊重响应 `Retry-After` 暂停对应 provider 的后续请求并写可解释 receipt，不得继续打满配额；GitHub core 必须保留运维 headroom；
+- 配置项只覆盖 timeout、concurrency、pacing、request budget 和 TTL/backoff；解析语义不允许由环境变量切换；非法配置启动时 fail closed；
+- 网络等待始终位于业务 graph transaction 之外，最终提交继续复核 stable ID、collection token、SBOM baseline 与 lease authority。
 
-未知模式一律启动失败。数据库写入 `legacy_cleaned` 标记或 cleanup migration 生效后，进程若配置为任何 legacy/shadow 模式同样启动失败，绝不自动回退到已不存在的数据源。
+默认值由实现者基于生产 19007/约 6000/3053 基线提出并经 review 确认；不得为了让测试变快而采用生产不可用的极端值。
 
-### Phase A：Expand、validated backfill 与 legacy contract compatibility
+### Canonicalization freshness
 
-1. 显式 expand migration 只创建两张表及唯一约束/外键/索引，不在 SQL 中用宽松 JSON 操作猜测业务证据；
-2. 使用上述 dedicated、versioned、global-singleton durable job 执行可审计 one-shot backfill，不访问外网。它严格验证 legacy `evidence.kind=dependency`、`resolvedBy=tech-stack-catalog` 和每个 package 的非空 canonical `{system,name,version}`；parser 不得过滤坏元素后宣称成功；
-3. 先按 `(repository stable ID, stack slug)` 聚合全部用户副本。完全相同的 canonical packages 才直接折叠；不一致时以当前 repository SBOM + catalog detection 为唯一可接受裁决，仍不能确定则整个 source repository fail closed 并记录冲突，不使用 last-write-wins；记录排序/去重前后的 multiplicity 与有序摘要；
-4. `recomputeDependencyEdges` 持久化每个 source repository 的全部 catalog detection，并按 stable ID/token/SBOM baseline 锁定替换；兼容期继续维护 per-user legacy top-N representation，new table 自身不做 top-N；
-5. graph shadow comparison 对 new table 先按当前用户 watched sources 计算 top-N projection，再以 `(source stable ID, stack slug, sorted packages)` 与 legacy 比较；差异输出结构化诊断；
-6. 对外 API 仍返回旧 `reference/isReference` contract。本阶段先发布 consumer compatibility：shared/client 暂时接受两种 kind，`isReference` 暂时 optional，Web 2D/3D 能同时解释两种；CLI/MCP 若消费 graph contract 也必须同步。旧 contract 反例和 API/Web 混合 revision 测试通过后才允许下一阶段；
-7. 在隔离 PostgreSQL 验证 expand/backfill/rebuild 和双用户语义，再显式迁移生产、运行 one-shot backfill 与正常 graph rebuild，要求 shadow projection 零差异。
+- GitHub fullName canonicalization 的持久 freshness 落在紧邻新表（如 `github_repo_name_canonicalizations`：小写 `full_name` 唯一键、`canonical_full_name`、`resolution_status`、`retry_after`、`last_error`、`checked_at`）；404 归一为 `not_found` + 长 TTL（沿用原名），网络失败为 `error` + 短退避。不把 fullName 键过载进 `package_repo_mappings` 的 `(system, name, version)` 唯一键，也不新建通用第二套 cache/service；
+- 同一 target 在一次 rebuild 最多请求一次；freshness 未到期的行直接使用持久 `canonical_full_name`，到期后允许复查；
+- rename 结果批量、确定性回写相关 `package_repo_mappings.source_repo`（只改命名，不改 resolution 状态），不得擦除 package resolution evidence；rename 复查失败保持原 fullName 维持既有 best-effort graph 行为，但必须留下可重试状态；
+- `resolved` 的 canonicalization 行复查失败按 deps.dev 同款语义降级 `error` 并保留旧值证据。
 
-### Phase B：`new_read_dual_write`
+### Progress And Receipts
 
-1. 只有 backfill receipt 成功、shadow 零差异且所有受支持消费者已部署兼容版本后，API 才显式切到 new-table read 并输出 `technology_stack` contract；
-2. new read 通过 watched real repositories 限定用户范围，top-N 在查询层计算；legacy 与 new 写入继续同时进行，旧 representation 在整个 rollback window 内保持新鲜；
-3. 全部仓库业务查询改为真实仓库正向条件；repository insert/update 和正常业务语义不再依赖 `is_reference`，但物理列与 legacy writer 暂时保留；
-4. 用上一阶段 Web 与本阶段 API、以及本阶段 Web 与上一阶段 API 做混合版本测试；生产完成 API/Web/CLI/MCP dogfood 和有序集合复核；
-5. rollback window 内可直接切回 legacy read/上一兼容镜像，因为 dual-write 仍保持零差异。只有明确关闭该窗口后才能进入 `new_only`。
+`graph.getRebuildGraphStatus` 增加向后兼容的 optional progress，至少包含：
 
-### Phase C：`new_only`、legacy cleanup 与 contract 收口
+- `stage`：`embedding | similarity | sbom | deps_resolution | github_canonicalization | atomic_commit | shadow_compare`；
+- 当前 stage 的 `completed/total`；
+- `cacheHits/cacheMisses/externalRequests/timeouts/retryableErrors` 的脱敏计数；
+- terminal result 保留现有字段，并增加各 stage duration 与预算消耗摘要。
 
-1. 进入 `new_only` 前再次要求 dual-write 零差异并冻结 rollback 承诺；停止 legacy 写后不得直接切回旧镜像。若 cleanup 前必须回退，应先从 new tables 确定性反向 materialize legacy、验证零差异，再切旧 read；
-2. 先发布 new-only compatibility revision：所有运行 SQL 均不引用 `is_reference`，并在“该列不存在”的隔离 PostgreSQL 上运行 graph/list/group/collection/identity/Scheduler/Worker 路径；
-3. cleanup 不走现有“旧服务运行时先 `db:migrate`”的普通路径；在 deploy workflow 增加独立、显式 opt-in 的 `technology_stack_legacy_cleanup` 操作，默认关闭且不能被普通 migration flag 隐式触发；
-4. cleanup 固定执行顺序：校验 target SHA、API/Worker revision 和 `new_only` 配置 → 阻止 Scheduler/API 创建新 `graph.rebuild` → 排空并复核 `queued/running/retry_wait` 等非终态 graph/backfill jobs → 停止 DevScope API/Worker → 检查旧/长事务和 advisory-lock writer → 即时备份与有序摘要 → 以有限 `lock_timeout`/`statement_timeout` 执行 cleanup migration → 启动已知 new-only revision → health、auth、repository/watch/group/graph 业务验证；任何 gate 失败都在迁移前退出；
-5. Web 可在 API/Worker 停止期间显示维护态；PostgreSQL、Nginx 和同机其他站点不重启。生产运行手册记录逐步预检、失败分支和 receipt；
-6. 显式 cleanup migration 只删除已经一一映射且摘要一致的 legacy reference rows、伪收藏和 legacy dependency edges，再移除 `repositories.is_reference`；任何不一致整体 fail closed；
-7. 启动新 revision 后配置/数据库状态固定为 `legacy_cleaned`，删除 dual-read/write 与 `reference/isReference` compatibility contract；
-8. cleanup 后回滚固定为：停止新 API/Worker → 恢复 cleanup 前数据库备份 → 恢复上一阶段 image revision 与配置 → 启动并复核 legacy/new 摘要；不能靠重新生成伪仓库猜测原数据。
-
-本 item 允许分多个 PR 和生产发布完成；在 `legacy_cleaned`、独立 closeout review 与生产证据完成前不得标记 `done`。
+进度存储载体固定为 `jobs` 表新增 nullable `progress` 列（显式迁移），与 `result` 分离；写入只能由当前 lease owner 通过 `WHERE id = … AND lease_owner = … AND lease_expires_at > now()` 的条件 UPDATE 完成（参照 technology-stack-entities 的 lease-authoritative 先例）。进度更新不能成为业务事实来源；lost lease 后旧 Worker 不得继续刷新进度或提交 graph——原子提交路径必须复核 lease authority，lost lease 的提交尝试被拒绝。
 
 ## Test-Driven Implementation
 
 ### RED tests
 
-1. Schema/backfill：空库迁移、10 类 fixture、重复 slug、非法 fullName/evidence、reference source、唯一约束与 cascade；
-2. 语义等价：legacy 与 new query projection 的节点、边、包证据按稳定键比较，顺序差异不误报，真实差异 fail closed 并可解释；
-3. 重建：持久化全部 catalog detection，多包聚合、query-only top-N、per-source 幂等原子替换、成功空关系清旧值；两个用户 disjoint/overlap watched 集合不会互删全局 fact；
-4. 图 contract：`technology_stack` 节点使用 `stack:<slug>`，切换前后返回集合相同，不产生悬空边或 ID collision；
-5. 仓库边界：repository list、watched count、groups、Scheduler、Radar、collection 和 identity 路径均不会读取或创建技术栈实体；
-6. 并发：两个连接强制 rebuild-vs-collection 交错，旧 stable ID/token/SBOM baseline 只能返回 `stale`；多 source 全序加锁无死锁；
-7. Job authority：双触发只得到一个 active job，双 Worker reclaim 与 lost lease 的旧执行者零写入；checkpoint resume、terminal version 禁止复用、关系/checkpoint/唯一 receipt 同事务；
-8. Evidence：malformed package element、duplicate package、跨用户 identical/divergent evidence 均在真实 PostgreSQL fixture 验证，禁止静默过滤和 last-write-wins；
-9. Contract rollout：旧 consumer 对新 contract 的失败反例先成立；compatibility consumer 分别搭配旧 API 与新 API 均通过，未知模式和 cleaned+shadow 组合启动失败；
-10. Cleanup：只删除已映射 legacy 行，保留全部真实仓库、真实 watched/group 关系与 repo-to-repo edges；存在 nonterminal graph/backfill job、旧 revision、旧/长事务或摘要不一致时拒绝执行；
-11. 部署顺序：在隔离 PostgreSQL/容器环境逐步演练实际 cleanup workflow，并强制旧 Worker 事务与 migration 竞争反例先失败、正确 drain/stop 顺序后通过；
-12. 真实 PostgreSQL：从当前迁移历史应用 expand 与 cleanup，并在 cleanup 后运行 graph/list/group/collection/identity/Scheduler/Worker 关键路径，捕获任何遗留 `is_reference` SQL。
+1. deps.dev 200+SOURCE_REPO → `resolved`；200 无 SOURCE_REPO/权威 404 → `not_found`；429/5xx/network/timeout/malformed → `error`；
+2. `error.retry_after` 前不请求，到期后重试并转 `resolved`；`not_found` 长 TTL 内不请求，到期后可复查；`resolved` TTL 内零外呼，到期复查成功刷新值；
+3. 历史 non-null/null migration fixture 的状态转换无伪造权威结论（null → `error`+短 `retry_after`，非 null → `resolved`）；重复 migration 不漂移；DEFAULT `'error'` 与 CHECK 约束生效；
+4. fake HTTP server 强制并发交错，观测到的最大并发不超过配置且保留 pacing；单请求超时后 job 可恢复，无永久 pending Promise；
+5. request budget 耗尽时 graph relation/legacy edges/shadow receipt 零写入，cache progress 可复用；下一 attempt 从 cache 继续；SBOM 阶段请求同样计入预算与进度；
+6. 同一 package key/target 在一次运行只外呼一次；freshness 未到期的第二次 warm rebuild 对 GitHub canonicalization 恰好 0 次请求、对 TTL 内 `resolved` 行 0 次 deps.dev 请求，所有剩余请求可逐条解释；
+7. 429/rate-limit 停止继续消耗预算、尊重 `Retry-After`，并产生可解释 retry receipt；日志与 API 不泄露 token、URL credential 或响应敏感内容；
+8. progress 单调、stage 合法（含 `similarity`）、旧 consumer 可忽略新增字段；lost lease 的旧 Worker 无进度/终态写入，且其 graph 原子提交被 lease authority 复核拒绝；
+9. `resolved` 复查失败降级为 `error`：`last_resolved_repo` 保留旧值证据，本轮按无映射参与图计算，`retry_after` 到期后重试恢复；
+10. canonical rename 批量回写相关 `package_repo_mappings.source_repo` 且不擦除 resolution evidence；rename 复查失败保持原 fullName 并留下可重试状态；
+11. 真实 PostgreSQL 验证 migration、TTL 转移、并发 upsert、reclaim、budget fail/retry、jobs `progress` 的 lease-authoritative 写入与最终 shadow zero-diff；
+12. 技术栈投影、repo-to-repo edges、repository/watch/group/MCP 列表回归不变。
 
-单元测试覆盖目录识别和 graph 组装；迁移、外键、回填、cleanup、rollback 与列移除必须使用隔离 PostgreSQL 16 + pgvector，不用 mock 代替。
+### Implementation constraints
+
+- 不以 `any`、关闭 schema validation、延长 Worker lease 或取消 retry 掩盖根因；
+- 不在 transaction 内执行外部 HTTP；
+- 不引入 Redis、第二套 job queue、图数据库、通用 Repository layer 或新微服务；
+- 不把 2026-08-18 的生产计数写死进代码或测试；
+- 不把 GitHub canonicalization failure 误当技术栈 detection failure；
+- 不删除 job #27 的 dead receipt 或 job #9 的 succeeded receipt。
 
 ## Files In Scope
 
-- `packages/db/src/schema/index.ts`、显式 Drizzle migrations 与 metadata；
-- `packages/db/src/jobs.ts`、job schema/partial unique index、shared payload schema 与真实 PostgreSQL lease tests；
-- `packages/db/src/repo-graph.ts`、`tech-stack-catalog.ts` 及测试；
-- `apps/worker/src/worker.ts`、graph/backfill job 执行与测试；
-- 所有使用 `repositories.isReference` 的 DB/API/Scheduler/Radar/分组/采集/身份路径；
-- `packages/shared` 的 graph schema，API graph router 与 2D/3D graph 前端；
-- 必要的 migration rehearsal / semantic comparison 脚本；
-- `.github/workflows/deploy.yml` 的显式 cleanup 操作与 `docs/project-harness/runbook.md` 的生产门禁/回滚步骤；
-- 本 item 的 Harness plan、review、verification 与日期化 progress。
+- `packages/db/src/repo-graph.ts`、`packages/db/src/schema/index.ts`、相邻 cache/job helpers 和 tests；
+- `packages/shared/src/github-client.ts`、graph status schema 与 tests；
+- `apps/worker/src/worker.ts`、`apps/api/src/router/graph.ts` 及 tests；
+- 显式 Drizzle migration 与 metadata：`package_repo_mappings` 状态列（含 `last_resolved_repo` 证据列）+ CHECK + DEFAULT `'error'` 回填、`github_repo_name_canonicalizations` 新表（不套用同款 CHECK，降级证据保留在 `canonical_full_name` 本身）、`jobs.progress` 列；
+- `.env.example`、[runbook.md](../../runbook.md) 中新增配置（timeout/concurrency/pacing/budget/TTL）和终态重启操作步骤；
+- 本 item 的 plan/review/verification 与日期化 progress。
 
-## Out Of Scope
+## Local Gates
 
-- 不改变技术栈目录的产品范围或引入通用包知识图谱；
-- 不处理 deps.dev `not_found/error/retry_after` 缓存语义，该问题属于下一 item；
-- 不重做关系图谱 UI、黑洞材质、2D/3D 性能策略或布局算法；
-- 不引入 ORM Repository 层、事件溯源、第二套图数据库或第二套数据模型；
-- 不启动公开多用户鉴权改造。
+```bash
+pnpm db:generate
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-## Verification And Deployment Gates
+另需隔离 PostgreSQL 16 + pgvector 从 `0000` 应用全部 migration，并运行本计划的真实 HTTP/DB interleaving。测试不得连接生产数据库。
 
-- focused tests、受影响 package typecheck、migration generation diff review；
-- `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
-- 隔离 PostgreSQL 的 expand/backfill、shadow equivalence、cutover、cleanup、rollback rehearsal；
-- 每个 phase 都需独立 review、PR、CI；expand 可复用普通显式 migration，cleanup 必须走专用 workflow 操作并实际执行 target SHA/config/revision → producer block → job drain → API/Worker stop → transaction check → backup → timeout-bounded migration → restart → verification 顺序；
-- 生产前后核对 real repositories、watched、groups、repo-to-repo edges、technology stacks、repository-stack edges、evidence 摘要、migration rows、服务与访问控制；
-- 认证 MCP/UI dogfood 验证仓库列表只含真实仓库，图谱仍展示完整技术栈节点和 dependency edges。
+## Production Gates
 
-## Exit Criteria
+1. preflight：目标 SHA、干净 worktree、无 active graph/backfill job、当前 mode 仍为 `legacy_shadow_dual_write`、备份空间和长事务检查；
+2. 有 migration 时创建可读 `pg_restore --list` 的即时备份，再显式迁移；禁止 `db:push`；
+3. 部署后 API/Web/Worker revision 一致，migration row 只增加预期数量，mode 不变；
+4. 运行受预算 rebuild，记录 stage receipt、external request counts、timeouts/errors、duration 和 shadow compare；
+5. 再运行 warm-cache rebuild，要求不重复大规模 deps.dev/GitHub 外呼，且耗时显著下降；不设置依赖外网偶然性的脆弱秒级 SLA，但必须解释所有剩余请求；
+6. 动态核对 real/reference repository、watched、new/legacy stack relations、source count、packages evidence 摘要、repo-to-repo edges；不使用固定 79/25/379 作为永久常量；
+7. API/Web health 200、未认证入口 401、Keychain + SSH tunnel MCP health `ok`，MCP repository list 只含真实仓库；
+8. 独立 production closeout review 批准后才能把本 item 标记 done，并恢复 `data-architecture-3-technology-stack-entities` Phase B。
 
-- `repositories`、`user_watched_repositories`、`group_members` 和采集/调度路径只包含真实 GitHub 仓库语义；
-- `technology_stacks` 与 `repository_technology_stacks` 是技术栈的唯一持久事实来源，slug 和 repository-stack pair 唯一；
-- 技术栈节点、边及全部 packages evidence 在迁移和切换前后语义一致；
-- graph contract 不再暴露 `reference`/`isReference`，2D/3D 均能使用 `technology_stack`；
-- legacy 伪收藏、legacy stack edges、reference repositories 与 `is_reference` 列安全移除，真实业务数据不变；
-- 完整门禁、真实 PostgreSQL 演练、独立 reviews、分阶段部署与生产 closeout 均通过。
+## Handoff To Reviewer
+
+Worker 完成后只提交以下证据包，不自行宣布 Phase B 可开始：
+
+- PR、merge SHA、CI run、deploy run、backup/migration receipt；
+- focused/全仓/隔离 PostgreSQL 命令及结果；
+- 冷/暖两次 rebuild 的 immutable job IDs、stage receipts、duration、预算与外呼计数；
+- 新旧投影结构化比较、repository/watch/group/MCP 不变量；
+- 当前生产 revision/config/migration/health/auth；
+- 所有已知失败、降级和未验证项。
+
+Reviewer 将独立复核代码、Git、Actions、生产 DB/jobs/services 与 MCP；批准前不得切换 `new_read_dual_write`。
 ```
 
 ## Review Focus
@@ -210,3 +217,4 @@ legacy_shadow_dual_write
 3. 是否越过 architecture 模块边界
 4. 是否偷偷吸收了未来 checklist item 的工作
 5. 当前验证方式是否足以支持结束本轮
+

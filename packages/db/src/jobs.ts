@@ -8,6 +8,7 @@ import { and, asc, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "./index";
 import { jobs, type Job } from "./schema";
+import { GraphLeaseLostError } from "./deps-cache";
 
 export const HEALTH_ANALYSIS_JOB = "analysis.health";
 export const GRAPH_REBUILD_JOB = "graph.rebuild";
@@ -556,6 +557,86 @@ export async function renewJobLease(
   }
 
   return renewed;
+}
+
+/** lease-authoritative 进度写入：仅当前持约的 running 任务可刷新 progress。 */
+export async function updateJobProgress(
+  db: Db,
+  jobId: number,
+  workerId: string,
+  progress: Record<string, unknown>,
+  now: Date = new Date()
+): Promise<boolean> {
+  const updated = await db
+    .update(jobs)
+    .set({ progress, updatedAt: now })
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.status, "running"),
+        eq(jobs.leaseOwner, workerId),
+        gte(jobs.leaseExpiresAt, now)
+      )
+    )
+    .returning({ id: jobs.id });
+  return updated.length > 0;
+}
+
+/** 原子提交前的租约复核：lost lease 时拒绝提交。带行锁，可在事务首句调用。 */
+export async function assertJobLease(
+  db: Db,
+  jobId: number,
+  workerId: string,
+  now: Date = new Date()
+): Promise<void> {
+  const rows = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.status, "running"),
+        eq(jobs.leaseOwner, workerId),
+        gte(jobs.leaseExpiresAt, now)
+      )
+    )
+    .limit(1)
+    .for("update");
+  if (rows.length === 0) {
+    throw new GraphLeaseLostError(`job ${jobId} 不再由 ${workerId} 持有`);
+  }
+}
+
+export interface JobProgressSinkOptions {
+  /** 同一 stage 内的最小写入间隔；stage 切换总是立即写入 */
+  minIntervalMs?: number;
+  now?: () => Date;
+}
+
+/**
+ * 节流的任务进度 sink：写入必须通过 lease-authoritative 条件 UPDATE，
+ * 租约丢失时抛 GraphLeaseLostError 终止当前执行（不得继续刷新进度或提交）。
+ */
+export function createJobProgressSink(
+  db: Db,
+  jobId: number,
+  workerId: string,
+  options: JobProgressSinkOptions = {}
+): (progress: Record<string, unknown>) => Promise<void> {
+  const minIntervalMs = options.minIntervalMs ?? 2_000;
+  let lastWriteAt = 0;
+  let lastStage: string | undefined;
+  return async (progress) => {
+    const now = options.now ? options.now() : new Date();
+    const stage = typeof progress.stage === "string" ? progress.stage : undefined;
+    if (stage === lastStage && now.getTime() - lastWriteAt < minIntervalMs) return;
+    const written = await updateJobProgress(db, jobId, workerId, progress, now);
+    if (!written) {
+      throw new GraphLeaseLostError(`job ${jobId} 已失去租约，不能写入进度`);
+    }
+    lastWriteAt = now.getTime();
+    lastStage = stage;
+  };
 }
 
 /**

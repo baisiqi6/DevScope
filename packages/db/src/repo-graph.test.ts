@@ -4,10 +4,21 @@ import {
   detectTechStack,
   recomputeSimilarityEdges,
   recomputeDependencyEdges,
+  rebuildRepoGraph,
   poolRepoEmbedding,
   getRepoGraphData,
 } from "./repo-graph";
 import {
+  DEFAULT_EXTERNAL_RESOLUTION_SETTINGS,
+  ExternalRequestBudget,
+  GraphBudgetExceededError,
+  GraphLeaseLostError,
+  GraphRateLimitedError,
+  type CanonicalizationOutcome,
+  type DepsDevOutcome,
+} from "./deps-cache";
+import {
+  githubRepoNameCanonicalizations,
   repositories,
   packageRepoMappings,
   repoRelationships,
@@ -276,6 +287,8 @@ describe("recomputeSimilarityEdges", () => {
 // ============================================================================
 
 describe("recomputeDependencyEdges", () => {
+  // 旧式 cacheResult {sourceRepo} 行归一为带状态的缓存行（resolved 命中 + 远期复查点）
+  const CACHE_HIT_FUTURE = new Date("2999-01-01T00:00:00.000Z");
   // 按表路由的 mock：repositories 返回仓库列表，packageRepoMappings 返回固定缓存结果
   function createDepMockDb(opts: {
     repos: Array<{ id: number; fullName: string; sbomPackages: unknown; isReference?: boolean }>;
@@ -283,7 +296,13 @@ describe("recomputeDependencyEdges", () => {
   }) {
     mockApplyTechnologyStacks.mockReset();
     mockApplyTechnologyStacks.mockResolvedValue("applied");
-    const cacheResult = opts.cacheResult ?? [];
+    const cacheResult = (opts.cacheResult ?? []).map((row) => ({
+      resolutionStatus: row.sourceRepo != null ? ("resolved" as const) : ("not_found" as const),
+      retryAfter: CACHE_HIT_FUTURE,
+      lastError: null,
+      lastResolvedRepo: null,
+      ...row,
+    }));
     const insertedMappings: any[] = [];
     const referenceUpserts: any[] = [];
     const insertedEdges: any[] = [];
@@ -351,8 +370,15 @@ describe("recomputeDependencyEdges", () => {
             }),
           };
         }
-        return { values: vi.fn().mockResolvedValue(undefined) };
+        return {
+          values: vi.fn().mockImplementation(() => ({
+            onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+          })),
+        };
       }),
+      update: vi.fn().mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+      })),
       transaction: vi.fn().mockImplementation(async (fn: any) => {
         const txInsert = vi.fn().mockImplementation((table: unknown) => {
           if (table === repositories) {
@@ -405,11 +431,11 @@ describe("recomputeDependencyEdges", () => {
       repos: [
         { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
       ],
-      cacheResult: [{ sourceRepo: "facebook/react" }],
+      cacheResult: [{ system: "npm", packageName: "react", packageVersion: "19.2.6", sourceRepo: "facebook/react" }],
     });
 
     const resolveMapping = vi.fn();
-    await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(resolveMapping).not.toHaveBeenCalled();
   });
@@ -423,8 +449,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue("django/django");
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsResolved("django/django"));
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(resolveMapping).toHaveBeenCalledWith("pypi", "django", "4.2.1");
     expect(count).toBe(2);
@@ -441,8 +467,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue("lodash/lodash");
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsResolved("lodash/lodash"));
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(count).toBe(0);
     expect(db._referenceUpserts).toHaveLength(0);
@@ -456,12 +482,14 @@ describe("recomputeDependencyEdges", () => {
         { id: 2, fullName: "react/react", isReference: false, sbomPackages: null },
         { id: 3, fullName: "org-b/app-b", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
       ],
-      cacheResult: [{ sourceRepo: "facebook/react" }],
+      cacheResult: [{ system: "npm", packageName: "react", packageVersion: "19.2.6", sourceRepo: "facebook/react" }],
     });
 
     const resolveMapping = vi.fn();
-    const canonicalize = vi.fn().mockResolvedValue("react/react");
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
+    const canonicalize = vi.fn().mockResolvedValue(canonResolved("react/react"));
+    const count = await recomputeDependencyEdges(db, 1, {
+      resolveMapping, canonicalize, settings: { pacingMs: 0 },
+    });
 
     // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边；
     // 两个来源仓库还分别连接到 React 技术栈。
@@ -490,14 +518,16 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockImplementation((system: string, name: string) =>
-      Promise.resolve(name === "react-legacy" ? "facebook/react-legacy" : "facebook/react")
+    const resolveMapping = vi.fn().mockImplementation((_system: string, name: string) =>
+      Promise.resolve(depsResolved(name === "react-legacy" ? "facebook/react-legacy" : "facebook/react"))
     );
     // 两个外部名都归一到 react/react
     const canonicalize = vi.fn().mockImplementation((fullName: string) =>
-      Promise.resolve(fullName === "facebook/react-legacy" ? "react/react" : "react/react")
+      Promise.resolve(canonResolved("react/react"))
     );
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, canonicalize, delayMs: 0 });
+    const count = await recomputeDependencyEdges(db, 1, {
+      resolveMapping, canonicalize, settings: { pacingMs: 0 },
+    });
 
     // org-a 的两个仓库目标合并为一条边；org-b 一条边，另有两条 React 技术栈边。
     expect(count).toBe(4);
@@ -517,8 +547,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue("facebook/react");
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsResolved("facebook/react"));
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(count).toBe(2);
     expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
@@ -544,8 +574,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue(null);
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(count).toBe(3);
     expect(db._referenceUpserts.map((row: any) => row.fullName).sort()).toEqual([
@@ -586,8 +616,8 @@ describe("recomputeDependencyEdges", () => {
     mockApplyTechnologyStacks.mockResolvedValueOnce("stale");
 
     await expect(recomputeDependencyEdges(db, 1, {
-      resolveMapping: vi.fn().mockResolvedValue(null),
-      delayMs: 0,
+      resolveMapping: vi.fn().mockResolvedValue(depsNotFound()),
+      settings: { pacingMs: 0 },
     })).rejects.toThrow(/已更新/);
     expect(db._referenceUpserts).toHaveLength(0);
     expect(db._insertedEdges).toHaveLength(0);
@@ -610,8 +640,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue(null);
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(count).toBe(2);
     const edgeFrom1 = db._insertedEdges.find((e: any) => e.sourceRepoId === 1);
@@ -631,8 +661,8 @@ describe("recomputeDependencyEdges", () => {
       cacheResult: [],
     });
 
-    const resolveMapping = vi.fn().mockResolvedValue(null);
-    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, delayMs: 0 });
+    const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
+    const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     // reference 行的 SBOM 不参与解析
     expect(resolveMapping).not.toHaveBeenCalledWith("npm", "some-dep", "1.0.0");
@@ -766,5 +796,777 @@ describe("backfillSbomPackages", () => {
     const { backfillSbomPackages } = await import("./repo-graph");
     const db = { select: vi.fn() } as any;
     expect(await backfillSbomPackages(db, 1, {})).toBe(0);
+  });
+});
+
+// ============================================================================
+// deps cache recovery：状态、TTL、预算、并发、freshness、lease
+// ============================================================================
+
+interface TestMappingRow {
+  system: string;
+  packageName: string;
+  packageVersion: string;
+  sourceRepo: string | null;
+  resolutionStatus: "resolved" | "not_found" | "error";
+  retryAfter: Date;
+  lastError?: string | null;
+  lastResolvedRepo?: string | null;
+}
+
+interface TestCanonRow {
+  fullName: string;
+  canonicalFullName: string | null;
+  resolutionStatus: "resolved" | "not_found" | "error";
+  retryAfter: Date;
+  lastError?: string | null;
+}
+
+const CACHE_NOW = new Date("2026-08-19T00:00:00.000Z");
+const FUTURE = new Date(CACHE_NOW.getTime() + 3_600_000);
+const PAST = new Date(CACHE_NOW.getTime() - 3_600_000);
+
+const cacheSettings = {
+  ...DEFAULT_EXTERNAL_RESOLUTION_SETTINGS,
+  pacingMs: 0,
+};
+
+function depsResolved(sourceRepo: string): DepsDevOutcome {
+  return { status: "resolved", sourceRepo, retryAfterSeconds: null, errorSummary: null };
+}
+function depsNotFound(): DepsDevOutcome {
+  return { status: "not_found", sourceRepo: null, retryAfterSeconds: null, errorSummary: null };
+}
+function depsError(retryAfterSeconds: number | null = null, errorSummary = "network error"): DepsDevOutcome {
+  return { status: "error", sourceRepo: null, retryAfterSeconds, errorSummary };
+}
+function canonResolved(canonicalFullName: string): CanonicalizationOutcome {
+  return { status: "resolved", canonicalFullName, retryAfterSeconds: null, errorSummary: null };
+}
+
+function createCacheMockDb(opts: {
+  repos: Array<{ id: number; fullName: string; sbomPackages: unknown; isReference?: boolean }>;
+  mappingRows?: TestMappingRow[];
+  canonRows?: TestCanonRow[];
+}) {
+  mockApplyTechnologyStacks.mockReset();
+  mockApplyTechnologyStacks.mockResolvedValue("applied");
+  const mappingRows = opts.mappingRows ?? [];
+  const canonRows = opts.canonRows ?? [];
+  const mappingUpserts: any[] = [];
+  const canonUpserts: any[] = [];
+  const mappingUpdates: Array<{ set: Record<string, unknown>; whereArgs: unknown[] }> = [];
+  const insertedEdges: any[] = [];
+  let txStarted = false;
+  let nextRefId = 2000;
+
+  const selectBuilder = (result: unknown) => {
+    let table: unknown = null;
+    const builder: any = {
+      from: vi.fn().mockImplementation((t: unknown) => {
+        table = t;
+        return builder;
+      }),
+      where: vi.fn().mockImplementation((...args: unknown[]) => {
+        builder._whereArgs = args;
+        return builder;
+      }),
+      limit: vi.fn().mockImplementation(() => builder),
+      then: (resolve: any, reject: any) => {
+        let result2: unknown = [];
+        if (table === repositories) {
+          result2 = opts.repos.map((repo) => ({
+            embedding: null,
+            githubRepositoryId: repo.isReference ? null : String(repo.id),
+            updatedAt: new Date("2026-08-18T00:00:00.000Z"),
+            ...repo,
+          }));
+        } else if (table === packageRepoMappings) {
+          result2 = mappingRows;
+        } else if (table === githubRepoNameCanonicalizations) {
+          result2 = canonRows;
+        }
+        return Promise.resolve(result2).then(resolve, reject);
+      },
+    };
+    return builder;
+  };
+
+  const insertInto = (table: unknown) => {
+    if (table === packageRepoMappings) {
+      return {
+        values: vi.fn().mockImplementation((v: any) => ({
+          onConflictDoUpdate: vi.fn().mockImplementation((conflict: any) => {
+            mappingUpserts.push({ values: v, conflict });
+            return Promise.resolve();
+          }),
+        })),
+      };
+    }
+    if (table === githubRepoNameCanonicalizations) {
+      return {
+        values: vi.fn().mockImplementation((v: any) => ({
+          onConflictDoUpdate: vi.fn().mockImplementation(() => {
+            canonUpserts.push(v);
+            return Promise.resolve();
+          }),
+        })),
+      };
+    }
+    if (table === repositories) {
+      return {
+        values: vi.fn().mockImplementation((v: any) => ({
+          onConflictDoUpdate: vi.fn().mockImplementation(() => ({
+            returning: vi.fn().mockImplementation(() =>
+              Promise.resolve([{ id: nextRefId++ }])),
+          })),
+        })),
+      };
+    }
+    if (table === userWatchedRepositories) {
+      return {
+        values: vi.fn().mockReturnValue({
+          onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+        }),
+      };
+    }
+    return { values: vi.fn().mockResolvedValue(undefined) };
+  };
+
+  const db = {
+    select: vi.fn().mockImplementation(() => selectBuilder([])),
+    insert: vi.fn().mockImplementation((table: unknown) => insertInto(table)),
+    update: vi.fn().mockImplementation((table: unknown) => {
+      if (table !== packageRepoMappings) {
+        return { set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) };
+      }
+      return {
+        set: vi.fn().mockImplementation((set: Record<string, unknown>) => ({
+          where: vi.fn().mockImplementation((...whereArgs: unknown[]) => {
+            mappingUpdates.push({ set, whereArgs });
+            return Promise.resolve(undefined);
+          }),
+        })),
+      };
+    }),
+    transaction: vi.fn().mockImplementation(async (fn: any) => {
+      txStarted = true;
+      const txInsert = vi.fn().mockImplementation((table: unknown) => {
+        if (table === repositories) return insertInto(table);
+        if (table === userWatchedRepositories) return insertInto(table);
+        return {
+          values: vi.fn().mockImplementation((vals: any) => {
+            if (Array.isArray(vals)) insertedEdges.push(...vals);
+            return Promise.resolve();
+          }),
+        };
+      });
+      await fn({
+        execute: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        insert: txInsert,
+      });
+    }),
+    _mappingUpserts: mappingUpserts,
+    _canonUpserts: canonUpserts,
+    _mappingUpdates: mappingUpdates,
+    _insertedEdges: insertedEdges,
+    get _txStarted() {
+      return txStarted;
+    },
+  };
+  return db as any;
+}
+
+describe("recomputeDependencyEdges（deps cache recovery）", () => {
+  const repo = (id: number, fullName: string, packages: unknown) => ({
+    id,
+    fullName,
+    isReference: false,
+    sbomPackages: packages,
+  });
+
+  it("分类写入缓存：resolved/not_found/error 各自的状态、sourceRepo 与 retry_after", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [
+          { name: "react", version: "19.0.0", system: "npm" },
+          { name: "left-pad", version: "1.3.0", system: "npm" },
+          { name: "boom", version: "2.0.0", system: "npm" },
+        ]),
+      ],
+    });
+    const resolveMapping = vi.fn(async (_s: string, name: string) => {
+      if (name === "react") return depsResolved("facebook/react");
+      if (name === "left-pad") return depsNotFound();
+      return depsError(null, "connect ETIMEDOUT");
+    });
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    const upsertOf = (name: string) =>
+      db._mappingUpserts.find((u: any) => u.values.packageName === name)?.values;
+    expect(upsertOf("react")).toMatchObject({
+      resolutionStatus: "resolved",
+      sourceRepo: "facebook/react",
+      lastError: null,
+    });
+    expect(upsertOf("react").retryAfter.getTime())
+      .toBe(CACHE_NOW.getTime() + DEFAULT_EXTERNAL_RESOLUTION_SETTINGS.depsResolvedTtlMs);
+
+    expect(upsertOf("left-pad")).toMatchObject({
+      resolutionStatus: "not_found",
+      sourceRepo: null,
+    });
+    expect(upsertOf("left-pad").retryAfter.getTime())
+      .toBe(CACHE_NOW.getTime() + DEFAULT_EXTERNAL_RESOLUTION_SETTINGS.depsNotFoundTtlMs);
+
+    expect(upsertOf("boom")).toMatchObject({
+      resolutionStatus: "error",
+      sourceRepo: null,
+      lastError: "connect ETIMEDOUT",
+    });
+    expect(upsertOf("boom").retryAfter.getTime())
+      .toBe(CACHE_NOW.getTime() + DEFAULT_EXTERNAL_RESOLUTION_SETTINGS.depsErrorRetryMs);
+  });
+
+  it("pending/negative 未到期不外呼也不改写；到期后的 error 行重查并恢复 resolved", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [
+          { name: "pending-pkg", version: "1.0.0", system: "npm" },
+          { name: "negative-pkg", version: "1.0.0", system: "npm" },
+          { name: "due-pkg", version: "1.0.0", system: "npm" },
+        ]),
+      ],
+      mappingRows: [
+        {
+          system: "npm",
+          packageName: "pending-pkg",
+          packageVersion: "1.0.0",
+          sourceRepo: null,
+          resolutionStatus: "error",
+          retryAfter: FUTURE,
+        },
+        {
+          system: "npm",
+          packageName: "negative-pkg",
+          packageVersion: "1.0.0",
+          sourceRepo: null,
+          resolutionStatus: "not_found",
+          retryAfter: FUTURE,
+        },
+        {
+          system: "npm",
+          packageName: "due-pkg",
+          packageVersion: "1.0.0",
+          sourceRepo: null,
+          resolutionStatus: "error",
+          retryAfter: PAST,
+        },
+      ],
+    });
+    const resolveMapping = vi.fn().mockResolvedValue(depsResolved("org-b/lib"));
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(resolveMapping).toHaveBeenCalledTimes(1);
+    expect(resolveMapping).toHaveBeenCalledWith("npm", "due-pkg", "1.0.0");
+    expect(db._mappingUpserts).toHaveLength(1);
+    expect(db._mappingUpserts[0].values).toMatchObject({
+      packageName: "due-pkg",
+      resolutionStatus: "resolved",
+      sourceRepo: "org-b/lib",
+    });
+  });
+
+  it("warm rebuild：TTL 内 resolved 行零 deps.dev 外呼，边仍来自缓存值", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [
+          { name: "react", version: "19.0.0", system: "npm" },
+          { name: "vue", version: "3.4.0", system: "npm" },
+        ]),
+        repo(2, "org-b/lib", []),
+      ],
+      mappingRows: [
+        {
+          system: "npm",
+          packageName: "react",
+          packageVersion: "19.0.0",
+          sourceRepo: "org-b/lib",
+          resolutionStatus: "resolved",
+          retryAfter: FUTURE,
+        },
+        {
+          system: "npm",
+          packageName: "vue",
+          packageVersion: "3.4.0",
+          sourceRepo: null,
+          resolutionStatus: "not_found",
+          retryAfter: FUTURE,
+        },
+      ],
+    });
+    const resolveMapping = vi.fn();
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(resolveMapping).not.toHaveBeenCalled();
+    expect(db._mappingUpserts).toHaveLength(0);
+    const dependencyEdges = db._insertedEdges.filter(
+      (e: any) => e.edgeType === "dependency" && e.targetRepoId === 2,
+    );
+    expect(dependencyEdges).toHaveLength(1);
+    expect(dependencyEdges[0]).toMatchObject({
+      sourceRepoId: 1,
+      targetRepoId: 2,
+    });
+  });
+
+  it("resolved 到期复查失败：sourceRepo 移动到 last_resolved_repo，本轮按无映射", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [{ name: "react", version: "19.0.0", system: "npm" }]),
+        repo(2, "facebook/react", []),
+      ],
+      mappingRows: [
+        {
+          system: "npm",
+          packageName: "react",
+          packageVersion: "19.0.0",
+          sourceRepo: "facebook/react",
+          resolutionStatus: "resolved",
+          retryAfter: PAST,
+        },
+      ],
+    });
+    const resolveMapping = vi.fn().mockResolvedValue(depsError(null, "socket hang up"));
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(db._mappingUpserts).toHaveLength(1);
+    expect(db._mappingUpserts[0].values).toMatchObject({
+      resolutionStatus: "error",
+      sourceRepo: null,
+      lastResolvedRepo: "facebook/react",
+      lastError: "socket hang up",
+    });
+    // 降级期间按无映射：不再连到 facebook/react（技术栈 reference 边不受影响）
+    expect(
+      db._insertedEdges.filter((e: any) => e.targetRepoId === 2),
+    ).toHaveLength(0);
+  });
+
+  it("request budget 耗尽：fail closed 零图写入，已完成的 cache receipt 保留", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [
+          { name: "pkg-a", version: "1.0.0", system: "npm" },
+          { name: "pkg-b", version: "1.0.0", system: "npm" },
+        ]),
+      ],
+    });
+    const resolveMapping = vi.fn(async (_s: string, name: string) =>
+      depsResolved(`org-b/${name}`));
+
+    await expect(recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: { ...cacheSettings, depsRequestBudget: 1 },
+      now: () => CACHE_NOW,
+    })).rejects.toThrow(GraphBudgetExceededError);
+
+    expect(db._txStarted).toBe(false);
+    expect(db._insertedEdges).toHaveLength(0);
+    expect(db._mappingUpserts).toHaveLength(1);
+  });
+
+  it("429：写入带 Retry-After 的 receipt 后立即失败，不再消耗该 provider 预算", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [
+          { name: "pkg-a", version: "1.0.0", system: "npm" },
+          { name: "pkg-b", version: "1.0.0", system: "npm" },
+          { name: "pkg-c", version: "1.0.0", system: "npm" },
+        ]),
+      ],
+    });
+    const resolveMapping = vi.fn().mockResolvedValue(depsError(30, "rate limited"));
+
+    await expect(recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: { ...cacheSettings, depsConcurrency: 1 },
+      now: () => CACHE_NOW,
+    })).rejects.toThrow(GraphRateLimitedError);
+
+    expect(resolveMapping).toHaveBeenCalledTimes(1);
+    expect(db._txStarted).toBe(false);
+    expect(db._mappingUpserts).toHaveLength(1);
+    expect(db._mappingUpserts[0].values).toMatchObject({
+      resolutionStatus: "error",
+      retryAfter: new Date(CACHE_NOW.getTime() + 30_000),
+    });
+  });
+
+  it("有界并发：观测到的最大 deps.dev 并发不超过配置", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", Array.from({ length: 8 }, (_, i) => ({
+          name: `pkg-${i}`,
+          version: "1.0.0",
+          system: "npm",
+        }))),
+      ],
+    });
+    let active = 0;
+    let maxActive = 0;
+    const resolveMapping = vi.fn(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      return depsNotFound();
+    });
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: { ...cacheSettings, depsConcurrency: 3 },
+      now: () => CACHE_NOW,
+    });
+
+    expect(maxActive).toBeLessThanOrEqual(3);
+    expect(maxActive).toBeGreaterThan(1);
+  });
+
+  it("同一 package key 在一次运行只外呼一次（跨仓库去重）", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [{ name: "shared", version: "1.0.0", system: "npm" }]),
+        repo(2, "org-b/app-b", [{ name: "shared", version: "1.0.0", system: "npm" }]),
+      ],
+    });
+    const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(resolveMapping).toHaveBeenCalledTimes(1);
+    expect(db._mappingUpserts).toHaveLength(1);
+  });
+
+  it("canonicalization freshness：持久化后第二次运行零 GitHub 外呼", async () => {
+    const repos = [
+      repo(1, "org-a/app-a", [{ name: "pkg-1", version: "1.0.0", system: "npm" }]),
+      repo(2, "org-b/app-b", [{ name: "pkg-2", version: "1.0.0", system: "npm" }]),
+      repo(3, "new/target", []),
+    ];
+    const mappingRows: TestMappingRow[] = [
+      {
+        system: "npm",
+        packageName: "pkg-1",
+        packageVersion: "1.0.0",
+        sourceRepo: "old/target",
+        resolutionStatus: "resolved",
+        retryAfter: FUTURE,
+      },
+      {
+        system: "npm",
+        packageName: "pkg-2",
+        packageVersion: "1.0.0",
+        sourceRepo: "old/target",
+        resolutionStatus: "resolved",
+        retryAfter: FUTURE,
+      },
+    ];
+
+    const dbRun1 = createCacheMockDb({ repos, mappingRows });
+    const canonicalize1 = vi.fn().mockResolvedValue(canonResolved("new/target"));
+    await recomputeDependencyEdges(dbRun1, 1, {
+      resolveMapping: vi.fn(),
+      canonicalize: canonicalize1,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+    expect(canonicalize1).toHaveBeenCalledTimes(1);
+    expect(canonicalize1).toHaveBeenCalledWith("old/target");
+    expect(dbRun1._canonUpserts).toHaveLength(1);
+    expect(dbRun1._canonUpserts[0]).toMatchObject({
+      fullName: "old/target",
+      canonicalFullName: "new/target",
+      resolutionStatus: "resolved",
+    });
+    // rename 回写：只改命名，不改 resolution 状态
+    expect(dbRun1._mappingUpdates).toHaveLength(1);
+    expect(dbRun1._mappingUpdates[0].set).toMatchObject({ sourceRepo: "new/target" });
+    expect(dbRun1._mappingUpdates[0].set).not.toHaveProperty("resolutionStatus");
+
+    // 第二次运行：freshness 未到期的持久行直接生效，零 canonicalization 外呼
+    const dbRun2 = createCacheMockDb({
+      repos,
+      mappingRows: mappingRows.map((row) => ({ ...row, sourceRepo: "new/target" })),
+      canonRows: [
+        {
+          fullName: "old/target",
+          canonicalFullName: "new/target",
+          resolutionStatus: "resolved",
+          retryAfter: FUTURE,
+        },
+      ],
+    });
+    const canonicalize2 = vi.fn();
+    await recomputeDependencyEdges(dbRun2, 1, {
+      resolveMapping: vi.fn(),
+      canonicalize: canonicalize2,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+    expect(canonicalize2).not.toHaveBeenCalled();
+    expect(dbRun2._canonUpserts).toHaveLength(0);
+    expect(dbRun2._mappingUpdates).toHaveLength(0);
+    // 归一后的目标连到已采集仓库
+    expect(dbRun2._insertedEdges).toHaveLength(2);
+  });
+
+  it("canonicalization resolved 复查失败：旧 canonical 值保留为证据", async () => {
+    const repos = [
+      repo(1, "org-a/app-a", [{ name: "pkg-1", version: "1.0.0", system: "npm" }]),
+      repo(2, "org-b/app-b", [{ name: "pkg-2", version: "1.0.0", system: "npm" }]),
+    ];
+    const db = createCacheMockDb({
+      repos,
+      mappingRows: [
+        { system: "npm", packageName: "pkg-1", packageVersion: "1.0.0", sourceRepo: "old/target", resolutionStatus: "resolved", retryAfter: FUTURE },
+        { system: "npm", packageName: "pkg-2", packageVersion: "1.0.0", sourceRepo: "old/target", resolutionStatus: "resolved", retryAfter: FUTURE },
+      ],
+      canonRows: [
+        {
+          fullName: "old/target",
+          canonicalFullName: "new/target",
+          resolutionStatus: "resolved",
+          retryAfter: PAST,
+        },
+      ],
+    });
+    const canonicalize = vi.fn().mockResolvedValue({
+      status: "error" as const,
+      canonicalFullName: null,
+      retryAfterSeconds: null,
+      errorSummary: "network_error",
+    });
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn(),
+      canonicalize,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(canonicalize).toHaveBeenCalledTimes(1);
+    expect(db._canonUpserts).toHaveLength(1);
+    expect(db._canonUpserts[0]).toMatchObject({
+      fullName: "old/target",
+      canonicalFullName: "new/target", // 降级保留旧值证据
+      resolutionStatus: "error",
+      lastError: "network_error",
+    });
+    // 失败保持原 fullName，不产生 rename 回写
+    expect(db._mappingUpdates).toHaveLength(0);
+  });
+
+  it("happy path：assertLease 在事务外与事务内各复核一次", async () => {
+    const db = createCacheMockDb({
+      repos: [repo(1, "org-a/app-a", [{ name: "react", version: "19.0.0", system: "npm" }])],
+      mappingRows: [
+        { system: "npm", packageName: "react", packageVersion: "19.0.0", sourceRepo: null, resolutionStatus: "not_found", retryAfter: FUTURE },
+      ],
+    });
+    const assertLease = vi.fn().mockResolvedValue(undefined);
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn(),
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+      assertLease,
+    });
+
+    expect(assertLease).toHaveBeenCalledTimes(2);
+    // 第二次调用拿到事务执行器（带行锁复核的入参形态）
+    expect(assertLease.mock.calls[1][0]).toBeDefined();
+    expect(db._txStarted).toBe(true);
+  });
+
+  it("lost lease：assertLease 抛错时不进入原子提交，边零写入", async () => {
+    const db = createCacheMockDb({
+      repos: [repo(1, "org-a/app-a", [{ name: "react", version: "19.0.0", system: "npm" }])],
+      mappingRows: [
+        {
+          system: "npm",
+          packageName: "react",
+          packageVersion: "19.0.0",
+          sourceRepo: null,
+          resolutionStatus: "not_found",
+          retryAfter: FUTURE,
+        },
+      ],
+    });
+    const assertLease = vi.fn().mockRejectedValue(new GraphLeaseLostError("lease expired"));
+
+    await expect(recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn(),
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+      assertLease,
+    })).rejects.toThrow(GraphLeaseLostError);
+
+    expect(assertLease).toHaveBeenCalled();
+    expect(db._txStarted).toBe(false);
+    expect(db._insertedEdges).toHaveLength(0);
+  });
+
+  it("进度：deps_resolution/github_canonicalization stage 上报且计数完整", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        repo(1, "org-a/app-a", [{ name: "pkg-1", version: "1.0.0", system: "npm" }]),
+        repo(2, "org-b/app-b", [{ name: "pkg-2", version: "1.0.0", system: "npm" }]),
+        repo(3, "unrelated/repo", []),
+      ],
+    });
+    const snapshots: any[] = [];
+    const resolveMapping = vi.fn(async () => depsResolved("elsewhere/target"));
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping,
+      canonicalize: vi.fn().mockResolvedValue({
+        status: "not_found",
+        canonicalFullName: null,
+        retryAfterSeconds: null,
+        errorSummary: null,
+      }),
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+      progress: async (snapshot: any) => {
+        snapshots.push({ ...snapshot });
+      },
+    });
+
+    const depsStage = snapshots.filter((s) => s.stage === "deps_resolution");
+    expect(depsStage.length).toBeGreaterThan(0);
+    expect(depsStage[0]).toMatchObject({ stage: "deps_resolution", total: 2 });
+    expect(depsStage[depsStage.length - 1]).toMatchObject({ stage: "deps_resolution", completed: 2 });
+    const finalDeps = depsStage[depsStage.length - 1];
+    expect(finalDeps.cacheMisses).toBe(2);
+    expect(finalDeps.externalRequests).toBe(2);
+
+    // 两个源仓库都指向 elsewhere/target：indegree=2 达到 canonicalization 门槛
+    const canonStage = snapshots.filter((s) => s.stage === "github_canonicalization");
+    expect(canonStage.length).toBeGreaterThan(0);
+    expect(canonStage[canonStage.length - 1].completed)
+      .toBe(canonStage[canonStage.length - 1].total);
+
+    const commitStage = snapshots.filter((s) => s.stage === "atomic_commit");
+    expect(commitStage.length).toBeGreaterThan(0);
+  });
+});
+
+describe("rebuildRepoGraph（deps cache recovery）", () => {
+  beforeEach(() => {
+    mockPoolRepositoryEmbedding.mockReset();
+    mockPoolRepositoryEmbedding.mockResolvedValue("applied");
+    mockApplySbomBackfill.mockReset();
+    mockApplySbomBackfill.mockResolvedValue("applied");
+    mockApplyTechnologyStacks.mockReset();
+    mockApplyTechnologyStacks.mockResolvedValue("applied");
+  });
+
+  it("stage 序列含 embedding/similarity/sbom/deps_resolution，completed 单调不减", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        {
+          id: 1,
+          fullName: "org-a/app-a",
+          isReference: false,
+          sbomPackages: null,
+        },
+      ],
+    });
+    const snapshots: any[] = [];
+    const fetchSbom = vi.fn().mockResolvedValue({ sbom: { packages: [] } });
+
+    await rebuildRepoGraph(db, 1, {
+      resolveMapping: vi.fn().mockResolvedValue(depsNotFound()),
+      fetchSbom,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+      progress: async (snapshot: any) => {
+        snapshots.push({ ...snapshot });
+      },
+    });
+
+    const stages = snapshots.map((s) => s.stage);
+    expect(stages).toContain("embedding");
+    expect(stages).toContain("similarity");
+    expect(stages).toContain("sbom");
+    expect(stages).toContain("deps_resolution");
+    expect(stages).toContain("atomic_commit");
+
+    const stageOrder = ["embedding", "sbom", "similarity", "deps_resolution", "github_canonicalization", "atomic_commit"];
+    let lastIdx = -1;
+    for (const stage of stageOrder) {
+      const idx = stages.indexOf(stage);
+      if (idx >= 0) {
+        expect(idx).toBeGreaterThan(lastIdx);
+        lastIdx = idx;
+      }
+    }
+
+    for (const stage of stageOrder) {
+      const stageSnaps = snapshots.filter((s) => s.stage === stage);
+      for (let i = 1; i < stageSnaps.length; i++) {
+        expect(stageSnaps[i].completed).toBeGreaterThanOrEqual(stageSnaps[i - 1].completed);
+      }
+    }
+    // sbom 阶段的外呼计入预算与进度
+    const finalSbom = snapshots.filter((s) => s.stage === "sbom").pop();
+    expect(finalSbom.externalRequests).toBe(1);
+  });
+
+  it("SBOM 阶段 GitHub 预算耗尽：在任何图写入之前 fail closed", async () => {
+    const db = createCacheMockDb({
+      repos: [
+        { id: 1, fullName: "org-a/a", isReference: false, sbomPackages: null, embedding: [1, 0] },
+        { id: 2, fullName: "org-b/b", isReference: false, sbomPackages: null, embedding: [0, 1] },
+      ],
+    });
+    const fetchSbom = vi.fn().mockResolvedValue({ sbom: { packages: [] } });
+
+    await expect(rebuildRepoGraph(db, 1, {
+      resolveMapping: vi.fn(),
+      fetchSbom,
+      settings: { ...cacheSettings, githubRequestBudget: 1 },
+      now: () => CACHE_NOW,
+    })).rejects.toThrow(GraphBudgetExceededError);
+
+    expect(fetchSbom).toHaveBeenCalledTimes(1);
+    expect(db._txStarted).toBe(false);
+    expect(db._insertedEdges).toHaveLength(0);
   });
 });
