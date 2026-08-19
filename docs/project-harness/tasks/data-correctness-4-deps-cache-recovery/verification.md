@@ -43,9 +43,15 @@
 - **P2 真实 HTTP 层测试**：新增 `deps-cache.http.test.ts`（本地 http server：200/空数组/404/429+Retry-After/5xx/非法 JSON/挂起超时/连接拒绝）+ `parseRetryAfterSeconds` 单测；`fetchDepsDevOutcome` 增加仅供测试的 `baseUrl` 注入参数，生产默认不变。
 - **P3 relatedProjects 缺失 → error**（schema 漂移不伪造阴性，空数组才是明确无映射）；**json 读体中止 → timeout 口径**；**stage duration 细分**（deps_resolution 只计解析池、github_canonicalization/atomic_commit 独立计时、shadow_compare 真实时长）；**预算口径与 similarity 顺序**写入 runbook。
 
-修复后重跑：db 单测 110（deps-cache 41 + repo-graph 51 + http 9 中的新计数）、worker 10、api 13；隔离 PostgreSQL 串行 33/33；全仓 lint/typecheck(14)/test(11)/build(9) 通过。
+修复后重跑：db 单测 101（deps-cache 41 + http 9 + repo-graph 51）、worker 18、api 全套；隔离 PostgreSQL 串行 33/33；全仓 lint/typecheck(14)/test(11)/build(9) 通过。
 
 ## 未验证项
 
 - 生产部署、生产 rebuild（冷/暖两次）、MCP/生产健康检查：按 plan 属 PR/CI 后的生产门禁，需用户显式授权后执行。
 - CI 中的集成测试仍跳过（无 TEST_DATABASE_URL），由 `data-quality-5-postgres-integration-gates` 解决。
+
+## Continuity 复核（第二轮，approved）
+
+- Verdict：`approved`（evt 见 events.jsonl）；10 条 findings 全部 closed，无 P0–P2 新发现。
+- 遗留 P3：(a) 事务内 assertLease 的真实 PG 用例已补（见下）；(b) 连接拒绝用例端口假设已改为 listen-then-close；(c) 计数笔误已修正；(d) 集成 fixture 撞唯一约束的既有脆弱性移交 `data-quality-5-postgres-integration-gates`。
+- 第二轮后补充：集成测试新增「事务内 FOR UPDATE 租约复核拒绝 lost-lease 提交」用例（真实 PostgreSQL）。

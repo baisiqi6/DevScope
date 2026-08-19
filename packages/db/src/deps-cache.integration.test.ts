@@ -15,6 +15,7 @@ import {
   recomputeDependencyEdges,
   rebuildRepoGraph,
 } from "./repo-graph";
+import type { Db } from "./index";
 import {
   DEFAULT_EXTERNAL_RESOLUTION_SETTINGS,
   ExternalRequestBudget,
@@ -373,6 +374,53 @@ describeIntegration("deps cache recovery on PostgreSQL", () => {
       eq(schema.repoRelationships.edgeType, "dependency"),
     ));
     expect(edges.filter((e) => e.evidence.resolvedBy === "deps.dev")).toHaveLength(0);
+  });
+
+  it("事务首句的 FOR UPDATE 租约复核拒绝 lost-lease 提交", async () => {
+    await commitAndWatch("930050", [
+      { name: "react", version: "19.2.6", system: "npm" },
+    ]);
+    await db.insert(schema.packageRepoMappings).values({
+      system: "npm", packageName: "react", packageVersion: "19.2.6",
+      sourceRepo: null, resolutionStatus: "not_found", retryAfter: FUTURE,
+    });
+    const [job] = await db.insert(schema.jobs).values({
+      userId,
+      type: GRAPH_REBUILD_JOB,
+      idempotencyKey: "graph:rebuild-lease",
+      payload: { requestedAt: NOW.toISOString() },
+      status: "running",
+      attempt: 1,
+      leaseOwner: "worker-lease",
+      leaseExpiresAt: new Date(NOW.getTime() + 300_000),
+      startedAt: NOW,
+    }).returning();
+
+    // 提交前的外部复核通过，事务内复核发现租约已被剥夺 → 拒绝提交、零边写入
+    const assertLease = async (executor?: Db) => {
+      const target = executor ?? db;
+      const rows = await target.select({ owner: schema.jobs.leaseOwner })
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, job.id))
+        .limit(1);
+      if (rows[0]?.owner !== "worker-lease") {
+        throw new GraphLeaseLostError("lease stolen");
+      }
+    };
+    await assertLease();
+    await db.update(schema.jobs)
+      .set({ leaseOwner: "worker-other", leaseExpiresAt: new Date(NOW.getTime() + 300_000) })
+      .where(eq(schema.jobs.id, job.id));
+
+    await expect(recomputeDependencyEdges(db, userId, {
+      resolveMapping: vi.fn(),
+      settings,
+      now: () => NOW,
+      assertLease,
+    })).rejects.toThrow(GraphLeaseLostError);
+
+    expect(await db.select().from(schema.repoRelationships)
+      .where(eq(schema.repoRelationships.userId, userId))).toHaveLength(0);
   });
 
   it("全量 rebuild 后 legacy 与新表技术栈投影 zero-diff，budget 快照进入结果", async () => {

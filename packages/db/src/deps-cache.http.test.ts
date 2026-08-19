@@ -101,8 +101,8 @@ describe("fetchDepsDevOutcome（真实 HTTP）", () => {
   }, 5_000);
 
   it("连接被拒绝 → network_error", async () => {
-    // 54321 端口无监听（本仓库服务不占用该端口）
-    const outcome = await fetchDepsDevOutcome("npm", "any", "1.0.0", { depsTimeoutMs: 1000 }, "http://127.0.0.1:54321");
+    // 特权端口 1 无普通用户进程可监听，连接必然被拒绝，不依赖环境端口占用假设
+    const outcome = await fetchDepsDevOutcome("npm", "any", "1.0.0", { depsTimeoutMs: 1000 }, "http://127.0.0.1:1");
     expect(outcome).toMatchObject({ status: "error", errorSummary: "network_error" });
   });
 });

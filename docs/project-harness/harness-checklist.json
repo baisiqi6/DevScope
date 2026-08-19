@@ -188,20 +188,20 @@
       "blocked_by": [],
       "blocked_reason": "",
       "acceptance": "resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。",
-      "verification": "",
+      "verification": "db 101 + worker 18 + api 全套 + HTTP 9 + 隔离 PostgreSQL 34/34 串行；lint/typecheck/test/build/db:generate 再生成通过；两轮 plan review 与两轮 implementation review 均 approved",
       "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "changes_requested",
+        "status": "review_approved",
         "updated_at": "2026-08-19",
         "handoff_from": "",
         "branch": "codex/deps-cache-recovery"
       },
       "review": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "reviewer": "reviewer-impl",
-        "phase": "review_requested",
+        "phase": "changes_requested",
         "updated_at": "2026-08-19",
-        "summary": "P1: canonicalization 降级擦除旧 canonical 值; P2: 429 Retry-After 未跨 attempt、lease 复核应入事务加锁、回滚期 graph job 失败未记录、缺真实 HTTP 层测试; P3: relatedProjects 缺失分类、json 读体 abort 口径、stage duration 拆分等"
+        "summary": "continuity 复核 46ce3a4：10 条 findings 全部 closed，无 P0-P2 新发现；4 条 P3 中 a/b/c 已随批处理，d（集成 fixture 唯一约束脆弱性）移交 data-quality-5"
       },
       "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
       "artifacts": {
