@@ -19,6 +19,7 @@ import { registerReportsRoutes } from "./routes/reports";
 import { registerWorkflowStatusRoute } from "./routes/workflow-status";
 import { startScheduler } from "./scheduler";
 import {
+  assertStorageModeStartupConsistency,
   assertTechnologyStackStorageModeSupported,
   closeDb,
   createDb,
@@ -206,6 +207,20 @@ const start = async () => {
     const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
 
     console.log("=".repeat(50));
+    // 启动一致性：缺表/cleaned+legacy/未回填组合 fail closed（Phase B 分层检查）
+    {
+      const startupDb = createDb();
+      await assertStorageModeStartupConsistency(
+        startupDb,
+        parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+      ).catch(async (error) => {
+        console.error("[Startup] 存储模式一致性检查失败：", error instanceof Error ? error.message : error);
+        await closeDb().catch(() => undefined);
+        process.exit(1);
+      });
+      await closeDb().catch(() => undefined);
+    }
+
     console.log("🔧 环境变量检查:");
     console.log(`  GITHUB_TOKEN: ${hasGitHubToken ? "✅ 已配置" : "❌ 未配置"}`);
     console.log(`  DATABASE_URL: ${hasDbUrl ? "✅ 已配置" : "❌ 未配置"}`);
@@ -219,6 +234,8 @@ const start = async () => {
     try {
       const staleMinutes = Number(process.env.WORKFLOW_STALE_MINUTES) || 30;
       const db = createDb();
+
+
       const count = await reconcileStaleExecutions(db, { staleMinutes });
       if (count > 0) {
         console.log(`[Reconciliation] 标记 ${count} 条僵尸执行为 failed`);

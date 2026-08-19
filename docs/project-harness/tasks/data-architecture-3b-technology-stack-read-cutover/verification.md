@@ -48,4 +48,10 @@ RED tests 与实现设计（watched source join 读模型、`stack:<slug>` node�
 4. **mode 门**：API/Worker supported set 扩展为 {legacy_shadow_dual_write, new_read_dual_write}；Worker shadow compare 门扩展到两 mode（读切换期 drift 即任务失败）；
 5. **单测**：repo-graph.test.ts 新增 4 用例（新读节点/边、悬空边排除与单重计数、legacy 分流回归、top-N 选择语义）——55/55。
 
-待续（第二批）：integration 用例（两用户 disjoint/overlap watched set、同 stack 多 package evidence、成功空 relation、rebuild-vs-collection 交错）；启动检查（新表存在、cleaned+legacy 启动 shadow compare）；未知 mode fail-closed 用例；implementation review 与 PR；生产三阶段 rollout（compat 已就绪→mode 切换→观察窗口）。
+## 第二批（2026-08-19，完成）
+
+- **integration 用例 6 个**（phase-b-read.integration.test.ts，真实 PG）：两用户 disjoint watched set 隔离（各自图只含自己的 source 与 stack 边）、两用户 overlap 同 stack（节点共享语义、边各归 source）、正向条件（无 stable ID 的 reference 行带伪 watch 不进入新读）、legacy 栈边排除（无悬空边）、同 stack 多 package evidence 聚合单行 + 唯一约束验证、legacy mode 默认分流回归；全套 49/49（43 既有 + 6 新）。
+- **启动检查** `assertStorageModeStartupConsistency`（technology-stack-entities.ts）：双写模式下新表存在检查（to_regclass）；cleaned+legacy 组合（legacy 影子行=0 且新表>0）拒绝启动；new_read 下新表空但 legacy 有数据（未回填）拒绝启动。API（启动序列顶层，独立短连接 + closeDb）与 Worker（db 创建后）接线，失败 process.exit(1)。
+- 全仓门禁：lint 13/13、typecheck 14/14、test 11/11、build 9/9 + integration 49/49。
+
+待续：独立 implementation review → PR/CI → 生产三阶段 rollout（compat 已就绪→mode 切换→观察窗口）。
