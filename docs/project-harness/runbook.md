@@ -208,10 +208,12 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/devscope
 
 确认所选 provider 的 API Key、base URL 和模型名称属于同一服务。OpenAI-compatible 模式按以下优先级读取配置：
 
-1. `OPENAI_COMPATIBLE_*`
-2. `DEEPSEEK_*`
+1. `OPENAI_COMPATIBLE_*`（生产当前默认 MiniMax M3：大陆站 `https://api.minimaxi.com/v1`，国际站 `https://api.minimax.io/v1`，key 与站点必须匹配）
+2. `DEEPSEEK_*`（显式回滚配置）
 
 如果两组都未提供，AI Provider 会在初始化时返回缺少 API Key 的明确错误。
+
+provider 差异由 `packages/ai/src/request-builder.ts` 统一处理：MiniMax M 系列发送 `max_completion_tokens`（`max_tokens` 已被官方标记 deprecated）、注入 `thinking: {type: "disabled"}`（默认 adaptive thinking 会把 `<think>` 写入 content 污染 JSON/工具输出）、不发送 `response_format`（官方 schema 未声明，会被静默忽略）；DeepSeek 回滚路径保持 `max_tokens` + `response_format: json_object` 不变。thinking 污染的 content 在 `JSON.parse` 处 fail closed，不做标签剥离。BGE-M3 embedding 与 pgvector 1024 维不随本配置变化。
 
 ### 语义搜索失败
 

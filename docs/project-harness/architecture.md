@@ -153,7 +153,12 @@ Radar 候选按 `(userId, fullName)` 去重，并保留查询条件、topics、�
 发现页明确采集后才进入仓库工作区。研究 Agent、digest 和反馈闭环仍属于后续迭代。
 
 AI 层统一使用 `openai-compatible` provider：优先读取 `OPENAI_COMPATIBLE_*`，
-也支持 `DEEPSEEK_*`，当前生产默认模型为 `deepseek-chat`。未配置 API Key 时会在初始化阶段明确失败。
+`DEEPSEEK_*` 保留为显式回滚配置，当前生产默认为 MiniMax M3（大陆站
+`api.minimaxi.com/v1`）。provider 请求差异（`max_completion_tokens`、
+`thinking: disabled`、`response_format` 取舍）统一收敛在 `packages/ai` 的
+request builder，调用点不散落 provider 判断；结构化输出走严格 JSON prompt +
+Zod fail closed。未配置 API Key 时会在初始化阶段明确失败。BGE-M3 embedding
+与 pgvector 1024 维独立配置，不随文本模型切换变化。
 
 ### 语义搜索
 
