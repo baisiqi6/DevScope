@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import * as schema from "./schema";
 import { commitRepositoryCollectionSnapshot, type RepositoryCollectionSnapshot } from "./collection";
+import { getRepoGraphData } from "./repo-graph";
 import { snapshotLegacyTechnologyStackBaseline } from "./baseline-compare";
 import {
   validateTechnologyStackCleanup,
@@ -24,8 +25,7 @@ function snapshot(id: string, fullName: string): RepositoryCollectionSnapshot {
       githubRepositoryId: id, fullName, name: fullName.split("/")[1], owner: fullName.split("/")[0],
       description: "cleanup fixture", url: `https://github.test/${fullName}`,
       stars: 1, forks: 0, openIssues: 0, language: "TypeScript", license: "MIT",
-      readme: "fixture", readmeUrl: null, lastFetchedAt: new Date(), isReference: false,
-    },
+      readme: "fixture", readmeUrl: null, lastFetchedAt: new Date(),     },
     chunks: [], hackernews: { status: "success", items: [] },
     releases: { status: "success", items: [] },
     sbom: { status: "success", packages: [] },
@@ -80,7 +80,7 @@ describeIntegration("phase C cleanup operation", () => {
     });
     const [refRow] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/react", name: "React", owner: "tech-stack",
-      url: "https://react.dev", isReference: true, embeddingStatus: "completed",
+      url: "https://react.dev", embeddingStatus: "completed",
     }).returning();
     await db.insert(schema.userWatchedRepositories).values({
       userId, repoId: refRow.id, repoFullName: "tech-stack/react", enableDailyReport: false,
@@ -166,6 +166,13 @@ describeIntegration("phase C cleanup operation", () => {
     const receipt = await db.execute<{ n: string }>(sql`
       select count(*)::text as n from technology_stack_cleanup_receipts`);
     expect(Number(receipt.rows![0].n)).toBe(1);
+
+    // 无列环境关键路径（RED 固化）：列已不存在时图谱读路径正常工作，
+    // stack 节点来自 repository_technology_stacks，reference kind 消失
+    const graph = await getRepoGraphData(db, userId);
+    expect(graph.nodes.some((n) => n.id === "stack:react")).toBe(true);
+    expect(graph.nodes.every((n) => n.kind !== "reference")).toBe(true);
+    expect(graph.nodes.some((n) => n.kind === "repo")).toBe(true);
   });
 
   it("回滚 rehearsal：备份恢复语义（重建伪形态 + 列）后业务路径可用", async () => {
@@ -179,7 +186,7 @@ describeIntegration("phase C cleanup operation", () => {
     await db.execute(sql`alter table repositories add column if not exists is_reference boolean default false not null`);
     const [restored] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/react", name: "React", owner: "tech-stack",
-      url: "https://react.dev", isReference: true, embeddingStatus: "completed",
+      url: "https://react.dev", embeddingStatus: "completed",
     }).onConflictDoNothing().returning({ id: schema.repositories.id });
     await db.insert(schema.repoRelationships).values(
       beforeEdges.map((e) => ({

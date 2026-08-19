@@ -40,8 +40,7 @@ function snapshot(githubRepositoryId: string, fullName: string, releaseIds: stri
       readme: "fixture",
       readmeUrl: null,
       lastFetchedAt: new Date(),
-      isReference: false,
-    },
+          },
     chunks: [],
     hackernews: { status: "success", items: [] },
     releases: {
@@ -149,16 +148,19 @@ describeIntegration("concurrency and lease matrix on PostgreSQL", () => {
     expect(reclaimed!.leaseOwner).toBe("w2");
   });
 
-  it("terminal receipt 部分唯一索引阻止第二个 active backfill job", async () => {
+  it("terminal receipt 部分唯一索引阻止第二个 active backfill job（历史 job 类型）", async () => {
+    // Phase A backfill 机制已随 new_only revision 退役，但 jobs 表上的部分唯一
+    // 索引继续约束历史行与误入队行为，这里用字面量验证约束本身。
+    const legacyType = "technology_stack.entities.backfill";
     await enqueueJob(db, {
       userId,
-      type: TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
+      type: legacyType,
       idempotencyKey: "technology_stack:entities:backfill:v1",
       payload: {},
     });
     await expect(enqueueJob(db, {
       userId,
-      type: TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
+      type: legacyType,
       idempotencyKey: "technology_stack:entities:backfill:v2",
       payload: {},
     })).rejects.toThrow();

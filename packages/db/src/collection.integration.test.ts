@@ -60,8 +60,7 @@ function snapshot(
       readme: label,
       readmeUrl: null,
       lastFetchedAt: new Date(),
-      isReference: false,
-    },
+          },
     chunks: options.chunks ?? [{
       content: `chunk-${label}`,
       chunkType: "readme",

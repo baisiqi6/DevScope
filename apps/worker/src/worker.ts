@@ -14,13 +14,8 @@ import {
   healthAnalysisJobPayloadSchema,
   recoverExpiredJobs,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
-  TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
   repositoryIdentityBackfillJobPayloadSchema,
-  technologyStackEntitiesBackfillJobPayloadSchema,
   executeRepositoryIdentityBackfill,
-  executeTechnologyStackEntitiesBackfill,
-  compareTechnologyStackProjection,
-  parseTechnologyStackStorageMode,
   rebuildRepoGraph,
   renewJobLease,
   runAgentWorkflow,
@@ -80,7 +75,6 @@ export interface WorkerDependencies {
   workerId?: string;
   resolveRepositoryIdentity?: ResolveGitHubRepositoryIdentity;
   runRepositoryIdentityBackfill?: typeof executeRepositoryIdentityBackfill;
-  runTechnologyStackEntitiesBackfill?: typeof executeTechnologyStackEntitiesBackfill;
 }
 
 /**
@@ -135,10 +129,7 @@ export async function runWorker(
         ...dependencies,
         workerId: options.workerId,
       });
-      if (
-        job.type !== REPOSITORY_IDENTITY_BACKFILL_JOB
-        && job.type !== TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB
-      ) {
+      if (job.type !== REPOSITORY_IDENTITY_BACKFILL_JOB) {
         await completeJob(db, job.id, options.workerId, result, now());
       }
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
@@ -249,16 +240,6 @@ export async function executeJob(
     );
   }
 
-  if (job.type === TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB) {
-    technologyStackEntitiesBackfillJobPayloadSchema.parse(job.payload);
-    if (!dependencies.workerId) {
-      throw new Error("Technology stack entities backfill 缺少 workerId");
-    }
-    const runBackfill = dependencies.runTechnologyStackEntitiesBackfill
-      ?? executeTechnologyStackEntitiesBackfill;
-    return runBackfill(db, job, dependencies.workerId, now);
-  }
-
   if (job.type !== GITHUB_DISCOVERY_JOB) {
     throw new Error(`不支持的任务类型: ${job.type}`);
   }
@@ -364,39 +345,8 @@ async function defaultRebuildGraph(
     assertLease,
   });
 
-  const storageMode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
-  // Phase B/C：读切换期（两 dual-write mode）维持 shadow compare；
-  // new_only 起旧 compare 随 legacy writer 退役，观察窗口由冻结基线单向包含守护
-  // （比较已内嵌在 recomputeDependencyEdges 提交之后）
-  if (storageMode === "legacy_shadow_dual_write" || storageMode === "new_read_dual_write") {
-    await progress?.({
-      stage: "shadow_compare",
-      completed: 0,
-      total: 1,
-      ...(result.counters ?? {}),
-    });
-    const shadowStartedAt = Date.now();
-    const comparison = await compareTechnologyStackProjection(db, userId);
-    if (!comparison.equal) {
-      throw new Error(`Technology stack shadow mismatch: ${JSON.stringify(comparison)}`);
-    }
-    console.log(
-      `[Worker] Technology stack shadow 一致: legacy=${comparison.legacyCount}, new=${comparison.newCount}`,
-    );
-    await progress?.({
-      stage: "shadow_compare",
-      completed: 1,
-      total: 1,
-      ...(result.counters ?? {}),
-    });
-    return {
-      ...result,
-      stages: [
-        ...(result.stages ?? []),
-        { stage: "shadow_compare" as const, durationMs: Date.now() - shadowStartedAt },
-      ],
-    };
-  }
+  // Phase C：旧 shadow compare 已随 legacy writer 退役；观察窗口由
+  // recomputeDependencyEdges 提交后的冻结基线单向包含比较守护（drift 即抛错）。
   return result;
 }
 

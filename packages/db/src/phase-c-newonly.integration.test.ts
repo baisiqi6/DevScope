@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, afterEach } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, sql } from "drizzle-orm";
 import pg from "pg";
@@ -22,8 +22,7 @@ function snapshot(githubRepositoryId: string, fullName: string, packages: Array<
       name: fullName.split("/")[1], owner: fullName.split("/")[0],
       description: "phase c fixture", url: `https://github.test/${fullName}`,
       stars: 1, forks: 0, openIssues: 0, language: "TypeScript", license: "MIT",
-      readme: "fixture", readmeUrl: null, lastFetchedAt: new Date(), isReference: false,
-    },
+      readme: "fixture", readmeUrl: null, lastFetchedAt: new Date(),     },
     chunks: [], hackernews: { status: "success", items: [] },
     releases: { status: "success", items: [] },
     sbom: { status: "success", packages },
@@ -58,7 +57,6 @@ describeIntegration("phase C new_only frozen baseline", () => {
     await db.delete(schema.users).where(eq(schema.users.id, userId));
     await pool.end();
   });
-  afterEach(() => vi.unstubAllEnvs());
 
   async function seedWithLegacyRows() {
     const committed = await commitRepositoryCollectionSnapshot(
@@ -71,7 +69,7 @@ describeIntegration("phase C new_only frozen baseline", () => {
     // legacy 冻结形态：reference 行 + 伪 watch + legacy 栈边（模拟 Phase B 遗留）
     const [refRow] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/react", name: "React", owner: "tech-stack",
-      url: "https://react.dev", isReference: true, embeddingStatus: "completed",
+      url: "https://react.dev", embeddingStatus: "completed",
     }).returning();
     await db.insert(schema.userWatchedRepositories).values({
       userId, repoId: refRow.id, repoFullName: "tech-stack/react", enableDailyReport: false,
@@ -94,7 +92,6 @@ describeIntegration("phase C new_only frozen baseline", () => {
 
   it("P0：new_only 下 rebuild 后 legacy 栈边/伪 watch/伪 repositories 行数逐项不变", async () => {
     const { refRow } = await seedWithLegacyRows();
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_only");
 
     await recomputeDependencyEdges(db, userId, {
       resolveMapping: vi.fn().mockResolvedValue({

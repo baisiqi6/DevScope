@@ -312,6 +312,8 @@ describe("recomputeDependencyEdges", () => {
     for (const r of opts.repos) refIdByFullName.set(r.fullName.toLowerCase(), r.id);
 
     const db = {
+      // Phase C：rebuild 提交后无条件跑冻结基线单向包含；mock 无基线表（exists=false）→ 空基线恒过
+      execute: vi.fn().mockResolvedValue({ rows: [{ exists: false }] }),
       select: vi.fn().mockImplementation(() => {
         let table: unknown = null;
         const builder: any = {
@@ -454,9 +456,13 @@ describe("recomputeDependencyEdges", () => {
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
     expect(resolveMapping).toHaveBeenCalledWith("pypi", "django", "4.2.1");
-    expect(count).toBe(2);
+    // django/django 不在工作区，不产生 repo→repo 边；Django 技术栈事实进新表快照
+    expect(count).toBe(0);
     expect(db._insertedMappings.length).toBeGreaterThan(0);
     expect(db._insertedMappings[0].system).toBe("pypi");
+    const inputs = mockApplyTechnologyStacks.mock.calls[0][1];
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0].relations.map((r: any) => r.slug)).toEqual(["django"]);
   });
 
   it("只把识别出的技术栈建成 reference，通用库及其 SOURCE_REPO 不进入图谱", async () => {
@@ -493,11 +499,10 @@ describe("recomputeDependencyEdges", () => {
     });
 
     // in-degree=2 触发归一：facebook/react → react/react（已采集）→ 两条直连边；
-    // 两个来源仓库还分别连接到 React 技术栈。
+    // React 技术栈事实进新表快照（legacy reference 行不再写入）。
     expect(canonicalize).toHaveBeenCalledWith("facebook/react");
-    expect(count).toBe(4);
-    expect(db._referenceUpserts).toHaveLength(1);
-    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
+    expect(count).toBe(2);
+    expect(db._referenceUpserts).toHaveLength(0);
     const repoEdges = db._insertedEdges.filter((e: any) => e.evidence.resolvedBy === "deps.dev");
     expect(repoEdges.map((e: any) => e.targetRepoId)).toEqual([2, 2]);
   });
@@ -530,8 +535,8 @@ describe("recomputeDependencyEdges", () => {
       resolveMapping, canonicalize, settings: { pacingMs: 0 },
     });
 
-    // org-a 的两个仓库目标合并为一条边；org-b 一条边，另有两条 React 技术栈边。
-    expect(count).toBe(4);
+    // org-a 的两个仓库目标合并为一条边；org-b 一条边（React 事实进新表快照）。
+    expect(count).toBe(2);
     const aEdges = db._insertedEdges.filter(
       (e: any) => e.sourceRepoId === 1 && e.evidence.resolvedBy === "deps.dev"
     );
@@ -551,8 +556,7 @@ describe("recomputeDependencyEdges", () => {
     const resolveMapping = vi.fn().mockResolvedValue(depsResolved("facebook/react"));
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
-    expect(count).toBe(2);
-    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
+    expect(count).toBe(1);
     const repoEdge = db._insertedEdges.find((e: any) => e.evidence.resolvedBy === "deps.dev");
     expect(repoEdge.sourceRepoId).toBe(1);
     expect(repoEdge.targetRepoId).toBe(2);
@@ -578,19 +582,10 @@ describe("recomputeDependencyEdges", () => {
     const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
-    expect(count).toBe(3);
-    expect(db._referenceUpserts.map((row: any) => row.fullName).sort()).toEqual([
-      "tech-stack/react",
-      "tech-stack/spring-boot",
-      "tech-stack/vue",
-    ]);
-    expect(db._referenceUpserts.find((row: any) => row.fullName === "tech-stack/react")).toMatchObject({
-      owner: "tech-stack",
-      name: "React",
-      url: "https://react.dev",
-      isReference: true,
-    });
-    expect(db._insertedEdges.every((e: any) => e.evidence.resolvedBy === "tech-stack-catalog")).toBe(true);
+    // 技术栈事实只进新表快照；legacy reference 行与栈边不再写入
+    expect(count).toBe(0);
+    expect(db._referenceUpserts).toHaveLength(0);
+    expect(db._insertedEdges).toHaveLength(0);
     expect(mockApplyTechnologyStacks).toHaveBeenCalledWith(
       expect.anything(),
       [expect.objectContaining({
@@ -624,7 +619,7 @@ describe("recomputeDependencyEdges", () => {
     expect(db._insertedEdges).toHaveLength(0);
   });
 
-  it("同源多个 React 包只留一条技术栈边且 evidence 记录全部桥接包", async () => {
+  it("同源多个 React 包聚合为一条新表 relation 且 packages 记录全部桥接包", async () => {
     const db = createDepMockDb({
       repos: [
         {
@@ -644,15 +639,17 @@ describe("recomputeDependencyEdges", () => {
     const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
-    expect(count).toBe(2);
-    const edgeFrom1 = db._insertedEdges.find((e: any) => e.sourceRepoId === 1);
-    expect(edgeFrom1.evidence.kind).toBe("dependency");
-    expect(edgeFrom1.evidence.resolvedBy).toBe("tech-stack-catalog");
-    expect(edgeFrom1.evidence.packages).toHaveLength(2);
-    expect(edgeFrom1.evidence.packages.map((p: any) => p.name).sort()).toEqual(["react", "react-dom"]);
+    expect(count).toBe(0);
+    const inputs = mockApplyTechnologyStacks.mock.calls[0][1];
+    const repo1 = inputs.find((i: any) => i.repositoryId === 1);
+    expect(repo1.relations).toHaveLength(1);
+    expect(repo1.relations[0].slug).toBe("react");
+    expect(repo1.relations[0].packages.map((p: any) => p.name).sort()).toEqual(["react", "react-dom"]);
+    const repo2 = inputs.find((i: any) => i.repositoryId === 2);
+    expect(repo2.relations[0].packages).toHaveLength(1);
   });
 
-  it("技术栈行（is_reference=true）的 SBOM 不作为解析起点", async () => {
+  it("技术栈伪行（无 stable ID）的 SBOM 不作为解析起点", async () => {
     const db = createDepMockDb({
       repos: [
         { id: 1, fullName: "org-a/app-a", isReference: false, sbomPackages: [{ name: "react", version: "19.2.6", system: "npm" }] },
@@ -665,12 +662,11 @@ describe("recomputeDependencyEdges", () => {
     const resolveMapping = vi.fn().mockResolvedValue(depsNotFound());
     const count = await recomputeDependencyEdges(db, 1, { resolveMapping, settings: { pacingMs: 0 } });
 
-    // reference 行的 SBOM 不参与解析
+    // 伪行的 SBOM 不参与解析，也不进入新表快照
     expect(resolveMapping).not.toHaveBeenCalledWith("npm", "some-dep", "1.0.0");
-    // tech-stack/react 已存在（id=3），upsert 复用同一行
-    expect(db._referenceUpserts[0].fullName).toBe("tech-stack/react");
-    expect(db._refIdByFullName.get("tech-stack/react")).toBe(3);
-    expect(count).toBe(2);
+    const inputs = mockApplyTechnologyStacks.mock.calls[0][1];
+    expect(inputs.map((i: any) => i.repositoryId).sort()).toEqual([1, 2]);
+    expect(count).toBe(0);
   });
 });
 
@@ -691,73 +687,6 @@ describe("detectTechStack", () => {
 // ============================================================================
 // getRepoGraphData 契约测试
 // ============================================================================
-
-describe("getRepoGraphData", () => {
-  function createGraphMockDb(repos: unknown[], edges: unknown[]) {
-    return {
-      select: vi.fn().mockImplementation(() => {
-        let table: unknown = null;
-        const builder: any = {
-          from: vi.fn().mockImplementation((t: unknown) => {
-            table = t;
-            return builder;
-          }),
-          where: vi.fn().mockImplementation(() => builder),
-          then: (resolve: any, reject: any) => {
-            let result: unknown = [];
-            if (table === repositories) result = repos;
-            else if (table === repoRelationships) result = edges;
-            return Promise.resolve(result).then(resolve, reject);
-          },
-        };
-        return builder;
-      }),
-    } as any;
-  }
-
-  it("返回 repo/reference/language 节点与 similarity/dependency/written_in 边", async () => {
-    const repos = [
-      { id: 1, fullName: "org-a/app-a", name: "app-a", language: "TypeScript", stars: 100, description: "desc", isReference: false },
-      { id: 2, fullName: "tech-stack/react", name: "React", language: null, stars: null, description: "React 技术栈", isReference: true },
-    ];
-    const edges = [{ source: 1, target: 2, type: "dependency", score: null }];
-    const db = createGraphMockDb(repos, edges);
-
-    const result = await getRepoGraphData(db, 1);
-
-    // repo 节点：id 为字符串，kind=repo
-    const repoNode = result.nodes.find((n) => n.id === "1");
-    expect(repoNode?.kind).toBe("repo");
-    expect(repoNode?.isReference).toBe(false);
-    expect(repoNode?.fullName).toBe("org-a/app-a");
-
-    // reference 节点：kind=reference，isReference=true
-    const refNode = result.nodes.find((n) => n.id === "2");
-    expect(refNode?.kind).toBe("reference");
-    expect(refNode?.isReference).toBe(true);
-
-    // 语言节点由采集仓库即时合成；reference 行（language=null）不产生语言节点
-    const langNodes = result.nodes.filter((n) => n.kind === "language");
-    expect(langNodes).toHaveLength(1);
-    const langNode = result.nodes.find((n) => n.id === "lang:TypeScript");
-    expect(langNode?.name).toBe("TypeScript");
-    expect(langNode?.stars).toBeNull();
-    expect(langNode?.description).toBeNull();
-    expect(langNode?.isReference).toBe(false);
-
-    // 存储的依赖边映射为字符串 id
-    const depEdge = result.edges.find((e) => e.type === "dependency");
-    expect(depEdge?.source).toBe("1");
-    expect(depEdge?.target).toBe("2");
-    expect(depEdge?.score).toBeNull();
-
-    // written_in 边由采集仓库指向其语言节点
-    const writtenIn = result.edges.find((e) => e.type === "written_in");
-    expect(writtenIn?.source).toBe("1");
-    expect(writtenIn?.target).toBe("lang:TypeScript");
-    expect(writtenIn?.score).toBeNull();
-  });
-});
 
 describe("backfillSbomPackages", () => {
   it("回填 null 与遗留无 system 字段的行，跳过已多生态的行", async () => {
@@ -935,6 +864,8 @@ function createCacheMockDb(opts: {
   };
 
   const db = {
+    // Phase C：rebuild 提交后无条件跑冻结基线单向包含；mock 无基线表 → 空基线恒过
+    execute: vi.fn().mockResolvedValue({ rows: [{ exists: false }] }),
     select: vi.fn().mockImplementation(() => selectBuilder([])),
     insert: vi.fn().mockImplementation((table: unknown) => insertInto(table)),
     update: vi.fn().mockImplementation((table: unknown) => {
@@ -1671,32 +1602,6 @@ describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
     expect(data.nodes.filter((n) => n.kind === "reference")).toHaveLength(0);
     // 1→2 真实边只出现一次（不被 legacy 栈边重复）
     expect(data.edges.filter((e) => e.source === "1" && e.target === "2")).toHaveLength(1);
-  });
-
-  it("默认（legacy mode）仍走 legacy 投影：reference 节点保留", async () => {
-    const db = {
-      select: vi.fn().mockImplementation(() => {
-        let table: unknown = null;
-        const builder: any = {
-          from: vi.fn().mockImplementation((t: unknown) => { table = t; return builder; }),
-          where: vi.fn().mockImplementation(() => builder),
-          then: (resolve: any, reject: any) => {
-            const result = table === repositories
-              ? [
-                  { id: 1, fullName: "org-a/app", name: "app", language: null, stars: 1, description: null, isReference: false },
-                  { id: 9, fullName: "tech-stack/react", name: "React", language: null, stars: null, description: null, isReference: true },
-                ]
-              : [];
-            return Promise.resolve(result).then(resolve, reject);
-          },
-        };
-        return builder;
-      }),
-    } as any;
-    const { getRepoGraphData } = await import("./repo-graph");
-    const data = await getRepoGraphData(db, 1);
-    expect(data.nodes.some((n) => n.kind === "reference")).toBe(true);
-    expect(data.nodes.some((n) => n.kind === "technology_stack")).toBe(false);
   });
 
   it("top-N 投影：低频 stack 被裁剪、高频保留（与 shadow 选择语义一致）", async () => {

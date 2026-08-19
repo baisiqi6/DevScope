@@ -5,7 +5,6 @@ const {
   mockFailJob,
   mockRecoverExpiredJobs,
   mockRenewJobLease,
-  mockCompareTechnologyStackProjection,
   mockRebuildRepoGraph,
   mockCompleteJob,
 } = vi.hoisted(() => ({
@@ -13,7 +12,6 @@ const {
   mockFailJob: vi.fn(),
   mockRecoverExpiredJobs: vi.fn().mockResolvedValue(0),
   mockRenewJobLease: vi.fn().mockResolvedValue({}),
-  mockCompareTechnologyStackProjection: vi.fn().mockResolvedValue({ equal: true, legacyCount: 1, newCount: 1 }),
   mockRebuildRepoGraph: vi.fn().mockResolvedValue({
     similarityEdges: 0, dependencyEdges: 0, pooledRepos: 0, sbomBackfilled: 0,
     stages: [], budget: { depsDev: { used: 0, limit: 1 }, github: { used: 0, limit: 1 } },
@@ -29,7 +27,6 @@ vi.mock("@devscope/db", async (importOriginal) => {
     failJob: mockFailJob,
     recoverExpiredJobs: mockRecoverExpiredJobs,
     renewJobLease: mockRenewJobLease,
-    compareTechnologyStackProjection: mockCompareTechnologyStackProjection,
     rebuildRepoGraph: mockRebuildRepoGraph,
     completeJob: mockCompleteJob,
   };
@@ -42,7 +39,6 @@ import {
   GRAPH_REBUILD_JOB,
   HEALTH_ANALYSIS_JOB,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
-  TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
 } from "@devscope/db";
 
 describe("Worker 任务执行", () => {
@@ -229,73 +225,6 @@ describe("Worker 任务执行", () => {
     expect(retryOptions.retryDelayMs).toBeGreaterThanOrEqual(300_000);
   });
 
-  it("shadow compare 在 new_read_dual_write 模式下同样执行", async () => {
-    mockClaimNextJob.mockReset();
-    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
-    mockCompareTechnologyStackProjection.mockClear();
-    mockClaimNextJob
-      .mockResolvedValueOnce(createJob({
-        id: 9,
-        type: GRAPH_REBUILD_JOB,
-        idempotencyKey: "graph:rebuild",
-        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
-      }))
-      .mockResolvedValue(null);
-    const previous = process.env.TECHNOLOGY_STACK_STORAGE_MODE;
-    process.env.TECHNOLOGY_STACK_STORAGE_MODE = "new_read_dual_write";
-    try {
-      let jobDone = false;
-      const dbStub = {
-        update: vi.fn(() => ({
-          set: vi.fn(() => ({
-            where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 9 }]) })),
-          })),
-        })),
-      } as any;
-      mockCompareTechnologyStackProjection.mockImplementationOnce(async () => {
-        jobDone = true;
-        return { equal: true, legacyCount: 1, newCount: 1 };
-      });
-      await runWorker(dbStub, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => jobDone, {
-        workerId: "w1",
-      });
-    } finally {
-      if (previous === undefined) delete process.env.TECHNOLOGY_STACK_STORAGE_MODE;
-      else process.env.TECHNOLOGY_STACK_STORAGE_MODE = previous;
-    }
-    expect(mockCompareTechnologyStackProjection).toHaveBeenCalledTimes(1);
-  });
-
-  it("shadow compare 在 legacy_shadow_dual_write 模式下执行", async () => {
-    mockClaimNextJob.mockReset();
-    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
-    mockCompareTechnologyStackProjection.mockClear();
-    mockClaimNextJob
-      .mockResolvedValueOnce(createJob({
-        id: 10,
-        type: GRAPH_REBUILD_JOB,
-        idempotencyKey: "graph:rebuild",
-        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
-      }))
-      .mockResolvedValue(null);
-    let jobDone = false;
-    const dbStub = {
-      update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 10 }]) })),
-        })),
-      })),
-    } as any;
-    mockCompareTechnologyStackProjection.mockImplementationOnce(async () => {
-      jobDone = true;
-      return { equal: true, legacyCount: 1, newCount: 1 };
-    });
-    await runWorker(dbStub, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => jobDone, {
-      workerId: "w1",
-    });
-    expect(mockCompareTechnologyStackProjection).toHaveBeenCalledTimes(1);
-  });
-
   it("将三个 GitHub Trending 周期保存为独立快照", async () => {
     const fetchTrending = vi.fn(async (period: "daily" | "weekly" | "monthly") => ({
       period,
@@ -379,32 +308,6 @@ describe("Worker 任务执行", () => {
     );
   });
 
-  it("technology stack backfill 将 worker lease authority 传给专用执行器", async () => {
-    const runTechnologyStackEntitiesBackfill = vi.fn().mockResolvedValue({
-      outcome: "succeeded",
-      processedSources: 1,
-    });
-    const job = createJob({
-      type: TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
-      idempotencyKey: "technology-stack:entities:backfill:v1",
-      payload: {
-        requestedAt: "2026-08-18T00:00:00.000Z",
-        version: "v1",
-      },
-    });
-
-    await expect(executeJob({} as any, job, {
-      workerId: "worker-1",
-      runTechnologyStackEntitiesBackfill,
-      now: () => new Date("2026-08-18T00:01:00.000Z"),
-    })).resolves.toEqual({ outcome: "succeeded", processedSources: 1 });
-    expect(runTechnologyStackEntitiesBackfill).toHaveBeenCalledWith(
-      expect.anything(),
-      job,
-      "worker-1",
-      expect.any(Function),
-    );
-  });
 });
 
 function createJob(overrides: Record<string, unknown> = {}) {
