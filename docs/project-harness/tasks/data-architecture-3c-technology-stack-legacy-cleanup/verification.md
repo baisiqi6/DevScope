@@ -25,11 +25,13 @@
 - 新读 40+9+13 零悬空、rebuild succeeded ext=5、shadow legacy=79 new=79；
 - 服务器 HEAD 8cd17c3（与 main 差 docs-only）；镜像同源构建。
 
-## 待 plan review 结论后填写实现记录
+## Plan review（两轮，approved）
+
+第一轮 changes_requested（P0 冻结基线被普通 rebuild 摧毁 + 3 P1 拍板）→ 修订；第二轮 continuity 收窄（N1 journal 调和 receipt 守卫 DO block、N2 分 revision supported set、N3 谓词改写清单、N4 workflow 正文标注、N5 裁定路径/表载体/脚本职责）→ 全部写入后 approved（evt-20260819T141844Z）。
 
 ## 实现第一批：new_only 核心语义（2026-08-19）
 
-- **P0 冻结基线保持**（repo-graph.ts）：（legacy_shadow/new_read）门控 legacy writer（reference upsert/伪 watch/legacy 栈边构造）与两个 GC DELETE；dependency 全量替换在 new_only+ 收窄为排除 `resolvedBy='tech-stack-catalog'` 的边；
+- **P0 冻结基线保持**（repo-graph.ts）：`legacyWriterActive`（legacy_shadow/new_read）门控 legacy writer（reference upsert/伪 watch/legacy 栈边构造）与两个 GC DELETE；dependency 全量替换在 new_only+ 收窄为排除 `resolvedBy='tech-stack-catalog'` 的边；
 - **冻结基线单向包含**（baseline-compare.ts 新增）：`snapshotLegacyTechnologyStackBaseline`（full-set key+digest 存 receipt 表，slug 自 target fullName 推导不读 is_reference）与 `compareBaselineToCurrent`（baseline ⊆ new，missing 才 fail；digest 仅约束 updatedAt<=冻结时间的行，重采集豁免）；比较内嵌在 recomputeDependencyEdges 提交后，new_only 下 drift 即任务失败；
 - **读语义统一**：getRepoGraphData 对 new_read/new_only/legacy_cleaned 一律走新表投影（legacy 读仅 legacy mode 保留）；
 - **marker 矩阵**：assertStorageModeStartupConsistency 增加 is_reference 列存在性判定（列不在：仅 legacy_cleaned 放行；列在：legacy_cleaned fail）；counts SQL 谓词改写为 github_repository_id IS NULL + full_name LIKE（不读列）；new_only 走完整检查链；
