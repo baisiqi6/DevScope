@@ -106,7 +106,8 @@ export async function applyMigrationRange(databaseUrl: string, from: number, to:
     await client.query(JOURNAL_DDL);
     for (const migration of files) {
       const sqlText = fs.readFileSync(migration.path, "utf8");
-      // 每个迁移文件一个事务（与 drizzle migrator 行为一致；
+      // 事务粒度为每文件（drizzle migrator 是整批一个事务；这里的有意偏离：
+      // 新鲜库每 run 重建，per-file 回滚定位更精确；hash/created_at 与生产逐条一致；
       // 0007 等迁移含 LOCK TABLE，必须位于事务块内）
       await client.query("BEGIN");
       try {
@@ -131,7 +132,7 @@ export async function applyMigrationRange(databaseUrl: string, from: number, to:
 }
 
 export interface JournalDrift {
-  kind: "count" | "hash" | "order" | "extra";
+  kind: "count" | "hash" | "order";
   detail: string;
 }
 

@@ -42,7 +42,7 @@
 drizzle migrator 只按 `created_at` 跳过、不比对 hash，且在 vitest vite-node 环境下不可用；因此 runner 自管迁移应用：按 journal 顺序逐文件单事务执行 SQL，并手写 `drizzle.__drizzle_migrations` 行（hash=文件 SHA-256，created_at=journal.when，与生产逐条一致）。至少覆盖：
 
 1. 空库从 `0000` 顺序迁移到最新，pgvector extension 与 migration metadata 一致；
-2. **0004 baseline 升级**：`applyMigrationRange(0..4)` 后按 0004 时点形态播种 era fixture——重复 `(user_id, repo_id)` 的 watch 行、无 `user_id` 的 repo_relationships 边、接近 int4 上限的 releases 行（0006 前 int4）、重复 `github_repo_id` 的 radar_candidates 行（0007 合并语义）、`source_repo` null 与非空混合的 package_repo_mappings 行（0009 回填）——再 `applyMigrationRange(5..latest)` 续迁，断言 dedupe/回填/类型扩大摘要；
+2. **0004 baseline 升级**：`applyMigrationRange(0..3)` 后按 0004 之前的时点形态播种 era fixture（0004 本身执行 dedupe/回填，fixture 必须先于它存在）——重复 `(user_id, repo_id)` 的 watch 行、无 `user_id` 的 repo_relationships 边、接近 int4 上限的 releases 行（0006 前 int4）、重复 `github_repo_id` 的 radar_candidates 行（0007 合并语义）、`source_repo` null 与非空混合的 package_repo_mappings 行（0009 回填）——再 `applyMigrationRange(4..latest)` 续迁，断言 dedupe/回填/类型扩大摘要；
 3. **drift 检测由 runner 自建**：`verifyMigrationJournal` 按顺序比对库内 hash 行与本地文件 SHA-256，多余/缺失/不一致即 fail closed；用例覆盖一致通过与篡改检测（临时副本模拟历史文件变更）；
 4. Release bigint、repository stable ID、atomic replacement、technology-stack expand、deps-cache migration 的数据前后摘要（即上述 fixture 的断言口径）；
 5. Phase C 实现后追加 cleanup 与 restore rehearsal；未实现的未来 migration 不在本 item 伪造测试。
@@ -73,16 +73,11 @@ drizzle migrator 只按 `created_at` 跳过、不比对 hash，且在 vitest vit
 - 两 job 并行且都作为 PR/`main` 必需门禁；**branch protection 的 required check 由 operator 在合并前于 GitHub 仓库设置中添加**（不在 ci.yml 能力内，作为交付步骤记录）；
 - 固定 Node 22 / pnpm 9.15.4 / pgvector:pg16；test 日志输出 database name、migration range、case 名与耗时，不输出连接密码；job timeout 20 分钟、单测 timeout 30s、cleanup 在 always 路径（globalSetup teardown）。
 
-- 在独立 `integration` job 启动 PostgreSQL service，health check 通过后再运行 migration/tests；
-- quality job 保持快速反馈；integration job 与 quality 并行，但二者都作为 PR/`main` 必需门禁；
-- 固定 Node/pnpm/PostgreSQL major，不使用未锁定 `latest`；
-- test 日志输出 database name、migration range、case 名称和耗时，不输出连接密码；
-- failure 时上传脱敏日志，不上传数据库 dump 或业务 fixture 中的秘密；
-- 设置 job 和单测试 timeout，cleanup 放在 always-run 路径。
+
 
 ### 5. RED, implementation and review
 
-1. 先证明缺少 `TEST_DATABASE_URL`、危险 database name、单连接伪并发和 migration drift 会 fail closed；
+1. 先证明危险 database name、缺 sentinel/NODE_ENV 会 fail closed；缺少 `TEST_DATABASE_URL` 在本地 skip、在 CI（`INTEGRATION_REQUIRED=1`）fail；migration drift 由 `verifyMigrationJournal` 检出；
 2. 让现有 integration cases 经统一 runner 运行，再补齐矩阵中的缺口；
 3. `pnpm test:integration` 连续运行两次，证明无残留状态；
 4. 本地/CI 都运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:integration`、`pnpm build`；

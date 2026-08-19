@@ -25,7 +25,10 @@ domain-model 七条最低覆盖：空库迁移（migration#1）、0004 升级（
 - 单测：guard 10 例（fail-closed 矩阵）全绿；db unit 全量（含 http 9、repo-graph 51 等）通过。
 - 集成：**43/43 × 连续 2 次**（34 既有 + 3 迁移矩阵 + 6 并发矩阵），每次运行唯一派生库、结束自动删除、**零残留**（`pg_database` 计数 0）。
 - 全仓：lint 13/13、typecheck 14/14、test 11/11（quality 路径不含 integration）、build 9/9。
-- plan review 两轮：第一轮 `changes_requested`（P1×3/P2×4）全部修订（baseline 机制、drift 归属、串行隔离、唯一派生库名、矩阵映射表、Files In Scope、CI/本地差异）；第二轮 continuity 结论待记录（见下方追加）。
+- plan review 两轮：第一轮 `changes_requested`（P1×3/P2×4）全部修订；第二轮 continuity **approved**（reviewer 做了运行时复现：unit/integration 各三次、fail-closed 三路径探针、最小双连接 advisory lock 复现）。
+- 审查期间发现并修复的三个 RED 失败：renew 用例的 available_at 时钟错位（改为固定时钟前移）、release fixture 缺 `created_at`（0000 DDL 无默认值）、`COLLECTION_ADVISORY_LOCK_NAMESPACE` 未导出导致重叠用例 A 端锁查询抛错被吞（B 畅通）；断言统一为十进制字符串语义。
+- 7 条 P3 编辑项已处理：plan off-by-one（0..3 播种 + 4..latest）、CI 章节旧段删除、RED 措辞同步、runner 注释精确化、`JournalDrift` 死枚举删除、migration 测试死代码清理、runbook 补硬杀残留 sweep 与 5432 端口占用说明。
+- 环境事实：宿主 5432 被系统 PostgreSQL 占用（docker 映射不生效），本 item 全部验证走 5433 隔离容器；已写入 runbook。
 
 ## 未验证项
 

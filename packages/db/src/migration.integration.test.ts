@@ -97,9 +97,6 @@ describeIntegration("migration matrix on PostgreSQL", () => {
       let drift = await verifyMigrationJournal(connectionString!);
       expect(drift.some((d) => d.kind === "hash")).toBe(true);
 
-      await client.query(
-        "update drizzle.__drizzle_migrations set hash = (select hash from drizzle.__drizzle_migrations where id = 1bak)",
-      ).catch(() => undefined);
       // 还原第一条
       const [first] = listMigrationFiles();
       await client.query("update drizzle.__drizzle_migrations set hash = $1 where id = 1", [first.hash]);
