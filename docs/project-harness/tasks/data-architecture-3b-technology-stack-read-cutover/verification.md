@@ -37,3 +37,15 @@
 ## 待 plan review 结论后继续
 
 RED tests 与实现设计（watched source join 读模型、`stack:<slug>` node、top-N 投影层计算、mode 一致性校验、正向条件收敛）将按 review 后的 plan 执行。
+
+## 实现进展（2026-08-19，第一批）
+
+已完成（typecheck/门禁全绿）：
+
+1. **新读路径** `getRepoGraphDataFromNewTables`（repo-graph.ts）：mode 分流（`new_read_dual_write` → 新表投影）；真实仓库 = watched join + 正向条件；`stack:<slug>` 节点（kind=technology_stack、fullName=tech-stack/<slug>）；repo→stack 边只从新表合成；legacy 栈边（resolvedBy=tech-stack-catalog）投影层排除 + 悬空边防护（两端必须在投影节点集）；语言节点/written_in 即时合成不变；
+2. **top-N 复用**：`selectTopTechnologyStackSlugs` 从 shadow `projectionKeys` 提取为共享导出（usage 降序 + name 升序 tie-break，单一实现）；
+3. **正向条件收敛 9 站点**：谓词 `isRealGitHubRepository`（= `isNotNull(repositories.githubRepositoryId)`，repository-identity.ts 导出）替换 6 处既有 `isReference=false` 过滤（api router.ts 仓库列表、scheduler×2、groups、db radar、repository-identity）+ 3 处未过滤 watched-join 站点补齐（getRepository 详情、requireWatchedRepositoryByFullName、embedding reconcile whereClause）；
+4. **mode 门**：API/Worker supported set 扩展为 {legacy_shadow_dual_write, new_read_dual_write}；Worker shadow compare 门扩展到两 mode（读切换期 drift 即任务失败）；
+5. **单测**：repo-graph.test.ts 新增 4 用例（新读节点/边、悬空边排除与单重计数、legacy 分流回归、top-N 选择语义）——55/55。
+
+待续（第二批）：integration 用例（两用户 disjoint/overlap watched set、同 stack 多 package evidence、成功空 relation、rebuild-vs-collection 交错）；启动检查（新表存在、cleaned+legacy 启动 shadow compare）；未知 mode fail-closed 用例；implementation review 与 PR；生产三阶段 rollout（compat 已就绪→mode 切换→观察窗口）。

@@ -15,6 +15,7 @@ import {
   repositories,
   userWatchedRepositories,
   type Db,
+  isRealGitHubRepository,
 } from "@devscope/db";
 import { getOrCreateCurrentUserId } from "../current-user";
 import {
@@ -583,7 +584,7 @@ export const groupsQueryRouter = router({
         ),
       )
       .where(and(
-        eq(repositories.isReference, false),
+        isRealGitHubRepository,
         sql`NOT EXISTS (
           SELECT 1
           FROM group_members member

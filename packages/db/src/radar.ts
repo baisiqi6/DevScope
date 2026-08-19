@@ -2,6 +2,7 @@
  * 技术雷达候选池操作。
  */
 
+import { isRealGitHubRepository } from "./repository-identity";
 import { and, desc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
 import { normalizeGitHubRepositoryId } from "@devscope/shared";
 import {
@@ -153,7 +154,7 @@ export async function getRadarInterestProfile(
     .innerJoin(repositories, eq(repositories.id, userWatchedRepositories.repoId))
     .where(and(
       eq(userWatchedRepositories.userId, userId),
-      eq(repositories.isReference, false),
+      isRealGitHubRepository,
       isNotNull(repositories.language),
     ))
     .groupBy(repositories.language);

@@ -364,8 +364,9 @@ async function defaultRebuildGraph(
     assertLease,
   });
 
-  if (parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE)
-    === "legacy_shadow_dual_write") {
+  const storageMode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
+  // Phase B：读切换期间（两 mode）都必须维持 shadow compare，drift 即任务失败
+  if (storageMode === "legacy_shadow_dual_write" || storageMode === "new_read_dual_write") {
     await progress?.({
       stage: "shadow_compare",
       completed: 0,

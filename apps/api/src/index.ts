@@ -34,7 +34,8 @@ import { fastifyOptions } from "./server-options";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  ["legacy_shadow_dual_write"],
+  // Phase B：兼容期同时接受 legacy 影子读与新表读；两进程经同一 compose 变量保持一致
+  ["legacy_shadow_dual_write", "new_read_dual_write"],
 );
 
 /**

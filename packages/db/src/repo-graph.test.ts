@@ -22,6 +22,7 @@ import {
   repositories,
   packageRepoMappings,
   repoRelationships,
+  repositoryTechnologyStacks,
   userWatchedRepositories,
 } from "./schema";
 import sbomFixture from "./__fixtures__/sbom-tailwindcss.json";
@@ -1568,5 +1569,153 @@ describe("rebuildRepoGraph（deps cache recovery）", () => {
     expect(fetchSbom).toHaveBeenCalledTimes(1);
     expect(db._txStarted).toBe(false);
     expect(db._insertedEdges).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Phase B：new_read_dual_write 新表读投影
+// ============================================================================
+
+describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
+  interface NewReadFixture {
+    repos: Array<{ id: number; fullName: string; name: string; language: string | null; stars: number | null; description: string | null; githubRepositoryId?: string }>;
+    stackRows: Array<{ repoId: number; slug: string; stackName: string }>;
+    edges: Array<{ sourceRepoId: number; targetRepoId: number; edgeType: string; score: number | null; evidence: unknown }>;
+  }
+
+  function createNewReadMockDb(fx: NewReadFixture) {
+    const stackTable = new Map(fx.stackRows.map((row) => [row.repoId, row]));
+    return {
+      select: vi.fn().mockImplementation((projection: unknown) => {
+        let table: unknown = null;
+        const builder: any = {
+          from: vi.fn().mockImplementation((t: unknown) => {
+            table = t;
+            return builder;
+          }),
+          innerJoin: vi.fn().mockImplementation((t: unknown) => {
+            // joined tables 累积标记，最终结果按主表路由
+            if (t === userWatchedRepositories) table = table ?? null;
+            return builder;
+          }),
+          where: vi.fn().mockImplementation(() => builder),
+          then: (resolve: any, reject: any) => {
+            let result: unknown = [];
+            if (table === repositories) {
+              // 仓库查询（含 watched join 的正向条件语义由 fixture 直接表达）
+              result = fx.repos;
+            } else if (table === repositoryTechnologyStacks) {
+              result = fx.stackRows.map((row) => ({
+                repoId: row.repoId,
+                slug: row.slug,
+                stackName: row.stackName,
+                githubRepositoryId: fx.repos.find((r) => r.id === row.repoId)?.githubRepositoryId ?? "900",
+              }));
+            } else if (table === repoRelationships) {
+              result = fx.edges.map((e) => ({
+                source: e.sourceRepoId, target: e.targetRepoId,
+                type: e.edgeType, score: e.score, evidence: e.evidence,
+              }));
+            }
+            void stackTable;
+            void projection;
+            return Promise.resolve(result).then(resolve, reject);
+          },
+        };
+        return builder;
+      }),
+    } as any;
+  }
+
+  const fx = (): NewReadFixture => ({
+    repos: [
+      { id: 1, fullName: "org-a/app", name: "app", language: "TypeScript", stars: 10, description: null, githubRepositoryId: "9001" },
+      { id: 2, fullName: "org-b/lib", name: "lib", language: null, stars: 5, description: null, githubRepositoryId: "9002" },
+    ],
+    stackRows: [
+      { repoId: 1, slug: "react", stackName: "React" },
+      { repoId: 1, slug: "vite", stackName: "Vite" },
+      { repoId: 2, slug: "react", stackName: "React" },
+    ],
+    edges: [
+      { sourceRepoId: 1, targetRepoId: 2, edgeType: "dependency", score: null, evidence: { kind: "dependency", resolvedBy: "deps.dev" } },
+      { sourceRepoId: 1, targetRepoId: 999, edgeType: "dependency", score: null, evidence: { kind: "dependency", resolvedBy: "tech-stack-catalog" } },
+    ],
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("新读：stack:<slug> 节点 + 合成 repo→stack 边 + 语言合成", async () => {
+    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
+    const { getRepoGraphData } = await import("./repo-graph");
+    const data = await getRepoGraphData(createNewReadMockDb(fx()), 1);
+
+    const stackNodes = data.nodes.filter((n) => n.kind === "technology_stack");
+    expect(stackNodes.map((n) => n.id).sort()).toEqual(["stack:react", "stack:vite"]);
+    expect(stackNodes[0]).toMatchObject({ fullName: "tech-stack/react", isReference: false });
+
+    const stackEdges = data.edges.filter((e) => e.target.startsWith("stack:"));
+    expect(stackEdges).toHaveLength(3); // 1→react, 1→vite, 2→react
+    expect(data.edges).toContainEqual({ source: "1", target: "lang:TypeScript", type: "written_in", score: null });
+    expect(data.edges).toContainEqual({ source: "1", target: "2", type: "dependency", score: null });
+  });
+
+  it("legacy 栈边被排除：无悬空边、无指向 reference 的双重计数", async () => {
+    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
+    const { getRepoGraphData } = await import("./repo-graph");
+    const data = await getRepoGraphData(createNewReadMockDb(fx()), 1);
+
+    expect(data.edges.filter((e) => e.target === "999")).toHaveLength(0);
+    expect(data.nodes.filter((n) => n.kind === "reference")).toHaveLength(0);
+    // 1→2 真实边只出现一次（不被 legacy 栈边重复）
+    expect(data.edges.filter((e) => e.source === "1" && e.target === "2")).toHaveLength(1);
+  });
+
+  it("默认（legacy mode）仍走 legacy 投影：reference 节点保留", async () => {
+    const db = {
+      select: vi.fn().mockImplementation(() => {
+        let table: unknown = null;
+        const builder: any = {
+          from: vi.fn().mockImplementation((t: unknown) => { table = t; return builder; }),
+          where: vi.fn().mockImplementation(() => builder),
+          then: (resolve: any, reject: any) => {
+            const result = table === repositories
+              ? [
+                  { id: 1, fullName: "org-a/app", name: "app", language: null, stars: 1, description: null, isReference: false },
+                  { id: 9, fullName: "tech-stack/react", name: "React", language: null, stars: null, description: null, isReference: true },
+                ]
+              : [];
+            return Promise.resolve(result).then(resolve, reject);
+          },
+        };
+        return builder;
+      }),
+    } as any;
+    const { getRepoGraphData } = await import("./repo-graph");
+    const data = await getRepoGraphData(db, 1);
+    expect(data.nodes.some((n) => n.kind === "reference")).toBe(true);
+    expect(data.nodes.some((n) => n.kind === "technology_stack")).toBe(false);
+  });
+
+  it("top-N 投影：低频 stack 被裁剪、高频保留（与 shadow 选择语义一致）", async () => {
+    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
+    const data2 = fx();
+    // vite 只有 1 个使用仓库，react 有 2 个——topN=1 时应保留 react
+    data2.repos = [
+      ...data2.repos,
+      { id: 3, fullName: "org-c/x", name: "x", language: null, stars: 1, description: null, githubRepositoryId: "9003" },
+    ];
+    data2.stackRows.push({ repoId: 3, slug: "react", stackName: "React" });
+    // 直接用内部导出测试选择语义（topN=1）
+    const { selectTopTechnologyStackSlugs } = await import("./technology-stack-entities");
+    const rows = data2.stackRows.map((row) => ({
+      githubRepositoryId: String(data2.repos.find((r) => r.id === row.repoId)?.githubRepositoryId ?? 900),
+      slug: row.slug,
+      stackName: row.stackName,
+      packages: [],
+    }));
+    expect([...selectTopTechnologyStackSlugs(rows, 1)]).toEqual(["react"]);
   });
 });

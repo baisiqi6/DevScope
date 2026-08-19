@@ -1,5 +1,5 @@
 import { normalizeGitHubRepositoryId } from "@devscope/shared";
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "./index";
 import {
   jobs,
@@ -11,6 +11,13 @@ import {
   repositoryIdentityBackfillJobPayloadSchema,
   repositoryIdentityBackfillJobResultSchema,
 } from "./jobs";
+
+/**
+ * 真实 GitHub repository 的正向条件（Phase B 拍板谓词，plan 唯一事实来源）：
+ * githubRepositoryId IS NOT NULL。与身份回填、稳定 ID 唯一索引和轻量行
+ * 从不写入 stable ID 的写边界一致；禁止用 owner/前缀/sbom 存在性替代。
+ */
+export const isRealGitHubRepository = isNotNull(repositories.githubRepositoryId);
 
 export interface RepositoryIdentityBaselineRow {
   id: number;
@@ -185,7 +192,7 @@ export async function prepareRepositoryIdentityBackfill(
       githubRepositoryId: repositories.githubRepositoryId,
     })
     .from(repositories)
-    .where(eq(repositories.isReference, false))
+    .where(isRealGitHubRepository)
     .orderBy(repositories.id);
   const resolutions: RepositoryIdentityResolution[] = [];
 
