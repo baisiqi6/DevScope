@@ -365,7 +365,9 @@ async function defaultRebuildGraph(
   });
 
   const storageMode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
-  // Phase B：读切换期间（两 mode）都必须维持 shadow compare，drift 即任务失败
+  // Phase B/C：读切换期（两 dual-write mode）维持 shadow compare；
+  // new_only 起旧 compare 随 legacy writer 退役，观察窗口由冻结基线单向包含守护
+  // （比较已内嵌在 recomputeDependencyEdges 提交之后）
   if (storageMode === "legacy_shadow_dual_write" || storageMode === "new_read_dual_write") {
     await progress?.({
       stage: "shadow_compare",

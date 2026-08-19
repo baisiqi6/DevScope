@@ -16,6 +16,7 @@ import {
   selectTopTechnologyStackSlugs,
   type TechnologyStackProjectionRow,
 } from "./technology-stack-entities";
+import { compareBaselineToCurrent } from "./baseline-compare";
 import {
   applySbomBackfillIfCurrent,
   poolRepositoryEmbeddingForCurrentVersion,
@@ -349,6 +350,11 @@ export async function recomputeDependencyEdges(
   opts: DependencyEdgeOptions = {},
 ): Promise<number> {
   const ctx = opts.ctx ?? resolveRunContext(opts);
+  const storageMode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
+  // Phase C：new_only 起 legacy writer 停写（reference upsert/伪 watch/legacy 栈边/
+  // GC 全部跳过），冻结基线由独立 receipt 与单向包含比较守护
+  const legacyWriterActive = storageMode === "legacy_shadow_dual_write"
+    || storageMode === "new_read_dual_write";
   const { settings } = ctx;
   const now = opts.now ?? (() => new Date());
   const resolveMapping = opts.resolveMapping
@@ -737,7 +743,7 @@ export async function recomputeDependencyEdges(
     }
 
     const referenceIdBySlug = new Map<string, number>();
-    for (const { stack } of selectedStacks) {
+    for (const { stack } of legacyWriterActive ? selectedStacks : []) {
       const fullName = `tech-stack/${stack.slug}`;
       const [row] = await tx
         .insert(repositories)
@@ -778,8 +784,10 @@ export async function recomputeDependencyEdges(
         });
     }
 
-    const selectedStackSlugs = new Set(selectedStacks.map(({ stack }) => stack.slug));
+    const selectedStackSlugs = new Set(
+      (legacyWriterActive ? selectedStacks : []).map(({ stack }) => stack.slug));
     for (const dep of groupedStacks.values()) {
+      if (!legacyWriterActive) break;
       if (!selectedStackSlugs.has(dep.stack.slug)) continue;
       const targetRepoId = referenceIdBySlug.get(dep.stack.slug);
       if (targetRepoId === undefined) continue;
@@ -806,7 +814,15 @@ export async function recomputeDependencyEdges(
     await tx
       .delete(repoRelationships)
       .where(
-        and(eq(repoRelationships.userId, userId), eq(repoRelationships.edgeType, "dependency")),
+        and(
+          eq(repoRelationships.userId, userId),
+          eq(repoRelationships.edgeType, "dependency"),
+          // Phase C P0：new_only 起全量替换收窄到非 legacy 栈边，
+          // 冻结的 legacy 栈边（resolvedBy=tech-stack-catalog）不被摧毁
+          legacyWriterActive
+            ? sql`true`
+            : sql`coalesce(${repoRelationships.evidence}->>'resolvedBy', '') <> 'tech-stack-catalog'`,
+        ),
       );
 
     if (edges.length > 0) {
@@ -827,6 +843,8 @@ export async function recomputeDependencyEdges(
     }
 
     // 先清理当前用户不再使用的 reference 关联，再清理全局无人引用的轻量实体。
+    // Phase C：new_only 起 GC 不执行——冻结基线（伪 watch/reference 行）保持到 cleanup。
+    if (legacyWriterActive) {
     await tx.execute(sql`
       DELETE FROM user_watched_repositories user_repo
       USING repositories repo
@@ -846,8 +864,19 @@ export async function recomputeDependencyEdges(
         AND id NOT IN (SELECT source_repo_id FROM repo_relationships)
         AND id NOT IN (SELECT target_repo_id FROM repo_relationships)
     `);
+    }
   }));
   await ctx.emit("atomic_commit", 1, 1);
+
+  // Phase C：new_only 起观察窗口比较 = 冻结基线单向包含（missing 才 fail）
+  if (!legacyWriterActive) {
+    const baseline = await compareBaselineToCurrent(db, userId);
+    if (!baseline.equal) {
+      throw new Error(
+        `技术栈冻结基线单向包含失败：missingInNew=${JSON.stringify(baseline.missingInNew)} digestDriftTouched=${baseline.digestDriftTouched}`,
+      );
+    }
+  }
 
   return persistedEdgeCount;
 }
@@ -886,12 +915,9 @@ export interface RepoGraphData {
  */
 export async function getRepoGraphData(db: Db, userId: number): Promise<RepoGraphData> {
   const mode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
-  if (mode === "new_read_dual_write") {
+  if (mode === "new_read_dual_write" || mode === "new_only" || mode === "legacy_cleaned") {
+    // Phase C：new_only 起读语义统一为新表投影（legacy 读仅兼容期保留）
     return getRepoGraphDataFromNewTables(db, userId);
-  }
-  if (mode === "new_only" || mode === "legacy_cleaned") {
-    // 进程入口的 supported-set 已拦截；脚本路径误用时显式拒绝而不是静默回退 legacy
-    throw new Error(`getRepoGraphData 不支持 mode=${mode}（Phase C 之前的 revision）`);
   }
   return getRepoGraphDataLegacy(db, userId);
 }

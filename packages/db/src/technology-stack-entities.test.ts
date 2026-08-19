@@ -120,8 +120,14 @@ describe("technology stack rollout contract", () => {
 // ============================================================================
 
 describe("assertStorageModeStartupConsistency", () => {
-  function mockDb(opts: { stacksExists?: boolean; legacyRefs?: number; newRelations?: number }) {
+  function mockDb(opts: {
+    stacksExists?: boolean;
+    legacyRefs?: number;
+    newRelations?: number;
+    columnExists?: boolean;
+  }) {
     const results = [
+      { rows: [{ col_exists: opts.columnExists ?? true }] },
       { rows: [{ stacks_exists: opts.stacksExists ?? true, relations_exists: opts.stacksExists ?? true }] },
       { rows: [{ legacy_stack_refs: String(opts.legacyRefs ?? 0), new_relations: String(opts.newRelations ?? 0) }] },
     ];
@@ -172,12 +178,31 @@ describe("assertStorageModeStartupConsistency", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("Phase C 之后的模式（new_only/legacy_cleaned）当前 revision 不检查", async () => {
+  it("new_only 走完整检查链（列在+表在+计数）", async () => {
     const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
-    const db = mockDb({});
+    const db = mockDb({ legacyRefs: 13, newRelations: 79 });
     await expect(
       assertStorageModeStartupConsistency(db, "new_only"),
     ).resolves.toBeUndefined();
-    expect(db.execute).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it("marker 矩阵：列不存在时仅 legacy_cleaned 放行，其余 mode fail", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: false }), "legacy_cleaned"),
+    ).resolves.toBeUndefined();
+    for (const mode of ["legacy_shadow_dual_write", "new_read_dual_write", "new_only"] as const) {
+      await expect(
+        assertStorageModeStartupConsistency(mockDb({ columnExists: false }), mode),
+      ).rejects.toThrow(/legacy_cleaned/);
+    }
+  });
+
+  it("marker 矩阵：列存在但 mode=legacy_cleaned 时 fail", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: true }), "legacy_cleaned"),
+    ).rejects.toThrow(/未执行 cleanup/);
   });
 });

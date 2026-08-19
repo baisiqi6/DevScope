@@ -676,8 +676,25 @@ export async function assertStorageModeStartupConsistency(
   db: Db,
   mode: TechnologyStackStorageMode,
 ): Promise<void> {
-  if (mode !== "legacy_shadow_dual_write" && mode !== "new_read_dual_write") {
-    return; // new_only/legacy_cleaned 属 Phase C 之后的模式，当前 revision 不支持到那一步
+  // Phase C marker：is_reference 列存在性 = 清理状态（列在 = 未清理）
+  const marker = await db.execute<{ col_exists: boolean }>(sql`
+    select exists(
+      select 1 from information_schema.columns
+      where table_name = 'repositories' and column_name = 'is_reference'
+    ) as col_exists
+  `);
+  const columnExists = !!marker.rows?.[0]?.col_exists;
+  if (!columnExists) {
+    if (mode === "legacy_cleaned") return;
+    throw new Error(
+      `is_reference 列已不存在（已 cleanup）但 mode=${mode}：列不存在时唯一合法 mode 是 legacy_cleaned`,
+    );
+  }
+  if (mode === "legacy_cleaned") {
+    throw new Error("mode=legacy_cleaned 但 is_reference 列仍存在（未执行 cleanup）");
+  }
+  if (mode !== "legacy_shadow_dual_write" && mode !== "new_read_dual_write" && mode !== "new_only") {
+    return;
   }
   const tables = await db.execute<{ stacks_exists: boolean; relations_exists: boolean }>(sql`
     select to_regclass('public.technology_stacks') is not null as stacks_exists,
@@ -691,8 +708,8 @@ export async function assertStorageModeStartupConsistency(
   }
   const counts = await db.execute<{ legacy_stack_refs: string; new_relations: string }>(sql`
     select
-      (select count(*) from repositories where is_reference = true
-         and full_name like 'tech-stack/%')::text as legacy_stack_refs,
+      (select count(*) from repositories
+         where github_repository_id is null and full_name like 'tech-stack/%')::text as legacy_stack_refs,
       (select count(*) from repository_technology_stacks)::text as new_relations
   `);
   const c = counts.rows?.[0];
