@@ -889,6 +889,10 @@ export async function getRepoGraphData(db: Db, userId: number): Promise<RepoGrap
   if (mode === "new_read_dual_write") {
     return getRepoGraphDataFromNewTables(db, userId);
   }
+  if (mode === "new_only" || mode === "legacy_cleaned") {
+    // 进程入口的 supported-set 已拦截；脚本路径误用时显式拒绝而不是静默回退 legacy
+    throw new Error(`getRepoGraphData 不支持 mode=${mode}（Phase C 之前的 revision）`);
+  }
   return getRepoGraphDataLegacy(db, userId);
 }
 
@@ -971,11 +975,11 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
   }));
   const selectedSlugs = selectTopTechnologyStackSlugs(projectionRows, TECH_STACK_TOP_N);
 
-  const stackNodeIdBySlug = new Map<string, string>();
+  const emittedStackSlugs = new Set<string>();
   for (const row of stackRows) {
     if (!selectedSlugs.has(row.slug)) continue;
-    if (stackNodeIdBySlug.has(row.slug)) continue;
-    stackNodeIdBySlug.set(row.slug, `stack:${row.slug}`);
+    if (emittedStackSlugs.has(row.slug)) continue;
+    emittedStackSlugs.add(row.slug);
     nodes.push({
       id: `stack:${row.slug}`,
       kind: "technology_stack",
@@ -1027,7 +1031,7 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
       score: e.score,
     };
     // 悬空边防护：两端都必须存在于当前投影（legacy 栈边即使未标记也被排除）
-    if (nodeIdSet.has(edge0SourceId(edge)) && nodeIdSet.has(edge.target)) {
+    if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
       edges.push(edge);
     }
   }
@@ -1045,10 +1049,6 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
   }
 
   return { nodes, edges };
-}
-
-function edge0SourceId(edge: RepoGraphDataEdge): string {
-  return edge.source;
 }
 
 async function getRepoGraphDataLegacy(db: Db, userId: number): Promise<RepoGraphData> {

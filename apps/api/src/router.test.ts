@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 // ============================================================================
 // Mock AI 服务
@@ -93,6 +94,7 @@ import {
   __mockCreatePipeline as mockCreatePipeline,
   userWatchedRepositories,
   users,
+  isRealGitHubRepository,
 } from "@devscope/db";
 
 const createCaller = (db: any = createCurrentUserDb(7)) =>
@@ -1063,5 +1065,77 @@ describe("AppRouter 类型", () => {
       analyzeRepository: expect.any(Function),
       semanticSearch: expect.any(Function),
     };
+  });
+});
+
+// ============================================================================
+// Phase B：正向条件收敛站点（githubRepositoryId IS NOT NULL 谓词）
+// ============================================================================
+
+describe("正向条件（Phase B 收敛站点）", () => {
+  function createCaptureDb(opts: { watched?: unknown[]; repoRows?: unknown[] } = {}) {
+    const capturedWhere: unknown[][] = [];
+    const watchedRows = opts.watched ?? [{ repoId: 1, notes: null, starredAt: null }];
+    const repoRows = opts.repoRows ?? [];
+    const builderFor = (table: unknown) => {
+      const b: any = {
+        from: vi.fn((t: unknown) => b),
+        where: vi.fn((...args: unknown[]) => {
+          capturedWhere.push(args);
+          return b;
+        }),
+        innerJoin: vi.fn(() => b),
+        orderBy: vi.fn(() => b),
+        offset: vi.fn(() => Promise.resolve(
+          table === users ? [{ id: 7 }] : table === userWatchedRepositories ? watchedRows : repoRows,
+        )),
+        limit: vi.fn(() => ({ ...b, offset: vi.fn(() => Promise.resolve(repoRows)) })),
+        then: (resolve: any, reject: any) =>
+          Promise.resolve(table === users ? [{ id: 7 }] : table === userWatchedRepositories ? watchedRows : repoRows)
+            .then(resolve, reject),
+      };
+      return b;
+    };
+    const db = {
+      select: vi.fn(() => {
+        let table: unknown = null;
+        const outer: any = {
+          from: vi.fn((t: unknown) => {
+            table = t;
+            return builderFor(t);
+          }),
+        };
+        return outer;
+      }),
+      _capturedWhere: capturedWhere,
+    };
+    return db as any;
+  }
+
+  const dialect = new PgDialect();
+  const whereSqlIncludesPositiveCondition = (db: any) =>
+    db._capturedWhere
+      .flat()
+      .some((arg: unknown) =>
+        dialect.sqlToQuery(arg as never).sql.includes('"github_repository_id" is not null'));
+
+  it("getRepositories 的查询条件包含正向条件（githubRepositoryId IS NOT NULL）", async () => {
+    const db = createCaptureDb();
+    await createCaller(db).getRepositories();
+    expect(whereSqlIncludesPositiveCondition(db)).toBe(true);
+  });
+
+  it("requireWatchedRepositoryByFullName：reference fullName 即使带伪 watch 也被正向条件排除", async () => {
+    const db = createCaptureDb({ watched: [] });
+    await expect(
+      createCaller(db).startHealthAnalysis({ repoFullName: "tech-stack/react" }),
+    ).rejects.toThrow(/not found/);
+    expect(whereSqlIncludesPositiveCondition(db)).toBe(true);
+  });
+
+  it("syncEmbeddingStatus 的 whereClause 包含正向条件", async () => {
+    const db = createCaptureDb();
+    await createCaller(db).syncEmbeddingStatus({});
+    expect(whereSqlIncludesPositiveCondition(db)).toBe(true);
   });
 });

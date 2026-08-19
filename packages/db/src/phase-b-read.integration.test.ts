@@ -220,6 +220,50 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     expect(graph.edges.filter((e) => e.target === "stack:react")).toHaveLength(1);
   });
 
+  it("正向条件在真实 SQL 上排除 reference 行（谓词行为级验证）", async () => {
+    const { isRealGitHubRepository } = await import("./repository-identity");
+    // 真实库中造一行 reference（无 stable ID）
+    const [fake] = await db.insert(schema.repositories).values({
+      fullName: "tech-stack/sqlcheck", name: "sqlcheck", owner: "tech-stack",
+      url: "https://t.test", isReference: true, embeddingStatus: "completed",
+    }).returning();
+    const rows = await db.select({ id: schema.repositories.id })
+      .from(schema.repositories)
+      .where(isRealGitHubRepository);
+    expect(rows.some((r) => r.id === fake.id)).toBe(false);
+    // 对照：真实行都在结果里
+    const real = await commitAndWatch(userA, "950009", `${PREFIX}a/sql`, []);
+    const rows2 = await db.select({ id: schema.repositories.id })
+      .from(schema.repositories)
+      .where(isRealGitHubRepository);
+    expect(rows2.some((r) => r.id === real.repository.id)).toBe(true);
+  });
+
+  it("新读 top-N 端到端：31 个 stack 时节点与边同步裁剪到 30", async () => {
+    const committed = await commitAndWatch(userA, "950010", `${PREFIX}a/many`, []);
+    const stackDefs = Array.from({ length: 31 }, (_, i) => ({
+      slug: `stack${String(i).padStart(2, "0")}`, name: `Stack ${i}`, url: `https://s${i}.test`,
+    }));
+    const inserted = await db.insert(schema.technologyStacks).values(
+      stackDefs.map((d) => ({ ...d, description: `${d.name} 技术栈` })),
+    ).returning();
+    await db.insert(schema.repositoryTechnologyStacks).values(
+      inserted.map((st) => ({
+        repositoryId: committed.repository.id, technologyStackId: st.id, packages: [],
+      })),
+    );
+
+    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
+    const graph = await getRepoGraphData(db, userA);
+    const stackNodes = graph.nodes.filter((n) => n.kind === "technology_stack");
+    const stackEdges = graph.edges.filter((e) => e.target.startsWith("stack:"));
+    expect(stackNodes).toHaveLength(30);
+    expect(stackEdges).toHaveLength(30);
+    // 全部同 usage → name 字符串升序 tie-break；"Stack 9" 排序最后（在 Stack 4..8 之后）被裁剪
+    expect(stackNodes.some((n) => n.id === "stack:stack9")).toBe(false);
+    expect(stackNodes.some((n) => n.id === "stack:stack00")).toBe(true);
+  });
+
   it("legacy mode（默认）不读新表：reference 投影保留、stack 节点不出现", async () => {
     const committed = await commitAndWatch(userA, "950008", `${PREFIX}a/legacymode`, []);
     const [reactStack] = await db.insert(schema.technologyStacks).values({

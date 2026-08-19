@@ -55,3 +55,17 @@ RED tests 与实现设计（watched source join 读模型、`stack:<slug>` node�
 - 全仓门禁：lint 13/13、typecheck 14/14、test 11/11、build 9/9 + integration 49/49。
 
 待续：独立 implementation review → PR/CI → 生产三阶段 rollout（compat 已就绪→mode 切换→观察窗口）。
+
+## Implementation review 处置（2026-08-19）
+
+第一轮 verdict `changes_requested`（evt-20260819T124735Z）：P0（API 启动检查成功路径 closeDb 销毁全局单例池——context.ts 模块期捕获的池被终结，tRPC 全挂；reviewer 实测 pg ended pool 行为证实）；P1（Worker 检查 fire-and-forget 竞态）；P2×2（9 站点与启动/shadow 门测试缺口）；P3×4（edge0SourceId 残留、top-N 端到端、commit 语义错位记录、new_only 静默回退等）。全部处置：
+
+- **P0**：API 启动检查改用独立 `pg.Pool(max:1)` + drizzle 包装，只 end 自己（apps/api 增加 pg/@types/pg/drizzle-orm 依赖）；verification 描述同步修正；
+- **P1**：Worker 检查改 await（try/catch + exit(1)）；
+- **P2-3**：api 层 3 站点用例（getRepositories/requireWatchedRepositoryByFullName 拒绝 tech-stack/\*/syncEmbeddingStatus，PgDialect 编译 SQL 文本断言 `github_repository_id is not null`）；谓词行为级 integration 用例（reference 行排除 + 真实行包含）；groups/scheduler/radar/repository-identity 的谓词来自同一 `isRealGitHubRepository` 单例导出，由上述行为级用例与生产双向 0 违例基线共同覆盖；
+- **P2-4**：启动检查 6 用例（缺表/cleaned+legacy/未回填/空库放行×2/Phase C 模式跳过）；Worker shadow 门 2 用例（new_read 与 legacy 两 mode 下 compare 均执行——经 defaultRebuildGraph 真实路径 + completeJob/updateJobProgress mock 链）；
+- **P3-5/8**：删除 edge0SourceId；stackNodeIdBySlug → Set；new_only/legacy_cleaned 显式 throw；多余空行清理；
+- **P3-6**：top-N 端到端 integration（31 stack → 节点与边同步裁 30、name 升序 tie-break 验证）；
+- **P3-7**：commit 语义错位（核心实现在 docs commit 中）已记录，不重写历史。
+
+修复后：unit 全绿（db 233、worker 12、api 41 等）、integration **51/51**（49+2 新增）、全仓 lint 13/typecheck 14/test 11/build 9 通过。

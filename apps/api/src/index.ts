@@ -10,6 +10,8 @@
 // 必须先加载环境变量，再求值会初始化数据库连接池的模块。
 import "./env";
 import Fastify from "fastify";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import cors from "@fastify/cors";
 import { createContext } from "./context";
 import { appRouter } from "./router";
@@ -207,18 +209,23 @@ const start = async () => {
     const hasBgeModelName = !!process.env.BGE_MODEL_NAME;
 
     console.log("=".repeat(50));
-    // 启动一致性：缺表/cleaned+legacy/未回填组合 fail closed（Phase B 分层检查）
+    // 启动一致性：缺表/cleaned+legacy/未回填组合 fail closed（Phase B 分层检查）。
+    // 必须用独立短连接：全局 createDb() 是模块级单例，closeDb() 会终结
+    // context.ts 捕获的共享池，导致后续所有 tRPC 请求失败。
     {
-      const startupDb = createDb();
-      await assertStorageModeStartupConsistency(
-        startupDb,
-        parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-      ).catch(async (error) => {
+      const startupPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+      const startupDb = drizzle(startupPool);
+      try {
+        await assertStorageModeStartupConsistency(
+          startupDb,
+          parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
+        );
+      } catch (error) {
         console.error("[Startup] 存储模式一致性检查失败：", error instanceof Error ? error.message : error);
-        await closeDb().catch(() => undefined);
+        await startupPool.end().catch(() => undefined);
         process.exit(1);
-      });
-      await closeDb().catch(() => undefined);
+      }
+      await startupPool.end().catch(() => undefined);
     }
 
     console.log("🔧 环境变量检查:");

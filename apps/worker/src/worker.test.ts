@@ -5,11 +5,20 @@ const {
   mockFailJob,
   mockRecoverExpiredJobs,
   mockRenewJobLease,
+  mockCompareTechnologyStackProjection,
+  mockRebuildRepoGraph,
+  mockCompleteJob,
 } = vi.hoisted(() => ({
   mockClaimNextJob: vi.fn(),
   mockFailJob: vi.fn(),
   mockRecoverExpiredJobs: vi.fn().mockResolvedValue(0),
   mockRenewJobLease: vi.fn().mockResolvedValue({}),
+  mockCompareTechnologyStackProjection: vi.fn().mockResolvedValue({ equal: true, legacyCount: 1, newCount: 1 }),
+  mockRebuildRepoGraph: vi.fn().mockResolvedValue({
+    similarityEdges: 0, dependencyEdges: 0, pooledRepos: 0, sbomBackfilled: 0,
+    stages: [], budget: { depsDev: { used: 0, limit: 1 }, github: { used: 0, limit: 1 } },
+  }),
+  mockCompleteJob: vi.fn().mockResolvedValue({ id: 0, status: "succeeded" }),
 }));
 
 vi.mock("@devscope/db", async (importOriginal) => {
@@ -20,6 +29,9 @@ vi.mock("@devscope/db", async (importOriginal) => {
     failJob: mockFailJob,
     recoverExpiredJobs: mockRecoverExpiredJobs,
     renewJobLease: mockRenewJobLease,
+    compareTechnologyStackProjection: mockCompareTechnologyStackProjection,
+    rebuildRepoGraph: mockRebuildRepoGraph,
+    completeJob: mockCompleteJob,
   };
 });
 
@@ -215,6 +227,73 @@ describe("Worker 任务执行", () => {
     expect(mockFailJob).toHaveBeenCalledTimes(1);
     const retryOptions = mockFailJob.mock.calls[0][4];
     expect(retryOptions.retryDelayMs).toBeGreaterThanOrEqual(300_000);
+  });
+
+  it("shadow compare 在 new_read_dual_write 模式下同样执行（drift 即失败）", async () => {
+    mockClaimNextJob.mockReset();
+    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
+    mockCompareTechnologyStackProjection.mockClear();
+    mockClaimNextJob
+      .mockResolvedValueOnce(createJob({
+        id: 9,
+        type: GRAPH_REBUILD_JOB,
+        idempotencyKey: "graph:rebuild",
+        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+      }))
+      .mockResolvedValue(null);
+    const previous = process.env.TECHNOLOGY_STACK_STORAGE_MODE;
+    process.env.TECHNOLOGY_STACK_STORAGE_MODE = "new_read_dual_write";
+    try {
+      let jobDone = false;
+      const dbStub = {
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 9 }]) })),
+          })),
+        })),
+      } as any;
+      mockCompareTechnologyStackProjection.mockImplementationOnce(async () => {
+        jobDone = true;
+        return { equal: true, legacyCount: 1, newCount: 1 };
+      });
+      await runWorker(dbStub, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => jobDone, {
+        workerId: "w1",
+      });
+    } finally {
+      if (previous === undefined) delete process.env.TECHNOLOGY_STACK_STORAGE_MODE;
+      else process.env.TECHNOLOGY_STACK_STORAGE_MODE = previous;
+    }
+    expect(mockCompareTechnologyStackProjection).toHaveBeenCalledTimes(1);
+  });
+
+  it("shadow compare 在 legacy_shadow_dual_write 模式下执行", async () => {
+    mockClaimNextJob.mockReset();
+    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
+    mockCompareTechnologyStackProjection.mockClear();
+    mockClaimNextJob
+      .mockResolvedValueOnce(createJob({
+        id: 10,
+        type: GRAPH_REBUILD_JOB,
+        idempotencyKey: "graph:rebuild",
+        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+      }))
+      .mockResolvedValue(null);
+    let jobDone = false;
+    const dbStub = {
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 10 }]) })),
+        })),
+      })),
+    } as any;
+    mockCompareTechnologyStackProjection.mockImplementationOnce(async () => {
+      jobDone = true;
+      return { equal: true, legacyCount: 1, newCount: 1 };
+    });
+    await runWorker(dbStub, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => jobDone, {
+      workerId: "w1",
+    });
+    expect(mockCompareTechnologyStackProjection).toHaveBeenCalledTimes(1);
   });
 
   it("将三个 GitHub Trending 周期保存为独立快照", async () => {
