@@ -254,12 +254,6 @@ export const repositories = pgTable("repositories", {
   /** 最后采集时间 */
   lastFetchedAt: timestamp("last_fetched_at"),
   /**
-   * 是否为技术栈（reference）轻量行
-   * @description 从 SBOM 中识别出的框架、运行时和应用平台，以稳定的
-   * tech-stack/<slug> 标识写入轻量行（is_reference=true），不参与采集/向量化/列表。
-   */
-  isReference: boolean("is_reference").default(false).notNull(),
-  /**
    * SBOM 依赖包列表（采集时缓存）
    * @description GitHub dependency graph SBOM 解析出的 { name, version } 列表，
    * 供依赖边重建使用；versionInfo 为精确版本。
@@ -824,6 +818,45 @@ export const repositoryTechnologyStacks = pgTable("repository_technology_stacks"
   technologyStackIdIdx: index("repository_technology_stacks_technology_stack_id_idx")
     .on(table.technologyStackId),
 }));
+
+/**
+ * Phase C 冻结基线 receipt 表
+ * @description 进入 new_only 前固化的 legacy (githubRepositoryId, slug) 存在性
+ * key 与 packages digest；观察窗口单向包含比较的数据来源。列形态与
+ * baseline-compare.ts 运行期 DDL 完全一致（journal 为权威来源，运行期
+ * create if not exists 仅覆盖迁移未应用窗口）。
+ */
+export const technologyStackBaselineReceipts = pgTable(
+  "technology_stack_baseline_receipts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    githubRepositoryId: text("github_repository_id").notNull(),
+    slug: text("slug").notNull(),
+    packagesDigest: text("packages_digest").notNull(),
+    frozenAt: timestamp("frozen_at").notNull(),
+  },
+  (table) => ({
+    userRepoStackUnique: uniqueIndex("technology_stack_baseline_receipts_user_repo_stack_unique")
+      .on(table.userId, table.githubRepositoryId, table.slug),
+  }),
+);
+
+/**
+ * Phase C cleanup receipt 表
+ * @description cleanup 维护窗口执行后写入的不可变 receipt；journal 中的
+ * DROP COLUMN is_reference 以“此表存在且含行”为执行守卫。
+ */
+export const technologyStackCleanupReceipts = pgTable(
+  "technology_stack_cleanup_receipts",
+  {
+    id: serial("id").primaryKey(),
+    executedAt: timestamp("executed_at").notNull(),
+    legacyStackEdges: integer("legacy_stack_edges").notNull(),
+    pseudoWatched: integer("pseudo_watched").notNull(),
+    pseudoRepositories: integer("pseudo_repositories").notNull(),
+  },
+);
 
 /**
  * 仓库关系边表

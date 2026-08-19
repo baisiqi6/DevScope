@@ -605,7 +605,6 @@ export class DataCollectionPipeline {
           readme: githubData.readme,
           readmeUrl: githubData.readmeUrl,
           lastFetchedAt: new Date(),
-          isReference: false,
         },
         chunks: dbChunks,
         hackernews,

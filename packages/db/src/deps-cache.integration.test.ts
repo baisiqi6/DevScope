@@ -4,7 +4,6 @@ import { eq, and } from "drizzle-orm";
 import pg from "pg";
 import * as schema from "./schema";
 import { commitRepositoryCollectionSnapshot, type RepositoryCollectionSnapshot } from "./collection";
-import { compareTechnologyStackProjection } from "./technology-stack-entities";
 import {
   createJobProgressSink,
   assertJobLease,
@@ -52,8 +51,7 @@ function snapshot(githubRepositoryId: string, packages: Array<{ name: string; ve
       readme: "deps cache integration",
       readmeUrl: null,
       lastFetchedAt: new Date(),
-      isReference: false,
-    },
+          },
     chunks: [],
     hackernews: { status: "success", items: [] },
     releases: { status: "success", items: [] },
@@ -423,7 +421,7 @@ describeIntegration("deps cache recovery on PostgreSQL", () => {
       .where(eq(schema.repoRelationships.userId, userId))).toHaveLength(0);
   });
 
-  it("全量 rebuild 后 legacy 与新表技术栈投影 zero-diff，budget 快照进入结果", async () => {
+  it("全量 rebuild 后新表技术栈事实与 SBOM 一致（冻结基线恒过），budget 快照进入结果", async () => {
     await commitAndWatch("930040", [
       { name: "react", version: "19.2.6", system: "npm" },
     ]);
@@ -445,8 +443,12 @@ describeIntegration("deps cache recovery on PostgreSQL", () => {
     );
     expect(result.budget?.depsDev.used).toBe(2);
 
-    const comparison = await compareTechnologyStackProjection(db, userId);
-    expect(comparison.equal).toBe(true);
+    // 新表事实来自 SBOM detection：react/vue 各一条 relation
+    const rows = await db
+      .select({ slug: schema.technologyStacks.slug })
+      .from(schema.repositoryTechnologyStacks)
+      .innerJoin(schema.technologyStacks, eq(schema.technologyStacks.id, schema.repositoryTechnologyStacks.technologyStackId));
+    expect(rows.map((r) => r.slug).sort()).toEqual(["react", "vue"]);
   });
 });
 

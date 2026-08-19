@@ -2,16 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockEnqueue,
-  mockEnqueueTechnologyStackBackfill,
   mockGetJob,
-  mockGetLatestTechnologyStackBackfill,
   mockGetGraph,
   mockGetCurrentUserId,
 } = vi.hoisted(() => ({
   mockEnqueue: vi.fn(),
-  mockEnqueueTechnologyStackBackfill: vi.fn(),
   mockGetJob: vi.fn(),
-  mockGetLatestTechnologyStackBackfill: vi.fn(),
   mockGetGraph: vi.fn(),
   mockGetCurrentUserId: vi.fn(),
 }));
@@ -22,9 +18,7 @@ vi.mock("@devscope/db", async (importOriginal) => {
     ...actual,
     getRepoGraphData: mockGetGraph,
     enqueueRestartableJob: mockEnqueue,
-    enqueueTechnologyStackEntitiesBackfillJob: mockEnqueueTechnologyStackBackfill,
     getJobByIdempotencyKey: mockGetJob,
-    getLatestTechnologyStackEntitiesBackfillJob: mockGetLatestTechnologyStackBackfill,
   };
 });
 
@@ -164,28 +158,6 @@ describe("graph router 持久重建任务", () => {
     });
   });
 
-  it("技术栈实体 backfill 使用版本化 singleton 并暴露终态 receipt", async () => {
-    const job = createTechnologyStackBackfillJob();
-    mockEnqueueTechnologyStackBackfill.mockResolvedValue({ job, enqueued: true });
-    await expect(caller.startTechnologyStackEntitiesBackfill({ version: "v1" }))
-      .resolves.toMatchObject({
-        jobId: 21,
-        version: "v1",
-        status: "running",
-        alreadyRunning: false,
-      });
-
-    mockGetLatestTechnologyStackBackfill.mockResolvedValue({
-      ...job,
-      status: "succeeded",
-    });
-    await expect(caller.getTechnologyStackEntitiesBackfillStatus())
-      .resolves.toMatchObject({
-        status: "completed",
-        version: "v1",
-        result: { outcome: "succeeded", processedSources: 1 },
-      });
-  });
 });
 
 function createJob(overrides: Record<string, unknown> = {}) {
@@ -216,34 +188,5 @@ function createJob(overrides: Record<string, unknown> = {}) {
     createdAt: now,
     updatedAt: now,
     ...overrides,
-  };
-}
-
-function createTechnologyStackBackfillJob() {
-  const now = new Date("2026-08-18T00:00:00.000Z");
-  return {
-    ...createJob(),
-    id: 21,
-    type: "technology_stack.entities.backfill",
-    idempotencyKey: "technology-stack:entities:backfill:v1",
-    payload: { requestedAt: now.toISOString(), version: "v1" },
-    result: {
-      outcome: "succeeded",
-      version: "v1",
-      planDigest: "a".repeat(64),
-      totalSources: 1,
-      processedSources: 1,
-      lastGithubRepositoryId: "100",
-      receipts: [{
-        githubRepositoryId: "100",
-        sourceDigest: "b".repeat(64),
-        relations: 1,
-        evidenceAudit: [],
-      }],
-    },
-    startedAt: now,
-    completedAt: now,
-    createdAt: now,
-    updatedAt: now,
   };
 }

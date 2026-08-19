@@ -281,7 +281,6 @@ describe("DataCollectionPipeline", () => {
             language: "TypeScript",
             license: "MIT",
             readme: expect.stringContaining("Test README"),
-            isReference: false,
           }),
           allowNewStableIdentity: false,
         }),

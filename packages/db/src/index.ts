@@ -141,5 +141,7 @@ export * from "./github-trending";
 /**
  * 仓库关系图谱
  */
+export * from "./baseline-compare";
+export * from "./technology-stack-cleanup";
 export * from "./deps-cache";
 export * from "./repo-graph";

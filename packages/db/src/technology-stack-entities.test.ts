@@ -1,77 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertTechnologyStackStorageModeSupported,
-  compareTechnologyStackProjectionRows,
-  parseLegacyTechnologyStackEvidence,
   parseTechnologyStackStorageMode,
-  sameTechnologyStackPackages,
 } from "./technology-stack-entities";
-
-describe("legacy technology stack evidence", () => {
-  it("严格接受并规范排序 canonical package triples", () => {
-    expect(parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "tech-stack-catalog",
-      packages: [
-        { system: "npm", name: "react-dom", version: "19.0.0" },
-        { system: "npm", name: "react", version: "19.0.0" },
-        { system: "npm", name: "react", version: "19.0.0" },
-      ],
-    })).toEqual({
-      rawCount: 3,
-      packages: [
-        { system: "npm", name: "react", version: "19.0.0" },
-        { system: "npm", name: "react-dom", version: "19.0.0" },
-      ],
-    });
-  });
-
-  it("拒绝缺字段 package、错误 kind 与错误 resolver，不能过滤后伪装成功", () => {
-    expect(() => parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "tech-stack-catalog",
-      packages: [{ system: "npm", name: "react" }],
-    })).toThrow();
-    expect(() => parseLegacyTechnologyStackEvidence({
-      kind: "similarity",
-      resolvedBy: "tech-stack-catalog",
-      packages: [],
-    })).toThrow();
-    expect(() => parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "deps.dev",
-      packages: [],
-    })).toThrow();
-  });
-
-  it("跨用户副本只按 canonical triples 比较，不受顺序和重复影响", () => {
-    const left = parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "tech-stack-catalog",
-      packages: [
-        { system: "npm", name: "react", version: "19.0.0" },
-        { system: "npm", name: "react-dom", version: "19.0.0" },
-      ],
-    }).packages;
-    const reordered = parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "tech-stack-catalog",
-      packages: [
-        { system: "npm", name: "react-dom", version: "19.0.0" },
-        { system: "npm", name: "react", version: "19.0.0" },
-        { system: "npm", name: "react", version: "19.0.0" },
-      ],
-    }).packages;
-    const divergent = parseLegacyTechnologyStackEvidence({
-      kind: "dependency",
-      resolvedBy: "tech-stack-catalog",
-      packages: [{ system: "npm", name: "react", version: "18.3.1" }],
-    }).packages;
-
-    expect(sameTechnologyStackPackages(left, reordered)).toBe(true);
-    expect(sameTechnologyStackPackages(left, divergent)).toBe(false);
-  });
-});
 
 describe("technology stack rollout contract", () => {
   it("未知 mode 与尚未实现的 cutover mode 均 fail closed", () => {
@@ -82,46 +13,21 @@ describe("technology stack rollout contract", () => {
     )).toThrow("当前 revision 不支持");
     expect(parseTechnologyStackStorageMode(undefined)).toBe("legacy_shadow_dual_write");
   });
-
-  it("shadow comparison 忽略 package 顺序，但报告真实差异", () => {
-    const legacy = [{
-      githubRepositoryId: "100",
-      slug: "react",
-      stackName: "React",
-      packages: [
-        { system: "npm", name: "react-dom", version: "19.0.0" },
-        { system: "npm", name: "react", version: "19.0.0" },
-      ],
-    }];
-    const reordered = [{
-      ...legacy[0],
-      packages: [...legacy[0].packages].reverse(),
-    }];
-    expect(compareTechnologyStackProjectionRows(legacy, reordered)).toMatchObject({
-      equal: true,
-      legacyCount: 1,
-      newCount: 1,
-    });
-
-    const divergent = [{
-      ...legacy[0],
-      packages: [{ system: "npm", name: "react", version: "18.3.1" }],
-    }];
-    expect(compareTechnologyStackProjectionRows(legacy, divergent)).toMatchObject({
-      equal: false,
-      legacyCount: 1,
-      newCount: 1,
-    });
-  });
 });
 
 // ============================================================================
-// Phase B：启动一致性检查
+// Phase B/C：启动一致性检查与 marker 矩阵
 // ============================================================================
 
 describe("assertStorageModeStartupConsistency", () => {
-  function mockDb(opts: { stacksExists?: boolean; legacyRefs?: number; newRelations?: number }) {
+  function mockDb(opts: {
+    stacksExists?: boolean;
+    legacyRefs?: number;
+    newRelations?: number;
+    columnExists?: boolean;
+  }) {
     const results = [
+      { rows: [{ col_exists: opts.columnExists ?? true }] },
       { rows: [{ stacks_exists: opts.stacksExists ?? true, relations_exists: opts.stacksExists ?? true }] },
       { rows: [{ legacy_stack_refs: String(opts.legacyRefs ?? 0), new_relations: String(opts.newRelations ?? 0) }] },
     ];
@@ -172,12 +78,40 @@ describe("assertStorageModeStartupConsistency", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("Phase C 之后的模式（new_only/legacy_cleaned）当前 revision 不检查", async () => {
+  it("new_only 走完整检查链（列在+表在+计数）", async () => {
     const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
-    const db = mockDb({});
+    const db = mockDb({ legacyRefs: 13, newRelations: 79 });
     await expect(
       assertStorageModeStartupConsistency(db, "new_only"),
     ).resolves.toBeUndefined();
-    expect(db.execute).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it("marker 矩阵：列不存在时仅 legacy_cleaned 放行，其余 mode fail", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: false }), "legacy_cleaned"),
+    ).resolves.toBeUndefined();
+    for (const mode of ["legacy_shadow_dual_write", "new_read_dual_write", "new_only"] as const) {
+      await expect(
+        assertStorageModeStartupConsistency(mockDb({ columnExists: false }), mode),
+      ).rejects.toThrow(/legacy_cleaned/);
+    }
+  });
+
+  it("marker 矩阵：列存在但 legacy 伪数据仍在时 legacy_cleaned fail", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: true, legacyRefs: 13 }), "legacy_cleaned"),
+    ).rejects.toThrow(/未执行 cleanup/);
+  });
+
+  it("marker 矩阵：列存在但伪数据为 0 时 legacy_cleaned 放行（补删窗口与 fresh 重放库）", async () => {
+    const { assertStorageModeStartupConsistency } = await import("./technology-stack-entities");
+    // cleanup 删除事务已提交但 DROP COLUMN 前崩溃，或从未存在 legacy 表示的
+    // fresh 重放库：不存在需要守护的冻结形态（implementation review P1-2）
+    await expect(
+      assertStorageModeStartupConsistency(mockDb({ columnExists: true, legacyRefs: 0 }), "legacy_cleaned"),
+    ).resolves.toBeUndefined();
   });
 });

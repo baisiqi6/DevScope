@@ -68,6 +68,15 @@ API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置�
 
 - `REPOSITORY_IDENTITY_CUTOVER`：正式仓库稳定 ID 的三阶段发布开关。默认 `disabled`；只有最新一次 `repository.identity.backfill` 结果为 `applied`、冲突为空且可解析正式仓库均已带 ID 后，才改为 `enabled`。在 `disabled` 阶段仍可给同名旧行附加 ID、处理已知 ID 的 rename，但拒绝创建 ID 与 `fullName` 都未命中的新正式行。
 
+### 技术栈存储模式（Phase C）
+
+- `TECHNOLOGY_STACK_STORAGE_MODE`：技术栈事实的存储模式，四值枚举
+  `legacy_shadow_dual_write -> new_read_dual_write -> new_only -> legacy_cleaned`。
+  API 与 Worker 必须一致（同一 compose 变量）；缺省回落值为 `legacy_shadow_dual_write`，
+  但当前 revision 只支持 `new_only`——缺省或错配会启动直接失败（fail closed，不自动回退）。
+  部署 new_only revision 必须与 `.env` 翻转 `new_only` 同批完成
+  （见"技术栈 new_only 切换与 cleanup 维护窗口"一节）。
+
 浏览器请求使用同源路径 `/api/trpc/*` 和 `/api/agent/*`，通常不需要配置公开的后端地址。
 
 ## 开发命令
@@ -143,6 +152,32 @@ Trending 优先抓取 `github.com/trending`。当部署网络无法连接 GitHub
 3. 只有结果为 `applied`、conflicts 为空且重新核验通过后，才把 API 的 `REPOSITORY_IDENTITY_CUTOVER` 改为 `enabled` 并恢复采集。
 
 每次 backfill 的终态 job/result 不可重置；新一轮必须使用新 version。任一阶段异常先保持或恢复 `disabled` 并暂停采集；已经完成数据写入而需要整体回退时使用 Stage 1 前备份，不执行临时 down migration。
+
+## 技术栈 new_only 切换与 cleanup 维护窗口
+
+Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。当前代码 revision（new_only revision）只支持 `new_only`；legacy writer、legacy 读路径与 Phase A backfill 已删除，`repositories.is_reference` 列定义已从 schema 移除（journal 中的 DROP COLUMN 由 cleanup receipt 守卫，常规迁移与 fresh 重放均为 no-op）。
+
+### new_only 切换（维护窗口，人工执行）
+
+1. 确认 shadow 零差异：最后一次 dual-write rebuild 的 shadow receipt 一致；
+2. 停止 API/Worker（`docker compose stop api worker`，Web 可继续展示维护态）；
+3. 编辑服务器 `.env`：`TECHNOLOGY_STACK_STORAGE_MODE=new_only`；
+4. 以 `apply_database_migration=true` 手动触发 deploy workflow 部署 new_only revision（journal 应用 0010：receipt 表创建，DROP COLUMN 为 no-op）；
+5. 启动后验证：health、401、认证 MCP、图谱/列表/分组/采集路径，rebuild 一次确认冻结基线单向包含通过；
+6. 观察窗口内回退方式：恢复上一兼容镜像 + `.env` 回 `new_read_dual_write`（legacy 数据未动）。
+
+### cleanup 维护窗口（workflow 显式 opt-in）
+
+前置条件（缺一不可）：
+
+- new_only 观察窗口结束、冻结基线比较持续通过；
+- **已部署 cleanup revision**（`TECHNOLOGY_STACK_SUPPORTED_MODES` 含 `legacy_cleaned`；当前 new_only revision 会被 `cleanup-cli --validate` 的 revision gate 拒绝——cleanup 后不存在可启动 mode）；
+- 记录目标 SHA、API/Worker 运行 revision 与镜像 digest，核对与待部署 main 一致；
+- 确认无 active `graph.rebuild`/backfill job、无长事务或 advisory-lock writer。
+
+执行：手动触发 deploy workflow 并置 `technology_stack_legacy_cleanup=true`（与 `apply_database_migration=true` 互斥；workflow 级 `concurrency: production` 防与普通部署并发）。固定顺序为 preflight 校验 → pg_dump 备份并验证可读 → 停服务执行删除事务+写 receipt+切 `legacy_cleaned`+DROP COLUMN → 重启 → health/401/业务不变量验证。
+
+回滚：停止新服务 → 恢复 cleanup 前数据库备份 → 恢复上一兼容镜像与 mode → 启动 → 复核摘要。不靠重新抓取或手工补行恢复。若 cleanup 删除事务已提交但 DROP COLUMN 前中断，重跑 `--execute` 走补删完成路径（不再写第二条 receipt）。
 
 ## CLI 与 MCP
 

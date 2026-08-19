@@ -15,7 +15,6 @@ export const GRAPH_REBUILD_JOB = "graph.rebuild";
 export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
 export const GITHUB_TRENDING_SYNC_JOB = "trending.sync.github";
 export const REPOSITORY_IDENTITY_BACKFILL_JOB = "repository.identity.backfill";
-export const TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB = "technology_stack.entities.backfill";
 
 export const healthAnalysisJobPayloadSchema = z.object({
   executionId: z.string().uuid(),
@@ -95,11 +94,6 @@ export const repositoryIdentityBackfillJobResultSchema = z.object({
     fullName: z.string(),
   })),
   conflicts: z.array(z.record(z.unknown())),
-});
-
-export const technologyStackEntitiesBackfillJobPayloadSchema = z.object({
-  requestedAt: z.string().datetime(),
-  version: z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9._-]+$/),
 });
 
 type JobStore = Pick<Db, "insert" | "update" | "select">;
@@ -210,84 +204,6 @@ export class RepositoryIdentityBackfillVersionUsedError extends Error {
   }
 }
 
-export interface EnqueueTechnologyStackEntitiesBackfillInput {
-  userId: number;
-  version: string;
-  requestedAt?: Date;
-}
-
-export class TechnologyStackEntitiesBackfillVersionUsedError extends Error {
-  readonly code = "TECHNOLOGY_STACK_ENTITIES_BACKFILL_VERSION_USED";
-
-  constructor(version: string, status: Job["status"]) {
-    super(
-      `Technology stack entities backfill version ${version} is already ${status}; use a new version`,
-    );
-    this.name = "TechnologyStackEntitiesBackfillVersionUsedError";
-  }
-}
-
-/**
- * 技术栈实体回填是全局、不可重置的一次性任务。
- * 数据库部分唯一索引保证任意 version 只有一个 active run，且同一 version 跨用户不可复用。
- */
-export async function enqueueTechnologyStackEntitiesBackfillJob(
-  db: JobStore,
-  input: EnqueueTechnologyStackEntitiesBackfillInput,
-): Promise<EnqueueRestartableJobResult> {
-  const requestedAt = input.requestedAt ?? new Date();
-  const payload = technologyStackEntitiesBackfillJobPayloadSchema.parse({
-    requestedAt: requestedAt.toISOString(),
-    version: input.version,
-  });
-  const idempotencyKey = `technology-stack:entities:backfill:${payload.version}`;
-  const [created] = await db
-    .insert(jobs)
-    .values({
-      userId: input.userId,
-      type: TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB,
-      idempotencyKey,
-      payload,
-      maxAttempts: 3,
-      availableAt: requestedAt,
-    })
-    .onConflictDoNothing()
-    .returning();
-
-  if (created) return { job: created, enqueued: true };
-
-  const [active] = await db
-    .select()
-    .from(jobs)
-    .where(and(
-      eq(jobs.type, TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB),
-      inArray(jobs.status, ["queued", "running", "retry_wait"]),
-    ))
-    .orderBy(desc(jobs.createdAt))
-    .limit(1);
-  if (active) return { job: active, enqueued: false };
-
-  const [existingVersion] = await db
-    .select()
-    .from(jobs)
-    .where(and(
-      eq(jobs.type, TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB),
-      eq(jobs.idempotencyKey, idempotencyKey),
-    ))
-    .limit(1);
-  if (existingVersion) {
-    throw new TechnologyStackEntitiesBackfillVersionUsedError(
-      payload.version,
-      existingVersion.status,
-    );
-  }
-
-  throw new Error("Technology stack entities backfill 冲突后无法读取 active job");
-}
-
-/**
- * 使用 `(userId, idempotencyKey)` 保证重复调度只产生一条任务。
- */
 export async function enqueueJob(db: Db, input: EnqueueJobInput): Promise<Job> {
   const [created] = await db
     .insert(jobs)
@@ -431,17 +347,6 @@ export async function getLatestRepositoryIdentityBackfillJob(
   return job ?? null;
 }
 
-export async function getLatestTechnologyStackEntitiesBackfillJob(
-  db: Pick<Db, "select">,
-): Promise<Job | null> {
-  const [job] = await db
-    .select()
-    .from(jobs)
-    .where(eq(jobs.type, TECHNOLOGY_STACK_ENTITIES_BACKFILL_JOB))
-    .orderBy(desc(jobs.createdAt))
-    .limit(1);
-  return job ?? null;
-}
 
 /**
  * 领取下一条可执行任务。

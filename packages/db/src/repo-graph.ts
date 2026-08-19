@@ -11,11 +11,11 @@ import {
 } from "./schema";
 import { detectTechStack, type TechStackNode } from "./tech-stack-catalog";
 import {
-  parseTechnologyStackStorageMode,
   replaceRepositoryTechnologyStacksForCurrentSnapshots,
   selectTopTechnologyStackSlugs,
   type TechnologyStackProjectionRow,
 } from "./technology-stack-entities";
+import { compareBaselineToCurrent } from "./baseline-compare";
 import {
   applySbomBackfillIfCurrent,
   poolRepositoryEmbeddingForCurrentVersion,
@@ -181,7 +181,7 @@ export async function backfillRepoEmbeddings(
   const repos = await db
     .select({ id: repositories.id })
     .from(repositories)
-    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
+    .where(and(isNotNull(repositories.githubRepositoryId), userRepositoryScope(userId)));
 
   let pooled = 0;
   let completed = 0;
@@ -219,7 +219,7 @@ export async function recomputeSimilarityEdges(
     })
     .from(repositories)
     .where(and(
-      eq(repositories.isReference, false),
+      isNotNull(repositories.githubRepositoryId),
       isNotNull(repositories.embedding),
       userRepositoryScope(userId),
     ));
@@ -362,17 +362,16 @@ export async function recomputeDependencyEdges(
       fullName: repositories.fullName,
       updatedAt: repositories.updatedAt,
       sbomPackages: repositories.sbomPackages,
-      isReference: repositories.isReference,
     })
     .from(repositories)
     .where(userRepositoryScope(userId));
 
-  // 只有采集仓库（is_reference=false）的 SBOM 作为依赖解析起点
-  const collectedRepos = allRepos.filter((r) => !r.isReference);
+  // 只有真实 GitHub repository（githubRepositoryId 非空）的 SBOM 作为依赖解析起点
+  const collectedRepos = allRepos.filter((r) => r.githubRepositoryId !== null);
 
-  // fullName(小写) -> { id, isReference }，用于判断依赖目标是否已采集
+  // fullName(小写) -> { id, isReal }，用于判断依赖目标是否为已采集的真实仓库
   const repoByFullName = new Map(
-    allRepos.map((r) => [r.fullName.toLowerCase(), { id: r.id, isReference: r.isReference }]),
+    allRepos.map((r) => [r.fullName.toLowerCase(), { id: r.id, isReal: r.githubRepositoryId !== null }]),
   );
 
   // ---- 第一步：收集唯一 package key；技术栈 detection 不受缓存影响 ----
@@ -509,8 +508,8 @@ export async function recomputeDependencyEdges(
     const indegree = new Map<string, Set<number>>();
     for (const dep of grouped.values()) {
       const inWorkspace = repoByFullName.get(dep.targetFullNameLower);
-      // 已采集目标直接连边，不参与基石候选统计
-      if (inWorkspace && !inWorkspace.isReference) continue;
+      // 已采集真实目标直接连边，不参与基石候选统计
+      if (inWorkspace?.isReal) continue;
       let sources = indegree.get(dep.targetFullNameLower);
       if (!sources) {
         sources = new Set();
@@ -527,7 +526,7 @@ export async function recomputeDependencyEdges(
     .map(([target]) => target);
 
   // deps.dev 可能返回过期 fullName（如 facebook/react），归一后可能与工作区采集行
-  // 合并（react/react）；外部 SOURCE_REPO 本身不再生成“基石依赖”节点。
+  // 合并（react/react）；外部 SOURCE_REPO 本身不再生成"基石依赖"节点。
   const renameMap = new Map<string, string>();
   if (opts.canonicalize && eligibleTargets.length > 0) {
     const canonRows = await db
@@ -638,20 +637,7 @@ export async function recomputeDependencyEdges(
     }
   }
 
-  const stackUsage = new Map<string, { stack: TechStackNode; sources: Set<number> }>();
-  for (const dep of groupedStacks.values()) {
-    let usage = stackUsage.get(dep.stack.slug);
-    if (!usage) {
-      usage = { stack: dep.stack, sources: new Set() };
-      stackUsage.set(dep.stack.slug, usage);
-    }
-    usage.sources.add(dep.sourceRepoId);
-  }
-  const selectedStacks = [...stackUsage.values()]
-    .sort((a, b) => b.sources.size - a.sources.size || a.stack.name.localeCompare(b.stack.name))
-    .slice(0, TECH_STACK_TOP_N);
-
-  // 新表持久化全部 catalog detection；top-N 只影响 legacy/UI projection。
+  // 新表持久化全部 catalog detection；top-N 只影响读投影。
   const stackRelationsByRepository = new Map<number, GroupedStackDep[]>();
   for (const repo of collectedRepos) stackRelationsByRepository.set(repo.id, []);
   for (const dep of groupedStacks.values()) {
@@ -681,7 +667,7 @@ export async function recomputeDependencyEdges(
     };
   });
 
-  // ---- 第七步：写边——已采集仓库保持直连；技术栈使用目录解析 ----
+  // ---- 第七步：写边——已采集真实仓库直接连边（legacy 技术栈边已随 writer 退役）----
   // 重命名归一可能把原本不同的目标合并为同一 fullName，
   // 必须按 (source, target) 二次合并，否则违反唯一约束 (source,target,edgeType)
   const edgeByPair = new Map<
@@ -690,13 +676,13 @@ export async function recomputeDependencyEdges(
       sourceRepoId: number;
       targetRepoId: number;
       packages: BridgingPackage[];
-      resolvedBy: "deps.dev" | "tech-stack-catalog";
+      resolvedBy: "deps.dev";
     }
   >();
 
   for (const dep of grouped.values()) {
     const workspace = repoByFullName.get(dep.targetFullNameLower);
-    if (!workspace || workspace.isReference) continue;
+    if (!workspace || !workspace.isReal) continue;
     const targetRepoId = workspace.id;
     if (targetRepoId === dep.sourceRepoId) continue;
 
@@ -736,77 +722,18 @@ export async function recomputeDependencyEdges(
       throw new Error("Repository 在图重建期间已更新，拒绝提交旧技术栈事实");
     }
 
-    const referenceIdBySlug = new Map<string, number>();
-    for (const { stack } of selectedStacks) {
-      const fullName = `tech-stack/${stack.slug}`;
-      const [row] = await tx
-        .insert(repositories)
-        .values({
-          fullName,
-          name: stack.name,
-          owner: "tech-stack",
-          url: stack.url,
-          description: `${stack.name} 技术栈`,
-          isReference: true,
-          // 技术栈行不参与向量化；completed 是现有枚举中的“不再处理”哨兵值。
-          embeddingStatus: "completed",
-        })
-        .onConflictDoUpdate({
-          target: repositories.fullName,
-          set: {
-            name: stack.name,
-            owner: "tech-stack",
-            url: stack.url,
-            description: `${stack.name} 技术栈`,
-            isReference: true,
-            updatedAt: new Date(),
-          },
-        })
-        .returning({ id: repositories.id });
-      referenceIdBySlug.set(stack.slug, row.id);
-      await tx
-        .insert(userWatchedRepositories)
-        .values({
-          userId,
-          repoId: row.id,
-          repoFullName: fullName,
-          enableDailyReport: false,
-        })
-        .onConflictDoUpdate({
-          target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
-          set: { repoFullName: fullName, updatedAt: new Date() },
-        });
-    }
-
-    const selectedStackSlugs = new Set(selectedStacks.map(({ stack }) => stack.slug));
-    for (const dep of groupedStacks.values()) {
-      if (!selectedStackSlugs.has(dep.stack.slug)) continue;
-      const targetRepoId = referenceIdBySlug.get(dep.stack.slug);
-      if (targetRepoId === undefined) continue;
-      const pairKey = `${dep.sourceRepoId}:${targetRepoId}`;
-      const existing = edgeByPair.get(pairKey);
-      if (existing) {
-        for (const pkg of dep.packages) {
-          const pkgKey = `${pkg.system}:${pkg.name}@${pkg.version}`;
-          if (!existing.packages.some((p) => `${p.system}:${p.name}@${p.version}` === pkgKey)) {
-            existing.packages.push(pkg);
-          }
-        }
-      } else {
-        edgeByPair.set(pairKey, {
-          sourceRepoId: dep.sourceRepoId,
-          targetRepoId,
-          packages: [...dep.packages],
-          resolvedBy: "tech-stack-catalog",
-        });
-      }
-    }
     const edges = [...edgeByPair.values()];
     persistedEdgeCount = edges.length;
     await tx
       .delete(repoRelationships)
       .where(
-        and(eq(repoRelationships.userId, userId), eq(repoRelationships.edgeType, "dependency")),
+        and(
+          eq(repoRelationships.userId, userId),
+          eq(repoRelationships.edgeType, "dependency"),
+          // Phase C P0：全量替换收窄到非 legacy 栈边，
+          // 冻结的 legacy 栈边（resolvedBy=tech-stack-catalog）保持到 cleanup
+          sql`coalesce(${repoRelationships.evidence}->>'resolvedBy', '') <> 'tech-stack-catalog'`,
+        ),
       );
 
     if (edges.length > 0) {
@@ -825,29 +752,17 @@ export async function recomputeDependencyEdges(
         })),
       );
     }
-
-    // 先清理当前用户不再使用的 reference 关联，再清理全局无人引用的轻量实体。
-    await tx.execute(sql`
-      DELETE FROM user_watched_repositories user_repo
-      USING repositories repo
-      WHERE user_repo.repo_id = repo.id
-        AND user_repo.user_id = ${userId}
-        AND repo.is_reference = true
-        AND NOT EXISTS (
-          SELECT 1 FROM repo_relationships edge
-          WHERE edge.user_id = ${userId}
-            AND (edge.source_repo_id = repo.id OR edge.target_repo_id = repo.id)
-        )
-    `);
-    await tx.execute(sql`
-      DELETE FROM repositories
-      WHERE is_reference = true
-        AND id NOT IN (SELECT repo_id FROM user_watched_repositories)
-        AND id NOT IN (SELECT source_repo_id FROM repo_relationships)
-        AND id NOT IN (SELECT target_repo_id FROM repo_relationships)
-    `);
   }));
   await ctx.emit("atomic_commit", 1, 1);
+
+  // Phase C 观察窗口比较：冻结基线单向包含（missing 才 fail）。
+  // legacy writer/GC 已退役，冻结的伪 watch/reference 行保持到 cleanup。
+  const baseline = await compareBaselineToCurrent(db, userId);
+  if (!baseline.equal) {
+    throw new Error(
+      `技术栈冻结基线单向包含失败：missingInNew=${JSON.stringify(baseline.missingInNew)} digestDriftTouched=${baseline.digestDriftTouched}`,
+    );
+  }
 
   return persistedEdgeCount;
 }
@@ -880,20 +795,11 @@ export interface RepoGraphData {
 }
 
 /**
- * 图谱读取入口：按 TECH_STACK_STORAGE_MODE 分流。
- * - legacy_shadow_dual_write：读 legacy reference 投影（现状）；
- * - new_read_dual_write：读新表投影（真实仓库 + stack:<slug> 节点 + 合成 repo→stack 边）。
+ * 图谱读取入口：Phase C 起统一为新表投影（真实仓库 + stack:<slug> 节点 +
+ * 合成 repo→stack 边）；legacy reference 投影读路径已随 legacy writer 退役。
  */
 export async function getRepoGraphData(db: Db, userId: number): Promise<RepoGraphData> {
-  const mode = parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE);
-  if (mode === "new_read_dual_write") {
-    return getRepoGraphDataFromNewTables(db, userId);
-  }
-  if (mode === "new_only" || mode === "legacy_cleaned") {
-    // 进程入口的 supported-set 已拦截；脚本路径误用时显式拒绝而不是静默回退 legacy
-    throw new Error(`getRepoGraphData 不支持 mode=${mode}（Phase C 之前的 revision）`);
-  }
-  return getRepoGraphDataLegacy(db, userId);
+  return getRepoGraphDataFromNewTables(db, userId);
 }
 
 /**
@@ -1051,81 +957,6 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
   return { nodes, edges };
 }
 
-async function getRepoGraphDataLegacy(db: Db, userId: number): Promise<RepoGraphData> {
-  const repos = await db
-    .select({
-      id: repositories.id,
-      fullName: repositories.fullName,
-      name: repositories.name,
-      language: repositories.language,
-      stars: repositories.stars,
-      description: repositories.description,
-      isReference: repositories.isReference,
-    })
-    .from(repositories)
-    .where(userRepositoryScope(userId));
-
-  const nodes: RepoGraphDataNode[] = repos.map((r) => ({
-    id: String(r.id),
-    kind: r.isReference ? "reference" : "repo",
-    fullName: r.fullName,
-    name: r.name,
-    language: r.language,
-    stars: r.stars,
-    description: r.description,
-    isReference: r.isReference,
-  }));
-
-  // 语言节点即时合成：取采集仓库（非 reference）的去重非空语言
-  const languages = new Set<string>();
-  for (const r of repos) {
-    if (!r.isReference && r.language) languages.add(r.language);
-  }
-  for (const lang of languages) {
-    nodes.push({
-      id: `lang:${lang}`,
-      kind: "language",
-      fullName: lang,
-      name: lang,
-      language: null,
-      stars: null,
-      description: null,
-      isReference: false,
-    });
-  }
-
-  const storedEdges = await db
-    .select({
-      source: repoRelationships.sourceRepoId,
-      target: repoRelationships.targetRepoId,
-      type: repoRelationships.edgeType,
-      score: repoRelationships.score,
-    })
-    .from(repoRelationships)
-    .where(eq(repoRelationships.userId, userId));
-
-  const edges: RepoGraphDataEdge[] = storedEdges.map((e) => ({
-    source: String(e.source),
-    target: String(e.target),
-    type: e.type as "similarity" | "dependency",
-    score: e.score,
-  }));
-
-  // written_in 边不入库，查询时由采集仓库指向其语言节点
-  for (const r of repos) {
-    if (!r.isReference && r.language) {
-      edges.push({
-        source: String(r.id),
-        target: `lang:${r.language}`,
-        type: "written_in",
-        score: null,
-      });
-    }
-  }
-
-  return { nodes, edges };
-}
-
 // ============================================================================
 // SBOM 回填
 // ============================================================================
@@ -1162,7 +993,7 @@ export async function backfillSbomPackages(
       sbomPackages: repositories.sbomPackages,
     })
     .from(repositories)
-    .where(and(eq(repositories.isReference, false), userRepositoryScope(userId)));
+    .where(and(isNotNull(repositories.githubRepositoryId), userRepositoryScope(userId)));
 
   const missing = rows.filter(
     (r) => r.sbomPackages == null || r.sbomPackages.some((p) => !p.system)

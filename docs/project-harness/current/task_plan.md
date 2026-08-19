@@ -2,17 +2,17 @@
 
 ## Current Item
 
-- Checklist item: `data-architecture-3b-technology-stack-read-cutover`
-- Title: `技术栈实体分离 Phase B：切换新模型读取`
+- Checklist item: `data-architecture-3c-technology-stack-legacy-cleanup`
+- Title: `技术栈实体分离 Phase C：停止旧写入并清理伪数据`
 - Owner: `codex`
-- Session: `codex-20260819-phase-b`
+- Session: `codex-20260819-phase-c`
 - Status: `doing`
 - Workflow: `running`
 - Updated at: `2026-08-19`
 
 ## Canonical Plan
 
-- Active plan path: `docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md`
+- Active plan path: `docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md`
 
 ## Goal Summary
 
@@ -28,13 +28,13 @@
 
 ## Exit Criteria Summary
 
-- 所有支持的 consumer 使用 `technology_stack` contract，node ID 稳定且无悬空边；
-- API 从新表读取，dual-write 仍维持 legacy projection 零差异；
-- repository/watch/group/collection/Radar/Scheduler 只表达真实 GitHub repository；
-- mixed revision、跨用户、top-N、并发和 rollback 演练通过；
+- 新表是技术栈唯一持久事实来源；
+- legacy writer、compatibility read、`reference/isReference` contract 和 `is_reference` 列均删除；
+- 伪仓库、伪收藏、legacy stack edges 清零，真实业务数据与图谱语义保持一致；
+- cleanup 和 rollback 均完成真实 PostgreSQL 演练，生产 receipt 与独立 closeout approved。
 
 ## Notes
 
-- Canonical plan lives at `docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md`
+- Canonical plan lives at `docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md`
 - This file is a pointer/summary, not the full plan
 - Re-run sync after significant canonical plan changes

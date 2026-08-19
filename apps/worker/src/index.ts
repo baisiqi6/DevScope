@@ -10,13 +10,16 @@ import {
   closeDb,
   createDb,
   parseTechnologyStackStorageMode,
+  TECHNOLOGY_STACK_SUPPORTED_MODES,
 } from "@devscope/db";
 import { runWorker } from "./worker";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  // Phase B：兼容期同时接受 legacy 影子读与新表读；两进程经同一 compose 变量保持一致
-  ["legacy_shadow_dual_write", "new_read_dual_write"],
+  // Phase C new_only revision：legacy writer/读路径已删，不再声称 dual-write；
+  // 部署本 revision 必须与 .env mode 翻转为 new_only 同批完成；
+  // legacy_cleaned 随 cleanup revision 加入（TECHNOLOGY_STACK_SUPPORTED_MODES 单一来源）
+  TECHNOLOGY_STACK_SUPPORTED_MODES,
 );
 
 const db = createDb();

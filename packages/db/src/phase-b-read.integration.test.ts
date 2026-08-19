@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, afterEach } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import pg from "pg";
@@ -33,8 +33,7 @@ function snapshot(githubRepositoryId: string, fullName: string, packages: Array<
       readme: "fixture",
       readmeUrl: null,
       lastFetchedAt: new Date(),
-      isReference: false,
-    },
+          },
     chunks: [],
     hackernews: { status: "success", items: [] },
     releases: { status: "success", items: [] },
@@ -85,10 +84,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     await db.delete(schema.users).where(eq(schema.users.id, userB));
     await pool.end();
   });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("两用户 disjoint watched set：各自图只含自己的 source 与其 stack 边", async () => {
     await commitAndWatch(userA, "950001", `${PREFIX}a/app`, [
       { name: "react", version: "19.0.0", system: "npm" },
@@ -110,7 +105,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
       { repositoryId: repoB.id, technologyStackId: vueStack.id, packages: [{ system: "npm", name: "vue", version: "3.5.0" }] },
     ]);
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graphA = await getRepoGraphData(db, userA);
     const graphB = await getRepoGraphData(db, userB);
 
@@ -143,7 +137,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
       { repositoryId: repoB.id, technologyStackId: reactStack.id, packages: [{ system: "npm", name: "react", version: "18.0.0" }] },
     ]);
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graphA = await getRepoGraphData(db, userA);
     const graphB = await getRepoGraphData(db, userB);
 
@@ -159,7 +152,7 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
   it("正向条件：无 stable ID 的 reference 行即使带伪 watch 也不进入新读", async () => {
     const [fake] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/legacy", name: "legacy", owner: "tech-stack",
-      url: "https://legacy.test", isReference: true, embeddingStatus: "completed",
+      url: "https://legacy.test", embeddingStatus: "completed",
     }).returning();
     await db.insert(schema.userWatchedRepositories).values({
       userId: userA, repoId: fake.id, repoFullName: "tech-stack/legacy", enableDailyReport: false,
@@ -167,7 +160,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     // 一个真实仓库做对照
     await commitAndWatch(userA, "950005", `${PREFIX}a/real`, []);
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graph = await getRepoGraphData(db, userA);
     const repoNodes = graph.nodes.filter((n) => n.kind === "repo");
     expect(repoNodes).toHaveLength(1);
@@ -179,7 +171,7 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     const committed = await commitAndWatch(userA, "950006", `${PREFIX}a/edges`, []);
     const [fakeStackRow] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/vite", name: "Vite", owner: "tech-stack",
-      url: "https://vite.test", isReference: true, embeddingStatus: "completed",
+      url: "https://vite.test", embeddingStatus: "completed",
     }).returning();
     await db.insert(schema.repoRelationships).values([
       {
@@ -189,7 +181,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
       },
     ]);
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graph = await getRepoGraphData(db, userA);
     expect(graph.nodes.some((n) => n.id === String(fakeStackRow.id))).toBe(false);
     expect(graph.edges.filter((e) => e.target === String(fakeStackRow.id))).toHaveLength(0);
@@ -215,7 +206,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
       packages: [{ system: "npm", name: "react", version: "18.0.0" }],
     })).rejects.toThrow();
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graph = await getRepoGraphData(db, userA);
     expect(graph.edges.filter((e) => e.target === "stack:react")).toHaveLength(1);
   });
@@ -225,7 +215,7 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     // 真实库中造一行 reference（无 stable ID）
     const [fake] = await db.insert(schema.repositories).values({
       fullName: "tech-stack/sqlcheck", name: "sqlcheck", owner: "tech-stack",
-      url: "https://t.test", isReference: true, embeddingStatus: "completed",
+      url: "https://t.test", embeddingStatus: "completed",
     }).returning();
     const rows = await db.select({ id: schema.repositories.id })
       .from(schema.repositories)
@@ -253,7 +243,6 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
       })),
     );
 
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const graph = await getRepoGraphData(db, userA);
     const stackNodes = graph.nodes.filter((n) => n.kind === "technology_stack");
     const stackEdges = graph.edges.filter((e) => e.target.startsWith("stack:"));
@@ -264,25 +253,5 @@ describeIntegration("phase B new read projection on PostgreSQL", () => {
     expect(stackNodes.some((n) => n.id === "stack:stack00")).toBe(true);
   });
 
-  it("legacy mode（默认）不读新表：reference 投影保留、stack 节点不出现", async () => {
-    const committed = await commitAndWatch(userA, "950008", `${PREFIX}a/legacymode`, []);
-    const [reactStack] = await db.insert(schema.technologyStacks).values({
-      slug: "react", name: "React", url: "https://react.dev", description: "React 技术栈",
-    }).returning();
-    await db.insert(schema.repositoryTechnologyStacks).values({
-      repositoryId: committed.repository.id, technologyStackId: reactStack.id, packages: [],
-    });
-    const [fakeStackRow] = await db.insert(schema.repositories).values({
-      fullName: "tech-stack/react", name: "React", owner: "tech-stack",
-      url: "https://react.test", isReference: true, embeddingStatus: "completed",
-    }).returning();
-    await db.insert(schema.userWatchedRepositories).values({
-      userId: userA, repoId: fakeStackRow.id, repoFullName: "tech-stack/react", enableDailyReport: false,
-    });
 
-    // 未设 mode → 默认 legacy_shadow_dual_write
-    const graph = await getRepoGraphData(db, userA);
-    expect(graph.nodes.some((n) => n.kind === "technology_stack")).toBe(false);
-    expect(graph.nodes.some((n) => n.kind === "reference")).toBe(true);
-  });
 });
