@@ -222,11 +222,11 @@
     {
       "id": "data-quality-5-postgres-integration-gates",
       "title": "建立真实 PostgreSQL 迁移、事务与并发门禁",
-      "status": "todo",
+      "status": "doing",
       "priority": "p0",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": "codex",
+      "selected_in_session": "codex-20260819-pg-gates",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-architecture-3-technology-stack-entities",
         "data-correctness-4-deps-cache-recovery"
@@ -237,10 +237,28 @@
       "verification": "",
       "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
-        "status": "todo"
+        "status": "changes_requested",
+        "updated_at": "2026-08-19",
+        "branch": "codex/pg-integration-gates"
       },
-      "review": null,
-      "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md"
+      "review": {
+        "decision": "changes_requested",
+        "reviewer": "reviewer-plan",
+        "phase": "running",
+        "updated_at": "2026-08-19",
+        "summary": "P1: 0004 baseline 机制/drift 检测归属/文件并行冲突；P2: 显式 test_* 复用矛盾、竞态映射缺失、无 Files In Scope、CI-本地差异未定；修订中"
+      },
+      "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md",
+      "artifacts": {
+        "branch": "codex/pg-integration-gates"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260819-pg-gates",
+        "acquired_at": "2026-08-19T06:51:40Z",
+        "expires_at": "2026-08-19T08:51:40Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "product-6-public-multi-user-hardening",

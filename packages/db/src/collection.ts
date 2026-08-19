@@ -28,7 +28,7 @@ import {
 
 export type CollectionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-const COLLECTION_ADVISORY_LOCK_NAMESPACE = 0x4453_5643;
+export const COLLECTION_ADVISORY_LOCK_NAMESPACE = 0x4453_5643;
 
 export type SourceSnapshot<T> =
   | { status: "success"; items: T[] }
