@@ -61,7 +61,7 @@ export function resolveIntegrationGate(input: IntegrationGateInput): Integration
     };
   }
   if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") {
-    reasons.push("TEST_DATABASE_URL 必须使用 postgresql:// 协议");
+    reasons.push("TEST_DATABASE_URL 必须使用 postgresql:// 或 postgres:// 协议");
     return { status: "rejected", reasons };
   }
 

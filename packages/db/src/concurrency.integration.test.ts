@@ -96,7 +96,7 @@ describeIntegration("concurrency and lease matrix on PostgreSQL", () => {
     );
   });
 
-  it("FOR UPDATE SKIP LOCKED：两个连接并发领取拿到不同 job，绝不重复", async () => {
+  it("FOR UPDATE SKIP LOCKED：两个连接并发领取拿到不同 job，绝不重复（结果断言；真实重叠证明见最后一个用例的 pg_locks 观测）", async () => {
     await enqueueJob(db, {
       userId, type: "demo.job.a", idempotencyKey: "a", payload: {},
     });

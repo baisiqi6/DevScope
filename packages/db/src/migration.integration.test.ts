@@ -92,29 +92,27 @@ describeIntegration("migration matrix on PostgreSQL", () => {
 
   it("drift 校验：篡改库内 hash 或多余 journal 行都能检出", async () => {
     const client = await pool.connect();
+    const [first] = listMigrationFiles();
     try {
       await client.query("update drizzle.__drizzle_migrations set hash = 'tampered' where id = 1");
-      let drift = await verifyMigrationJournal(connectionString!);
+      const drift = await verifyMigrationJournal(connectionString!);
       expect(drift.some((d) => d.kind === "hash")).toBe(true);
-
-      // 还原第一条
-      const [first] = listMigrationFiles();
-      await client.query("update drizzle.__drizzle_migrations set hash = $1 where id = 1", [first.hash]);
-      drift = await verifyMigrationJournal(connectionString!);
-      expect(drift).toEqual([]);
-
-      // 多余行 → count drift
-      await client.query(
-        "insert into drizzle.__drizzle_migrations (hash, created_at) values ('extra', 999)",
-      );
-      drift = await verifyMigrationJournal(connectionString!);
-      expect(drift.some((d) => d.kind === "count")).toBe(true);
-      await client.query("delete from drizzle.__drizzle_migrations where hash = 'extra'");
-      drift = await verifyMigrationJournal(connectionString!);
-      expect(drift).toEqual([]);
     } finally {
+      // 无论断言成败都还原，避免把篡改状态留给本 run 剩余用例
+      await client.query("update drizzle.__drizzle_migrations set hash = $1 where id = 1", [first.hash]);
       client.release();
     }
+    expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
+
+    // 多余行 → count drift（同样在 finally 中清理）
+    try {
+      await client.query("insert into drizzle.__drizzle_migrations (hash, created_at) values ('extra', 999)");
+      const drift = await verifyMigrationJournal(connectionString!);
+      expect(drift.some((d) => d.kind === "count")).toBe(true);
+    } finally {
+      await client.query("delete from drizzle.__drizzle_migrations where hash = 'extra'");
+    }
+    expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
   });
 
   it("0004 era baseline 升级到最新：dedupe、userId 回填、bigint、radar 合并、deps 回填", async () => {
@@ -229,7 +227,7 @@ describeIntegration("migration matrix on PostgreSQL", () => {
       const known = mappings.rows.find((r) => r.package_name === "era-known")!;
       expect(known.resolution_status).toBe("resolved");
       expect(new Date(known.retry_after).getTime()).toBeGreaterThan(Date.now());
-      const unknown = mappings.rows.find((r) => r.package_name === "era-null')") ?? mappings.rows.find((r) => r.package_name === "era-null")!;
+      const unknown = mappings.rows.find((r) => r.package_name === "era-null")!;
       expect(unknown.resolution_status).toBe("error");
       expect(new Date(unknown.retry_after).getTime()).toBeGreaterThan(Date.now());
 

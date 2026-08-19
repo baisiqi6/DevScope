@@ -32,7 +32,14 @@ export default async function setup() {
   }
 
   const startedAt = Date.now();
-  const prepared = await prepareIntegrationDatabase(gate);
+  let prepared: Awaited<ReturnType<typeof prepareIntegrationDatabase>>;
+  try {
+    prepared = await prepareIntegrationDatabase(gate);
+  } catch (error) {
+    // 迁移应用失败也尽量清掉已创建的库，避免 fail-closed 路径残留
+    await dropIntegrationDatabase(gate, gate.testDatabaseName).catch(() => undefined);
+    throw error;
+  }
   // 保留 admin 入口供矩阵用例派生额外测试库
   process.env.TEST_DATABASE_ADMIN_URL = gate.adminUrl;
   process.env.TEST_DATABASE_URL = prepared.url;

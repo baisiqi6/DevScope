@@ -237,7 +237,7 @@
       "verification": "",
       "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
-        "status": "review_approved",
+        "status": "review_requested",
         "updated_at": "2026-08-19",
         "branch": "codex/pg-integration-gates"
       },
@@ -250,7 +250,8 @@
       },
       "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md",
       "artifacts": {
-        "branch": "codex/pg-integration-gates"
+        "branch": "codex/pg-integration-gates",
+        "review_packet": "docs/project-harness/current/review-packet.md"
       },
       "lease": {
         "owner": "codex",

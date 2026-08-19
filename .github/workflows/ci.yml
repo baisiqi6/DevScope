@@ -52,7 +52,6 @@ jobs:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: devscope_admin_entry
         ports:
           - 5432:5432
         options: >-
@@ -84,8 +83,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build internal packages
-        run: pnpm --filter @devscope/shared --filter @devscope/db build
+      - name: Build internal packages (依赖闭包 shared→ai→db)
+        run: pnpm turbo run build --filter=@devscope/db...
 
       - name: Real PostgreSQL integration gates
         run: pnpm test:integration

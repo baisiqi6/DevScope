@@ -2,24 +2,24 @@
 
 ## Subject
 
-- Checklist item: `data-correctness-4-deps-cache-recovery`
+- Checklist item: `data-quality-5-postgres-integration-gates`
 - Reviewer: `reviewer-impl`
 - Updated at: `2026-08-19`
-- Canonical plan path: `docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md`
 
 ## Item Snapshot
 
-- Title: 使依赖解析缓存可恢复且具备外呼预算
+- Title: 建立真实 PostgreSQL 迁移、事务与并发门禁
 - Status: doing
 - Workflow status: review_approved
-- Priority: p1
+- Priority: p0
 - Owner: codex
-- Session: codex-20260818-deps-cache-recovery
-- Dependencies: data-correctness-2-atomic-replacement
+- Session: codex-20260819-pg-gates
+- Dependencies: data-architecture-3-technology-stack-entities, data-correctness-4-deps-cache-recovery
 
 ## Acceptance
 
-resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外呼具备 timeout、有界并发和单次预算；warm rebuild 不重复大规模外呼，graph 原子写与 shadow zero-diff 保持不变。
+root test:integration 在隔离 PostgreSQL 16 + pgvector 与 CI service 中覆盖 migration、constraint、transaction、advisory lock、lease 和真实双连接交错；危险连接 fail closed，不接触开发/生产库。
 
 ## Verification
 
@@ -27,7 +27,7 @@ resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外
 
 ## Handoff
 
-按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。
+Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。
 
 ## Review Inputs
 
@@ -40,174 +40,128 @@ resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外
 ## Canonical Plan Content
 
 ```md
-# 依赖解析缓存恢复与外呼预算计划
+# 真实 PostgreSQL 迁移、事务与并发持续门禁
 
-> Item：`data-correctness-4-deps-cache-recovery`
-> Priority：P1
-> 状态：已领取；plan review 两轮完成，第一轮 `changes_requested` 已修订，第二轮 `approved`
-> 前置：`data-correctness-2-atomic-replacement`
-> 阻断：`data-architecture-3-technology-stack-entities` 的 Phase B
+## Item
+
+- Checklist item：`data-quality-5-postgres-integration-gates`
+- Priority：P0
+- 前置：Phase A closeout、deps.dev cache recovery closeout（均已 done）
+- 状态：plan review 第一轮 `changes_requested`，findings 已修订待复核；现有集成用例 34 个（collection 10 + stack 14 + deps-cache 10）
 
 ## Outcome
 
-让 graph rebuild 的 deps.dev 映射与 GitHub repository canonicalization 同时满足：临时失败可恢复、真阴性可缓存、单次外呼有超时/并发/总量预算、长任务有可观测进度、最终 graph 写入继续 fail closed。修复后不得改变技术栈目录、top-N、edge evidence、repository identity 或 Phase A 新旧投影语义。
+把现有按任务临时运行的 PostgreSQL integration scripts/tests 收敛为一个开发机与 CI 共用的 `pnpm test:integration` 门禁。它使用隔离的 PostgreSQL 16 + pgvector，覆盖真实 migration、constraint、transaction、advisory lock、lease 和双连接强制交错；任何时候都不能连接开发库或生产库。
 
-## 生产触发证据
+## Current Gap
 
-2026-08-18 的 Phase A graph job #9 从 `14:20:25.255Z` 运行到 `15:31:09.406Z`，总计约 70 分 44 秒，最终成功：
+- `packages/db/src/collection.integration.test.ts` 与 `technology-stack-entities.integration.test.ts` 已证明真实数据库用例有价值，但仍是分散资产；
+- `.github/workflows/ci.yml` 目前没有 PostgreSQL service，也没有正式 `test:integration` step；
+- 大量快速测试 mock Drizzle builder，无法证明 DDL、partial index、JSONB、timestamp precision、`FOR UPDATE SKIP LOCKED`、rollback 和 advisory-lock 行为；
+- 本 item 不重写现有测试框架，只把成熟 fixture、runner 和 CI 生命周期规范化。
 
-- 40 个真实仓库包含 19007 个唯一 SBOM package/version；首次运行补齐约 6000 个 deps.dev cache miss；
-- 3053 个外部 GitHub target 达到当前 `CANONICALIZATION_MIN_INDEGREE=2` 门槛，逐个串行 canonicalize；
-- `resolveViaDepsDev` 使用无显式 timeout 的原生 `fetch`；`getCanonicalFullName` 也没有 timeout；
-- deps.dev 网络错误与权威无映射都可能落为 `source_repo=null`，无法按失败类型恢复；
-- GitHub canonicalization 没有持久 freshness，warm rebuild 仍会重复外呼；
-- job lease 持续健康、数据库没有长事务，证明瓶颈位于事务外网络阶段；但 status API 只有 running/terminal，没有 stage/total/completed。
+## Isolation Contract
 
-以上数字是日期化生产基线，不得硬编码为长期产品常量。
+- 默认使用 `pgvector/pgvector:pg16`，与项目开发/生产大版本一致；
+- `TEST_DATABASE_URL` 只允许指向 admin 入口（`postgres` 库）；测试库名一律由 runner 唯一派生（`devscope_test_<random>`）并记录，**不接受显式复用**（防并发冲突与 cleanup 违约）；禁止 `devscope`、`template*` 等业务/系统库名；
+- 只有显式的 `TEST_DATABASE_URL` 可启用 integration tests；host/database allowlist、`NODE_ENV=test` 与 `TEST_DATABASE_DESTRUCTIVE=1` sentinel 任一不满足即拒绝运行；not-configured 在本地=skip、在 CI（`INTEGRATION_REQUIRED=1`，仅 integration job 注入）=fail closed；quality job 不注入任何 `TEST_DATABASE_*` 变量；
+- 集成文件单进程串行执行（`fileParallelism: false` + singleFork）：多个集成文件共享同一派生库，文件级并发会互相清理数据；unit config 排除 `*.integration.test.ts` 保持 `pnpm test` 快速；
+- test setup 只允许删除自己创建并记录的临时 database/schema；cleanup 使用明确目标，不接受通配符或环境变量空值；
+- 并发测试必须使用至少两个独立连接，不能用单连接 promise 顺序伪装竞争；
+- 外网、真实 GitHub、deps.dev、AI provider 和生产 credentials 一律不参与。
 
-## Authority And Sequencing
+## Execution Plan
 
-下一位 Worker 按以下顺序执行；不得跳过独立 review、直接进入 Phase B，或顺手重做 graph UI：
+### 1. Inventory and canonical runner
 
-1. 只读复核最新 `main`、本计划、当前生产 migration/job/cache 基线；
-2. 请求独立 plan review，关闭 correctness、rate-limit、lease、migration 和 rollback finding；
-3. 以 RED tests 固化失败分类、TTL、timeout、并发、预算、进度和 warm-run 行为；
-4. 做最小实现与显式 migration，完成隔离 PostgreSQL 和全仓门禁；
-5. 请求独立 implementation review，修完全部 P0–P3；
-6. PR/CI 通过后合并；生产备份并显式迁移，部署兼容 revision；
-7. 运行一次受预算约束的 rebuild，再运行一次 warm-cache rebuild，核对新旧技术栈投影和业务不变量；
-8. 只记录证据，不切 `new_read_dual_write`；交回 Reviewer 做 production closeout。
+- 盘点现有 integration tests、migration runner、Docker Compose、CI 与 package scripts；
+- 选择最小公共入口：root `pnpm test:integration` 调用 DB package 的 integration config；
+- 复用 Vitest、Drizzle migration 和现有 fixture helper，不引入 Testcontainers 等新框架，除非独立 plan review 证明 CI service 无法满足隔离/并发要求；
+- 把连接建立、migration、fixture、强制交错和 cleanup helper 放在 `packages/db`，其他 package 只通过公开 test helper 使用。
 
-本计划不授权删除 legacy reference/watches/edges、切换 graph read contract、执行 Phase C cleanup 或修改同机其他站点。
+### 2. Migration matrix
 
-## Required Semantics
+drizzle migrator 只按 `created_at` 跳过、不比对 hash，且在 vitest vite-node 环境下不可用；因此 runner 自管迁移应用：按 journal 顺序逐文件单事务执行 SQL，并手写 `drizzle.__drizzle_migrations` 行（hash=文件 SHA-256，created_at=journal.when，与生产逐条一致）。至少覆盖：
 
-### deps.dev resolution state
+1. 空库从 `0000` 顺序迁移到最新，pgvector extension 与 migration metadata 一致；
+2. **0004 baseline 升级**：`applyMigrationRange(0..3)` 后按 0004 之前的时点形态播种 era fixture（0004 本身执行 dedupe/回填，fixture 必须先于它存在）——重复 `(user_id, repo_id)` 的 watch 行、无 `user_id` 的 repo_relationships 边、接近 int4 上限的 releases 行（0006 前 int4）、重复 `github_repo_id` 的 radar_candidates 行（0007 合并语义）、`source_repo` null 与非空混合的 package_repo_mappings 行（0009 回填）——再 `applyMigrationRange(4..latest)` 续迁，断言 dedupe/回填/类型扩大摘要；
+3. **drift 检测由 runner 自建**：`verifyMigrationJournal` 按顺序比对库内 hash 行与本地文件 SHA-256，多余/缺失/不一致即 fail closed；用例覆盖一致通过与篡改检测（临时副本模拟历史文件变更）；
+4. Release bigint、repository stable ID、atomic replacement、technology-stack expand、deps-cache migration 的数据前后摘要（即上述 fixture 的断言口径）；
+5. Phase C 实现后追加 cleanup 与 restore rehearsal；未实现的未来 migration 不在本 item 伪造测试。
 
-以 [domain-model.md](../../domain-model.md) 为唯一领域定义，为 `package_repo_mappings` 增加最小状态：
+### 3. Transaction and concurrency matrix
 
-- `resolved`：权威响应含 `SOURCE_REPO`；保存 canonical package key 与 source repository；
-- `not_found`：只有权威 404 或成功响应明确无 `SOURCE_REPO` 才能进入；使用长 TTL；
-- `error`：timeout、DNS/TLS/network、429、5xx、非法响应等；保存脱敏短错误和短 `retry_after`；
-- `retry_after` 记录下一次允许外呼的时间：`error` 为短退避，`not_found` 为长 TTL 复查点，`resolved` 为其长 TTL 复查点；未到期不得重复外呼；
-- 不得把 transient failure 写成永久 `null`，不引入第四状态。
+复用/新增映射（现有 34 例 = collection 10 + technology-stack 14 + deps-cache 10）：
 
-`resolved` 的复查语义（对齐 domain-model「只在到期或规范名称校正时更新」）：
+| 矩阵条目 | 归属 |
+|---|---|
+| chunks/HN/releases failure 保旧、`success([])` 清旧、rollback | 复用（collection 10 例） |
+| technology-stack atomic replacement、backfill checkpoint、lost lease 零写入 | 复用（stack 14 例） |
+| deps.dev 三态/TTL/预算 fail-retry | 复用（deps-cache 10 例） |
+| collection-vs-collection advisory lock 交错结果 | 复用（既有 Promise.all 用例作结果断言） |
+| **barrier 证明两条事务实际重叠**（一事务持锁、另一事务在 pg_locks 中观测到等待） | 新增 |
+| **jobs `FOR UPDATE SKIP LOCKED` 双连接**：两条连接同时领取、同 job 只一方成功 | 新增 |
+| **renewJobLease / recoverExpiredJobs**（现仅 mock 覆盖） | 新增 |
+| **terminal receipt 部分唯一索引**（active singleton） | 新增 |
+| **Release ID > 2147483647 无损往返**（现用例未超限） | 新增 |
+| **repository rename/transfer 冲突合并与唯一索引**（rename 路径从未集成验证） | 新增 |
 
-- TTL 内的 warm rebuild 对该行零 deps.dev 外呼，直接使用缓存 `source_repo`；
-- 只在 TTL 到期或 canonical rename 校正涉及该目标时复查；复查失败降级为 `error` + 短 `retry_after`，并把旧值搬入 `last_resolved_repo` 保留 resolution evidence，不清空语义也不伪造权威；
-- cache 读取规则统一为：`resolved`（TTL 内）按缓存值使用；`not_found`（复查点前）与 `error`（`retry_after` 前）不外呼、按无映射参与本次图计算；到期后按可重试 miss 处理；`error` 行的 `last_resolved_repo` 只是证据，不得当作权威映射使用。
+每个竞态用例设置短 statement/test timeout 防止 CI 挂死。
 
-迁移语义（已拍板，不留实现期决策）：
+### 4. CI integration
 
-- 非空 `source_repo` 历史行 → `resolution_status='resolved'`；
-- 历史 `source_repo=null` 行（日期化基线约 302 行）→ `resolution_status='error'` + 以迁移执行时间为基准的短 `retry_after`；禁止解释为 `not_found`；
-- `resolution_status` 列 DEFAULT 固定为 `'error'`：回滚窗口内旧镜像写入的新 `source_repo=null` 行不会被新代码误读为权威结论，代价仅是重查一次；
-- 历史行用确定性条件 UPDATE 回填，不让 `db:generate` 的朴素 DEFAULT 解释存量数据；重复执行迁移不改变已回填行的状态；
-- CHECK 约束：`resolution_status='resolved'` 当且仅当 `source_repo IS NOT NULL`（降级证据只存在于 `last_resolved_repo`，不污染该约束）。
+- `quality` job 保持现状（不注入 `TEST_DATABASE_*`）；
+- 独立 `integration` job：service `pgvector/pgvector:pg16`（固定 major tag；health check 通过后运行），env 注入 `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres`、`TEST_DATABASE_DESTRUCTIVE=1`、`NODE_ENV=test`、`INTEGRATION_REQUIRED=1`；
+- 两 job 并行且都作为 PR/`main` 必需门禁；**branch protection 的 required check 由 operator 在合并前于 GitHub 仓库设置中添加**（不在 ci.yml 能力内，作为交付步骤记录）；
+- 固定 Node 22 / pnpm 9.15.4 / pgvector:pg16；test 日志输出 database name、migration range、case 名与耗时，不输出连接密码；job timeout 20 分钟、单测 timeout 30s、cleanup 在 always 路径（globalSetup teardown）。
 
-### External request budget
 
-- deps.dev 与 GitHub 请求均使用显式 AbortSignal timeout；timeout 必须有默认值和严格范围校验；`getCanonicalFullName` 同步补上 timeout；
-- 预算口径覆盖一次 graph attempt 内的全部外部 HTTP：deps.dev resolution、GitHub canonicalization 和 SBOM backfill 阶段的 GitHub 请求都计入预算并进入进度计数，不允许阶段外游离请求；
-- 预算按 provider 分列（deps.dev 上限、GitHub 上限），任一耗尽即在 graph 原子提交前 fail closed；已写入的独立 cache receipt 可供下一次重试复用；
-- 默认预算必须让日期化冷启动基线（约 6000 deps.dev miss + 3053 canonicalization + SBOM 请求）在单次 attempt 内收敛并留 headroom；若未来数据规模增长导致预算内无法完成，`failJob` 重试与终态重启（`enqueueRestartableJob`）是设计内恢复路径，须在 runbook 记录操作步骤；
-- 对 package key 和 target fullName 先去重，再使用小型 bounded worker pool；默认并发为保守个位数，且在并发之外保留最小请求间隔 pacing，避免 GitHub secondary rate limit；禁止无界 `Promise.all`；
-- 429/rate-limit 必须保留 retry evidence，尊重响应 `Retry-After` 暂停对应 provider 的后续请求并写可解释 receipt，不得继续打满配额；GitHub core 必须保留运维 headroom；
-- 配置项只覆盖 timeout、concurrency、pacing、request budget 和 TTL/backoff；解析语义不允许由环境变量切换；非法配置启动时 fail closed；
-- 网络等待始终位于业务 graph transaction 之外，最终提交继续复核 stable ID、collection token、SBOM baseline 与 lease authority。
 
-默认值由实现者基于生产 19007/约 6000/3053 基线提出并经 review 确认；不得为了让测试变快而采用生产不可用的极端值。
+### 5. RED, implementation and review
 
-### Canonicalization freshness
-
-- GitHub fullName canonicalization 的持久 freshness 落在紧邻新表（如 `github_repo_name_canonicalizations`：小写 `full_name` 唯一键、`canonical_full_name`、`resolution_status`、`retry_after`、`last_error`、`checked_at`）；404 归一为 `not_found` + 长 TTL（沿用原名），网络失败为 `error` + 短退避。不把 fullName 键过载进 `package_repo_mappings` 的 `(system, name, version)` 唯一键，也不新建通用第二套 cache/service；
-- 同一 target 在一次 rebuild 最多请求一次；freshness 未到期的行直接使用持久 `canonical_full_name`，到期后允许复查；
-- rename 结果批量、确定性回写相关 `package_repo_mappings.source_repo`（只改命名，不改 resolution 状态），不得擦除 package resolution evidence；rename 复查失败保持原 fullName 维持既有 best-effort graph 行为，但必须留下可重试状态；
-- `resolved` 的 canonicalization 行复查失败按 deps.dev 同款语义降级 `error` 并保留旧值证据。
-
-### Progress And Receipts
-
-`graph.getRebuildGraphStatus` 增加向后兼容的 optional progress，至少包含：
-
-- `stage`：`embedding | similarity | sbom | deps_resolution | github_canonicalization | atomic_commit | shadow_compare`；
-- 当前 stage 的 `completed/total`；
-- `cacheHits/cacheMisses/externalRequests/timeouts/retryableErrors` 的脱敏计数；
-- terminal result 保留现有字段，并增加各 stage duration 与预算消耗摘要。
-
-进度存储载体固定为 `jobs` 表新增 nullable `progress` 列（显式迁移），与 `result` 分离；写入只能由当前 lease owner 通过 `WHERE id = … AND lease_owner = … AND lease_expires_at > now()` 的条件 UPDATE 完成（参照 technology-stack-entities 的 lease-authoritative 先例）。进度更新不能成为业务事实来源；lost lease 后旧 Worker 不得继续刷新进度或提交 graph——原子提交路径必须复核 lease authority，lost lease 的提交尝试被拒绝。
-
-## Test-Driven Implementation
-
-### RED tests
-
-1. deps.dev 200+SOURCE_REPO → `resolved`；200 无 SOURCE_REPO/权威 404 → `not_found`；429/5xx/network/timeout/malformed → `error`；
-2. `error.retry_after` 前不请求，到期后重试并转 `resolved`；`not_found` 长 TTL 内不请求，到期后可复查；`resolved` TTL 内零外呼，到期复查成功刷新值；
-3. 历史 non-null/null migration fixture 的状态转换无伪造权威结论（null → `error`+短 `retry_after`，非 null → `resolved`）；重复 migration 不漂移；DEFAULT `'error'` 与 CHECK 约束生效；
-4. fake HTTP server 强制并发交错，观测到的最大并发不超过配置且保留 pacing；单请求超时后 job 可恢复，无永久 pending Promise；
-5. request budget 耗尽时 graph relation/legacy edges/shadow receipt 零写入，cache progress 可复用；下一 attempt 从 cache 继续；SBOM 阶段请求同样计入预算与进度；
-6. 同一 package key/target 在一次运行只外呼一次；freshness 未到期的第二次 warm rebuild 对 GitHub canonicalization 恰好 0 次请求、对 TTL 内 `resolved` 行 0 次 deps.dev 请求，所有剩余请求可逐条解释；
-7. 429/rate-limit 停止继续消耗预算、尊重 `Retry-After`，并产生可解释 retry receipt；日志与 API 不泄露 token、URL credential 或响应敏感内容；
-8. progress 单调、stage 合法（含 `similarity`）、旧 consumer 可忽略新增字段；lost lease 的旧 Worker 无进度/终态写入，且其 graph 原子提交被 lease authority 复核拒绝；
-9. `resolved` 复查失败降级为 `error`：`last_resolved_repo` 保留旧值证据，本轮按无映射参与图计算，`retry_after` 到期后重试恢复；
-10. canonical rename 批量回写相关 `package_repo_mappings.source_repo` 且不擦除 resolution evidence；rename 复查失败保持原 fullName 并留下可重试状态；
-11. 真实 PostgreSQL 验证 migration、TTL 转移、并发 upsert、reclaim、budget fail/retry、jobs `progress` 的 lease-authoritative 写入与最终 shadow zero-diff；
-12. 技术栈投影、repo-to-repo edges、repository/watch/group/MCP 列表回归不变。
-
-### Implementation constraints
-
-- 不以 `any`、关闭 schema validation、延长 Worker lease 或取消 retry 掩盖根因；
-- 不在 transaction 内执行外部 HTTP；
-- 不引入 Redis、第二套 job queue、图数据库、通用 Repository layer 或新微服务；
-- 不把 2026-08-18 的生产计数写死进代码或测试；
-- 不把 GitHub canonicalization failure 误当技术栈 detection failure；
-- 不删除 job #27 的 dead receipt 或 job #9 的 succeeded receipt。
+1. 先证明危险 database name、缺 sentinel/NODE_ENV 会 fail closed；缺少 `TEST_DATABASE_URL` 在本地 skip、在 CI（`INTEGRATION_REQUIRED=1`）fail；migration drift 由 `verifyMigrationJournal` 检出；
+2. 让现有 integration cases 经统一 runner 运行，再补齐矩阵中的缺口；
+3. `pnpm test:integration` 连续运行两次，证明无残留状态；
+4. 本地/CI 都运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:integration`、`pnpm build`；
+5. 独立 Reviewer 检查隔离、强制交错真实性、flakiness、timeout 和 secret handling；
+6. PR/CI 全绿后合并，本 item 不需要生产 deploy 或生产数据库写入。
 
 ## Files In Scope
 
-- `packages/db/src/repo-graph.ts`、`packages/db/src/schema/index.ts`、相邻 cache/job helpers 和 tests；
-- `packages/shared/src/github-client.ts`、graph status schema 与 tests；
-- `apps/worker/src/worker.ts`、`apps/api/src/router/graph.ts` 及 tests；
-- 显式 Drizzle migration 与 metadata：`package_repo_mappings` 状态列（含 `last_resolved_repo` 证据列）+ CHECK + DEFAULT `'error'` 回填、`github_repo_name_canonicalizations` 新表（不套用同款 CHECK，降级证据保留在 `canonical_full_name` 本身）、`jobs.progress` 列；
-- `.env.example`、[runbook.md](../../runbook.md) 中新增配置（timeout/concurrency/pacing/budget/TTL）和终态重启操作步骤；
-- 本 item 的 plan/review/verification 与日期化 progress。
+- `packages/db/src/test-integration/`：guard、runner（含 `verifyMigrationJournal`）、global-setup、setup-file 及其单测；
+- `packages/db/vitest.config.ts`（unit 排除 integration）、`packages/db/vitest.integration.config.ts`（新）；
+- `packages/db/package.json` 与 root `package.json` 的 `test:integration` scripts；
+- 新增 `packages/db/src/migration.integration.test.ts`、`packages/db/src/concurrency.integration.test.ts`；
+- `.github/workflows/ci.yml`（integration job）；
+- `.env.example`（TEST_DATABASE_* 说明）与 [runbook.md](../../runbook.md)（本地 docker pg16 流程、变量语义、CI 必跑 vs 本地可选差异、required check 操作步骤）。
 
 ## Local Gates
 
 ```bash
-pnpm db:generate
-git diff --check
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:<port>/postgres \
+  TEST_DATABASE_DESTRUCTIVE=1 NODE_ENV=test pnpm test:integration
 ```
 
-另需隔离 PostgreSQL 16 + pgvector 从 `0000` 应用全部 migration，并运行本计划的真实 HTTP/DB interleaving。测试不得连接生产数据库。
+连续运行两次 `test:integration`，断言无残留数据库。
 
-## Production Gates
+## Handoff Rules For Later Items
 
-1. preflight：目标 SHA、干净 worktree、无 active graph/backfill job、当前 mode 仍为 `legacy_shadow_dual_write`、备份空间和长事务检查；
-2. 有 migration 时创建可读 `pg_restore --list` 的即时备份，再显式迁移；禁止 `db:push`；
-3. 部署后 API/Web/Worker revision 一致，migration row 只增加预期数量，mode 不变；
-4. 运行受预算 rebuild，记录 stage receipt、external request counts、timeouts/errors、duration 和 shadow compare；
-5. 再运行 warm-cache rebuild，要求不重复大规模 deps.dev/GitHub 外呼，且耗时显著下降；不设置依赖外网偶然性的脆弱秒级 SLA，但必须解释所有剩余请求；
-6. 动态核对 real/reference repository、watched、new/legacy stack relations、source count、packages evidence 摘要、repo-to-repo edges；不使用固定 79/25/379 作为永久常量；
-7. API/Web health 200、未认证入口 401、Keychain + SSH tunnel MCP health `ok`，MCP repository list 只含真实仓库；
-8. 独立 production closeout review 批准后才能把本 item 标记 done，并恢复 `data-architecture-3-technology-stack-entities` Phase B。
+- Phase B/C 与后续 schema/transaction 改动必须在同一 PR 增加对应 integration case；
+- `test:integration` 失败不能通过 `continue-on-error`、重试掩盖、测试 skip 或 mock 降级绕过；
+- 若 CI provider 故障，可记录基础设施 blocker，但不得宣称功能门禁通过；
+- 本 item 只建立基线，不把公开多用户/RLS 或性能压测混入。
 
-## Handoff To Reviewer
+## Exit Criteria
 
-Worker 完成后只提交以下证据包，不自行宣布 Phase B 可开始：
-
-- PR、merge SHA、CI run、deploy run、backup/migration receipt；
-- focused/全仓/隔离 PostgreSQL 命令及结果；
-- 冷/暖两次 rebuild 的 immutable job IDs、stage receipts、duration、预算与外呼计数；
-- 新旧投影结构化比较、repository/watch/group/MCP 不变量；
-- 当前生产 revision/config/migration/health/auth；
-- 所有已知失败、降级和未验证项。
-
-Reviewer 将独立复核代码、Git、Actions、生产 DB/jobs/services 与 MCP；批准前不得切换 `new_read_dual_write`。
+- root `pnpm test:integration` 在本地隔离库和 CI PostgreSQL service 行为一致；
+- migration、transaction、并发、lease 和恢复矩阵真实通过；
+- 危险连接与不安全 cleanup fail closed；
+- PR 必需检查包含独立 integration job，且现有 quick tests 保持快速；
+- 运行两次无残留、无 flaky retry、无 secrets，独立 implementation review approved。
 ```
 
 ## Review Focus
