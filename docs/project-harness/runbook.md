@@ -217,6 +217,16 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/devscope
 
 确认 embedding endpoint 支持 OpenAI-compatible `/embeddings` 请求，并返回 1024 维向量。不要只修改模型名而忽略数据库维度。
 
+### 图重建外呼预算与终态重启
+
+图重建（`graph.rebuild`）对 deps.dev resolution、GitHub canonicalization 和 SBOM backfill 的全部外呼按 provider 计预算（配置见 `.env.example` 的 `GRAPH_*`/`DEPS_DEV_TIMEOUT_MS` 段）：
+
+- 任一 provider 预算耗尽或收到 429 时，任务在图原子提交前失败（fail closed），已写入的 cache receipt 保留，下一次 attempt 从缓存续跑，不会重复已完成的解析；
+- `graph.rebuild` 的 `maxAttempts=3`；若数据规模增长导致 3 次尝试后进入 `dead`，通过发现页再次触发重建（`enqueueRestartableJob`）是设计内恢复路径，从 cache receipt 继续即可；
+- 进度通过 `graph.getRebuildGraphStatus` 的 `progress` 字段观察（stage、completed/total、cache/外呼计数）；该字段由持有租约的 Worker 写入，不是业务事实来源；
+- warm rebuild 在 TTL/freshness 内对 `resolved` 映射与已持久化 canonicalization 零外呼；出现大量剩余外呼时先核对 `retry_after` 与新增 SBOM，而不是调大预算；
+- 非法 `GRAPH_*` 配置会让 Worker 启动即失败，修正配置后重启即可，不需要数据修复。
+
 ## 生产部署与运维
 
 本文适用于当前单用户私有版。所有操作都应可审计、可回滚，并避免影响同机运行的其他站点。

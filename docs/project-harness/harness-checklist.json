@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-08-18",
+  "updated_at": "2026-08-19",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -177,11 +177,11 @@
     {
       "id": "data-correctness-4-deps-cache-recovery",
       "title": "使依赖解析缓存可恢复且具备外呼预算",
-      "status": "todo",
+      "status": "doing",
       "priority": "p1",
-      "owner": null,
-      "selected_in_session": null,
-      "updated_at": "2026-08-18",
+      "owner": "codex",
+      "selected_in_session": "codex-20260818-deps-cache-recovery",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-correctness-2-atomic-replacement"
       ],
@@ -191,17 +191,31 @@
       "verification": "",
       "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "handoff_requested",
-        "updated_at": "2026-08-18",
+        "status": "review_approved",
+        "updated_at": "2026-08-19",
         "handoff_from": "",
-        "handoff_target": "next-agent"
+        "branch": "codex/deps-cache-recovery"
       },
-      "review": null,
+      "review": {
+        "decision": "approved",
+        "reviewer": "reviewer-plan",
+        "phase": "changes_requested",
+        "updated_at": "2026-08-19",
+        "summary": "第二轮 continuity 复核：11 条 findings 全部 closed；last_resolved_repo 取代 CHECK 后半边获确认（逻辑等价且由数据库强制）；2 条 P3 文字提示已随批修订。批准进入 RED tests"
+      },
       "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
       "artifacts": {
-        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md",
+        "branch": "codex/deps-cache-recovery",
+        "review_packet": "docs/project-harness/current/review-packet.md"
       },
-      "lease": null
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260818-deps-cache-recovery",
+        "acquired_at": "2026-08-19T01:27:00Z",
+        "expires_at": "2026-08-19T03:27:00Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "data-quality-5-postgres-integration-gates",
