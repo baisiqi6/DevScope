@@ -58,3 +58,21 @@ Endpoint：`https://api.minimaxi.com/v1`（大陆站）。预检 `GET /v1/models
 
 - 生产部署与 canary（API/Worker 切换、SSE Agent flow、durable Worker flow、DeepSeek 回滚演练）——按 plan 需用户显式授权后执行；
 - 429/5xx 真实响应路径（无注入手段；AbortSignal/401/400 已实测）。
+
+## 生产切换与 canary（2026-08-19，用户授权）
+
+### 基础设施波折（记录）
+
+- deploy workflow 两次因服务器 git（gnutls）到 github.com TLS 失败；代码经 git bundle 前进到 59066cd；
+- ghcr.io 对 docker daemon 持续 EOF（curl 可达但 daemon 不通）→ 改走本地构建 + docker save/scp/load（SSH 通道正常）；
+- **第一次传输的镜像有误**：amd64 构建误在主仓库旧代码目录执行（b603b6c），上线后 canary 立即暴露 `<think>` 污染（旧代码无 thinking disabled）——已回滚 DeepSeek，改用 `git archive main`（59066cd）干净源码重新构建 amd64 后成功。教训已吸收：生产镜像构建必须绑定明确的 main SHA 源；
+- 期间真实执行两次完整回滚（env 恢复备份 + 重启 + 健康验证），**DeepSeek rollback 路径得到实战演练**。
+
+### 最终状态（gate 全过）
+
+- 镜像：main@59066cd 干净源码的本地 amd64 构建（api/web/worker 三镜像经 save/scp/load 部署；服务器 worktree 同 SHA，revision 一致）；本地镜像已打 ghcr 同名 tag，后续 ghcr 恢复后 deploy.yml 可正常覆盖；
+- env：`OPENAI_COMPATIBLE_{API_KEY,BASE_URL=https://api.minimaxi.com/v1,MODEL=MiniMax-M3}`（大陆站）；DeepSeek 三行保留为回滚配置，回滚 = 删除三行 + 重启（备份 `env-pre-minimax-cutover-20260819-165336` 亦在）；
+- 健康：API/Web 200、公网 401、Worker 运行、`[AIProvider] Initialized with provider: openai-compatible, model: MiniMax-M3`；
+- **durable canary**：`kevinelliott/agentpipe` 健康分析 job `succeeded`，usage 正常（9249/12059 tokens），无 `<think>` 污染（thinking disabled 生效）；report 入库（可选文件缓存 EACCES 为设计内非致命）；
+- **SSE canary**：`/api/agent/workflow/stream` 完整事件链 init→tool_use×2→tool_result×2→text→report→detailed→complete；
+- 无迁移、无数据回滚需求；BGE-M3 embedding 与 pgvector 1024 维不变。

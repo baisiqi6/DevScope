@@ -348,7 +348,7 @@
       "handoff": "三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。",
       "plan_path": "docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md",
       "workflow": {
-        "status": "changes_requested",
+        "status": "review_approved",
         "updated_at": "2026-08-19",
         "branch": "codex/phase-b-read-cutover"
       },
@@ -363,11 +363,11 @@
         "ttl_minutes": 120
       },
       "review": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "reviewer": "reviewer-plan",
-        "phase": "running",
+        "phase": "changes_requested",
         "updated_at": "2026-08-19",
-        "summary": "P1 正向条件谓词未定（已拍板 github_repository_id IS NOT NULL+不变量核验）；P2 边排除/top-N parity/mode 一致机制/未过滤站点清单均已修订；P3 启动与任务检查分层、shadow 门扩展、CLI/MCP 空集措辞已修"
+        "summary": "continuity：plan 六条修订全部合格；baseline 三处事实错误已按代码事实改写并补不变量生产实测；RED 节补站点枚举。按 reviewer 条件视为 approved，进入 RED"
       }
     },
     {

@@ -83,7 +83,7 @@
 - `data-architecture-3-technology-stack-entities` Phase A **已 done**（2026-08-19 closeout APPROVE：投影零差异保 multiplicity 语义独立重算、backfill/graph receipts 在位、legacy 数据未被触碰、mode 未切换）；
 - `data-quality-5-postgres-integration-gates` **已 done**（PR #40：统一 test:integration 门禁、隔离契约 fail closed、自管迁移+drift 校验、43 例矩阵、CI integration job 首跑 56s 全绿；两轮 plan + 两轮 implementation review approved）；
 - 串行链下一项：Phase B（`data-architecture-3b-technology-stack-read-cutover`，前置已全部满足）；
-- `platform-ai-7-minimax-m3-default` 代码阶段完成（PR #41，approved）；生产切换已获用户授权并于 2026-08-19 执行，但遇**基础设施 blocker**：生产网络对 github.com（git pull，TLS 持续失败）与 ghcr.io（docker daemon pull EOF）同时不可达。已按回滚预案恢复 DeepSeek 基线（env 备份恢复 + api/worker 重启 + 健康全绿）；代码已通过 git bundle 前进到 59066cd，镜像待网络恢复后重试 `deploy.yml`（build job 已成功，镜像在 ghcr）。真实回滚路径已演练。Key 保留在本地与备份 env 中，不在任何日志/Git。
+- `platform-ai-7-minimax-m3-default` 代码阶段完成（PR #41，approved）；生产切换已获用户授权并于 2026-08-19 执行，但遇**基础设施 blocker**：生产网络对 github.com（git pull，TLS 持续失败）与 ghcr.io（docker daemon pull EOF）同时不可达。切换于同日完成：镜像经本地 amd64 构建 + save/scp/load 绕开 ghcr EOF（构建源为 main@59066cd 干净 archive；第一次误用旧代码目录构建被 canary 的 <think> 污染当场拦截并回滚），MiniMax 三行 env 生效，durable 与 SSE 两路 canary 全过（job succeeded、完整事件流、usage 正常），两次真实 DeepSeek 回滚演练。**生产现运行 MiniMax-M3**；回滚 = 删三行 env + 重启（备份在）。
 - PR #39 已通过 CI 并合并到 main（merge commit 见 Git 历史）；
 - Canonical plan：`tasks/data-correctness-4-deps-cache-recovery/plan.md`；两轮 plan review approved；
 - Implementation review 第一轮 changes_requested（P1 canonicalization 降级证据擦除等 10 条）已全部修复，continuity 复核 approved（evt-20260819T025237Z-c836a215）；
