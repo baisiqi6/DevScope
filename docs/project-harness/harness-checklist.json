@@ -237,16 +237,16 @@
       "verification": "",
       "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
-        "status": "review_requested",
+        "status": "review_approved",
         "updated_at": "2026-08-19",
         "branch": "codex/pg-integration-gates"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "reviewer-plan",
+        "reviewer": "reviewer-impl",
         "phase": "changes_requested",
         "updated_at": "2026-08-19",
-        "summary": "continuity 复核：7 条 findings 全部关闭（3 条经运行时复现验证）；RED 阶段 3 个失败已由 Worker 修复（available_at 时钟、release created_at、advisory lock namespace 未导出）；7 条 P3 编辑项已随批处理"
+        "summary": "continuity 复核：P1（turbo 依赖闭包 build）与全部 P3 关闭，git archive CI 模拟端到端通过；1 条新 P3（release 后用 client）已随批修复，43/43 复验通过"
       },
       "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md",
       "artifacts": {

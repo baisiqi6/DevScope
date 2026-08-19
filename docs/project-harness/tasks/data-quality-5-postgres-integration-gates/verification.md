@@ -30,6 +30,10 @@ domain-model 七条最低覆盖：空库迁移（migration#1）、0004 升级（
 - 7 条 P3 编辑项已处理：plan off-by-one（0..3 播种 + 4..latest）、CI 章节旧段删除、RED 措辞同步、runner 注释精确化、`JournalDrift` 死枚举删除、migration 测试死代码清理、runbook 补硬杀残留 sweep 与 5432 端口占用说明。
 - 环境事实：宿主 5432 被系统 PostgreSQL 占用（docker 映射不生效），本 item 全部验证走 5433 隔离容器；已写入 runbook。
 
+## Implementation review 处置（2026-08-19）
+
+两轮 implementation review：第一轮 `changes_requested`——P1 为 CI build 步骤缺 `@devscope/ai` 依赖闭包（reviewer 在 git archive 全新副本复现必失败），修复为 `pnpm turbo run build --filter=@devscope/db...`；6 条 P3（globalSetup 失败路径清理、drift 用例 finally、死表达式、POSTGRES_DB 冗余、协议文案、用例分工注释）全部随批处理。第二轮 continuity **approved**（reviewer 独立复验 unit 227/227、integration 43/43、CI 模拟端到端）；其指出的修复引入 P3（client release 后继续使用）已再批修复并复验 43/43。
+
 ## 未验证项
 
 - GitHub Actions 的 `integration` job 实际运行（PR 创建后由 CI 验证）；branch protection required check 需 operator 在合并后于仓库设置添加。

@@ -94,25 +94,28 @@ describeIntegration("migration matrix on PostgreSQL", () => {
     const client = await pool.connect();
     const [first] = listMigrationFiles();
     try {
-      await client.query("update drizzle.__drizzle_migrations set hash = 'tampered' where id = 1");
-      const drift = await verifyMigrationJournal(connectionString!);
-      expect(drift.some((d) => d.kind === "hash")).toBe(true);
+      try {
+        await client.query("update drizzle.__drizzle_migrations set hash = 'tampered' where id = 1");
+        const drift = await verifyMigrationJournal(connectionString!);
+        expect(drift.some((d) => d.kind === "hash")).toBe(true);
+      } finally {
+        // 无论断言成败都还原，避免把篡改状态留给本 run 剩余用例
+        await client.query("update drizzle.__drizzle_migrations set hash = $1 where id = 1", [first.hash]);
+      }
+      expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
+
+      // 多余行 → count drift（同样在 finally 中清理）
+      try {
+        await client.query("insert into drizzle.__drizzle_migrations (hash, created_at) values ('extra', 999)");
+        const drift = await verifyMigrationJournal(connectionString!);
+        expect(drift.some((d) => d.kind === "count")).toBe(true);
+      } finally {
+        await client.query("delete from drizzle.__drizzle_migrations where hash = 'extra'");
+      }
+      expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
     } finally {
-      // 无论断言成败都还原，避免把篡改状态留给本 run 剩余用例
-      await client.query("update drizzle.__drizzle_migrations set hash = $1 where id = 1", [first.hash]);
       client.release();
     }
-    expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
-
-    // 多余行 → count drift（同样在 finally 中清理）
-    try {
-      await client.query("insert into drizzle.__drizzle_migrations (hash, created_at) values ('extra', 999)");
-      const drift = await verifyMigrationJournal(connectionString!);
-      expect(drift.some((d) => d.kind === "count")).toBe(true);
-    } finally {
-      await client.query("delete from drizzle.__drizzle_migrations where hash = 'extra'");
-    }
-    expect(await verifyMigrationJournal(connectionString!)).toEqual([]);
   });
 
   it("0004 era baseline 升级到最新：dedupe、userId 回填、bigint、radar 合并、deps 回填", async () => {
