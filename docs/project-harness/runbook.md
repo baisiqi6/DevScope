@@ -217,6 +217,21 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/devscope
 
 确认 embedding endpoint 支持 OpenAI-compatible `/embeddings` 请求，并返回 1024 维向量。不要只修改模型名而忽略数据库维度。
 
+### 真实 PostgreSQL 集成门禁（test:integration）
+
+`pnpm test:integration` 在隔离 PostgreSQL 16 + pgvector 上运行迁移、事务、并发与租约矩阵（CI 的 `integration` job 必跑；本地可选）：
+
+- 本地运行：起一个一次性容器（`docker run -d --name devscope-test-pg -e POSTGRES_PASSWORD=postgres -p 5433:5432 pgvector/pgvector:pg16`），然后
+  `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres TEST_DATABASE_DESTRUCTIVE=1 NODE_ENV=test pnpm test:integration`；
+- `TEST_DATABASE_URL` 只允许指向 admin 入口（`postgres` 库）；测试库名由 runner 唯一派生（`devscope_test_*`）并在结束时自动删除，连续两次运行不得有残留库；
+- 隔离门禁 fail closed：危险/业务库名、缺 `TEST_DATABASE_DESTRUCTIVE=1`、`NODE_ENV≠test`、host 不在 allowlist 都会拒绝运行；CI 通过 `INTEGRATION_REQUIRED=1` 保证未配置时直接失败而不是静默跳过；
+- 迁移按 journal 顺序单事务应用并手写 `drizzle.__drizzle_migrations`（hash=文件 SHA-256），`verifyMigrationJournal` 提供 checksum/order drift 校验——drizzle migrator 本身只按时间戳跳过、不比对 hash；
+- `quality` job（lint/typecheck/test/build）不注入任何 `TEST_DATABASE_*` 变量，保持快速反馈；
+- **required check**：首次合并后需在 GitHub 仓库 Settings → Branch protection 中将 `integration` job 加入 required checks（operator 手动操作，一次性）；
+- 本机环境注意：若宿主 5432 已被系统 PostgreSQL 占用（docker 端口映射不生效），隔离容器请用其他端口（如 5433）；
+- 进程被硬杀（SIGKILL）时 teardown 不会执行，可能残留 `devscope_test_*` 库；用
+  `docker exec <pg容器> psql -U postgres -c "select datname from pg_database where datname like 'devscope_test_%'"` 检查并手动 DROP。
+
 ### 图重建外呼预算与终态重启
 
 图重建（`graph.rebuild`）对 deps.dev resolution、GitHub canonicalization 和 SBOM backfill 的全部外呼按 provider 计预算（配置见 `.env.example` 的 `GRAPH_*`/`DEPS_DEV_TIMEOUT_MS` 段）：

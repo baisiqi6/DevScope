@@ -222,11 +222,11 @@
     {
       "id": "data-quality-5-postgres-integration-gates",
       "title": "建立真实 PostgreSQL 迁移、事务与并发门禁",
-      "status": "todo",
+      "status": "doing",
       "priority": "p0",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": "codex",
+      "selected_in_session": "codex-20260819-pg-gates",
+      "updated_at": "2026-08-19",
       "dependencies": [
         "data-architecture-3-technology-stack-entities",
         "data-correctness-4-deps-cache-recovery"
@@ -237,10 +237,29 @@
       "verification": "",
       "handoff": "Phase A 与 deps cache closeout 后领取；建立正式门禁后 Phase B 才可开始。",
       "workflow": {
-        "status": "todo"
+        "status": "review_approved",
+        "updated_at": "2026-08-19",
+        "branch": "codex/pg-integration-gates"
       },
-      "review": null,
-      "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md"
+      "review": {
+        "decision": "approved",
+        "reviewer": "reviewer-impl",
+        "phase": "changes_requested",
+        "updated_at": "2026-08-19",
+        "summary": "continuity 复核：P1（turbo 依赖闭包 build）与全部 P3 关闭，git archive CI 模拟端到端通过；1 条新 P3（release 后用 client）已随批修复，43/43 复验通过"
+      },
+      "plan_path": "docs/project-harness/tasks/data-quality-5-postgres-integration-gates/plan.md",
+      "artifacts": {
+        "branch": "codex/pg-integration-gates",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260819-pg-gates",
+        "acquired_at": "2026-08-19T06:51:40Z",
+        "expires_at": "2026-08-19T08:51:40Z",
+        "ttl_minutes": 120
+      }
     },
     {
       "id": "product-6-public-multi-user-hardening",
