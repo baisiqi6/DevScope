@@ -1346,6 +1346,74 @@ describe("recomputeDependencyEdges（deps cache recovery）", () => {
     expect(dbRun2._insertedEdges).toHaveLength(2);
   });
 
+  it("canonicalization resolved 复查失败：旧 canonical 值保留为证据", async () => {
+    const repos = [
+      repo(1, "org-a/app-a", [{ name: "pkg-1", version: "1.0.0", system: "npm" }]),
+      repo(2, "org-b/app-b", [{ name: "pkg-2", version: "1.0.0", system: "npm" }]),
+    ];
+    const db = createCacheMockDb({
+      repos,
+      mappingRows: [
+        { system: "npm", packageName: "pkg-1", packageVersion: "1.0.0", sourceRepo: "old/target", resolutionStatus: "resolved", retryAfter: FUTURE },
+        { system: "npm", packageName: "pkg-2", packageVersion: "1.0.0", sourceRepo: "old/target", resolutionStatus: "resolved", retryAfter: FUTURE },
+      ],
+      canonRows: [
+        {
+          fullName: "old/target",
+          canonicalFullName: "new/target",
+          resolutionStatus: "resolved",
+          retryAfter: PAST,
+        },
+      ],
+    });
+    const canonicalize = vi.fn().mockResolvedValue({
+      status: "error" as const,
+      canonicalFullName: null,
+      retryAfterSeconds: null,
+      errorSummary: "network_error",
+    });
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn(),
+      canonicalize,
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+    });
+
+    expect(canonicalize).toHaveBeenCalledTimes(1);
+    expect(db._canonUpserts).toHaveLength(1);
+    expect(db._canonUpserts[0]).toMatchObject({
+      fullName: "old/target",
+      canonicalFullName: "new/target", // 降级保留旧值证据
+      resolutionStatus: "error",
+      lastError: "network_error",
+    });
+    // 失败保持原 fullName，不产生 rename 回写
+    expect(db._mappingUpdates).toHaveLength(0);
+  });
+
+  it("happy path：assertLease 在事务外与事务内各复核一次", async () => {
+    const db = createCacheMockDb({
+      repos: [repo(1, "org-a/app-a", [{ name: "react", version: "19.0.0", system: "npm" }])],
+      mappingRows: [
+        { system: "npm", packageName: "react", packageVersion: "19.0.0", sourceRepo: null, resolutionStatus: "not_found", retryAfter: FUTURE },
+      ],
+    });
+    const assertLease = vi.fn().mockResolvedValue(undefined);
+
+    await recomputeDependencyEdges(db, 1, {
+      resolveMapping: vi.fn(),
+      settings: cacheSettings,
+      now: () => CACHE_NOW,
+      assertLease,
+    });
+
+    expect(assertLease).toHaveBeenCalledTimes(2);
+    // 第二次调用拿到事务执行器（带行锁复核的入参形态）
+    expect(assertLease.mock.calls[1][0]).toBeDefined();
+    expect(db._txStarted).toBe(true);
+  });
+
   it("lost lease：assertLease 抛错时不进入原子提交，边零写入", async () => {
     const db = createCacheMockDb({
       repos: [repo(1, "org-a/app-a", [{ name: "react", version: "19.0.0", system: "npm" }])],

@@ -31,6 +31,7 @@ import {
   classifyCanonicalizationResponse,
   fetchDepsDevOutcome,
   resolveExternalResolutionSettings,
+  GraphRateLimitedError,
   type CanonicalizationOutcome,
   type Db,
   type GitHubSearchRepo,
@@ -143,8 +144,12 @@ export async function runWorker(
       console.log(`[Worker] 完成任务 #${job.id} ${job.type}`);
     } catch (error) {
       try {
+        // 429 的服务端 Retry-After 必须跨 attempt 生效，避免 60s 后立刻打满配额
+        const retryDelayMs = error instanceof GraphRateLimitedError
+          ? Math.max(options.retryDelayMs ?? 60_000, error.retryAfterSeconds * 1000)
+          : options.retryDelayMs;
         const failed = await failJob(db, job.id, options.workerId, error, {
-          retryDelayMs: options.retryDelayMs,
+          retryDelayMs,
           now: now(),
         });
         console.error(
@@ -344,7 +349,8 @@ async function defaultRebuildGraph(
     ? createJobProgressSink(db, jobContext.jobId, jobContext.workerId)
     : undefined;
   const assertLease = jobContext?.jobId && jobContext?.workerId
-    ? () => assertJobLease(db, jobContext.jobId!, jobContext.workerId!)
+    ? (executor?: Parameters<typeof assertJobLease>[0]) =>
+      assertJobLease(executor ?? db, jobContext.jobId!, jobContext.workerId!)
     : undefined;
 
   const result = await rebuildRepoGraph(db, userId, {
@@ -366,6 +372,7 @@ async function defaultRebuildGraph(
       total: 1,
       ...(result.counters ?? {}),
     });
+    const shadowStartedAt = Date.now();
     const comparison = await compareTechnologyStackProjection(db, userId);
     if (!comparison.equal) {
       throw new Error(`Technology stack shadow mismatch: ${JSON.stringify(comparison)}`);
@@ -383,7 +390,7 @@ async function defaultRebuildGraph(
       ...result,
       stages: [
         ...(result.stages ?? []),
-        { stage: "shadow_compare" as const, durationMs: 0 },
+        { stage: "shadow_compare" as const, durationMs: Date.now() - shadowStartedAt },
       ],
     };
   }

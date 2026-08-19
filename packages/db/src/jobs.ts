@@ -582,7 +582,7 @@ export async function updateJobProgress(
   return updated.length > 0;
 }
 
-/** 原子提交前的租约复核：lost lease 时拒绝提交。 */
+/** 原子提交前的租约复核：lost lease 时拒绝提交。带行锁，可在事务首句调用。 */
 export async function assertJobLease(
   db: Db,
   jobId: number,
@@ -600,7 +600,8 @@ export async function assertJobLease(
         gte(jobs.leaseExpiresAt, now)
       )
     )
-    .limit(1);
+    .limit(1)
+    .for("update");
   if (rows.length === 0) {
     throw new GraphLeaseLostError(`job ${jobId} 不再由 ${workerId} 持有`);
   }

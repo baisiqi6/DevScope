@@ -38,7 +38,7 @@ export { detectTechStack } from "./tech-stack-catalog";
 
 export type GraphProgressSink = (snapshot: GraphRebuildProgress) => Promise<void>;
 
-/** 单次 attempt 的跨 stage 共享计数器与预算上下文 */
+/** 单次 attempt 的跨 stage 共享计数器、预算与 stage 时长上下文 */
 export class GraphRunContext {
   readonly counters = {
     cacheHits: 0,
@@ -47,12 +47,22 @@ export class GraphRunContext {
     timeouts: 0,
     retryableErrors: 0,
   };
+  readonly stageDurations: GraphStageDuration[] = [];
 
   constructor(
     readonly settings: ExternalResolutionSettings,
     readonly budget: ExternalRequestBudget,
     private readonly sink?: GraphProgressSink,
   ) {}
+
+  async timeStage<T>(stage: GraphRebuildStage, fn: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    try {
+      return await fn();
+    } finally {
+      this.stageDurations.push({ stage, durationMs: Date.now() - startedAt });
+    }
+  }
 
   async emit(stage: GraphRebuildStage, completed: number, total: number): Promise<void> {
     if (!this.sink) return;
@@ -306,8 +316,9 @@ export interface DependencyEdgeOptions {
   budget?: ExternalRequestBudget;
   now?: () => Date;
   progress?: GraphProgressSink;
-  /** 原子提交前的租约复核；lost lease 时拒绝提交 */
-  assertLease?: () => Promise<void>;
+  /** 原子提交前的租约复核；lost lease 时拒绝提交。无参调用复核连接池，
+   * 传入事务执行器时在事务首句带行锁复核（对齐 technology-stack-entities 先例）。 */
+  assertLease?: (executor?: Db) => Promise<void>;
   /** 仅用于确定性并发测试：DB-only 原子提交开始前暂停。 */
   beforeAtomicCommit?: () => Promise<void>;
   /** 由 rebuildRepoGraph 传入的共享上下文（跨 stage 计数与预算） */
@@ -423,7 +434,7 @@ export async function recomputeDependencyEdges(
   // 每个结果立即独立写 cache receipt（业务事务之外），预算/限流 fail closed ----
   let depsProcessed = keys.length - dueKeys.length;
   await ctx.emit("deps_resolution", depsProcessed, keys.length);
-  await runBoundedPool(
+  await ctx.timeStage("deps_resolution", () => runBoundedPool(
     dueKeys,
     { concurrency: settings.depsConcurrency, pacingMs: settings.pacingMs },
     async ({ key, previousResolvedRepo }) => {
@@ -447,7 +458,7 @@ export async function recomputeDependencyEdges(
       depsProcessed++;
       await ctx.emit("deps_resolution", depsProcessed, keys.length);
     },
-  );
+  ));
 
   const rawDeps: RawDep[] = [];
   for (const repo of collectedRepos) {
@@ -540,7 +551,7 @@ export async function recomputeDependencyEdges(
     let canonProcessed = eligibleTargets.length - dueTargets.length;
     await ctx.emit("github_canonicalization", canonProcessed, eligibleTargets.length);
     const freshOutcomes = new Map<string, CanonicalizationOutcome>();
-    await runBoundedPool(
+    await ctx.timeStage("github_canonicalization", () => runBoundedPool(
       dueTargets,
       { concurrency: settings.githubConcurrency, pacingMs: settings.pacingMs },
       async (target) => {
@@ -552,7 +563,14 @@ export async function recomputeDependencyEdges(
         const retryAt = outcome.retryAfterSeconds != null
           ? new Date(now().getTime() + outcome.retryAfterSeconds * 1000)
           : canonicalizationRetryAt(outcome.status, now(), settings);
-        await upsertCanonicalizationOutcome(db, target, outcome, retryAt);
+        const previousRow = canonRowByFullName.get(target);
+        await upsertCanonicalizationOutcome(
+          db,
+          target,
+          outcome,
+          retryAt,
+          previousRow?.canonicalFullName ?? null,
+        );
         if (outcome.retryAfterSeconds != null) {
           throw new GraphRateLimitedError("github", outcome.retryAfterSeconds);
         }
@@ -560,7 +578,7 @@ export async function recomputeDependencyEdges(
         canonProcessed++;
         await ctx.emit("github_canonicalization", canonProcessed, eligibleTargets.length);
       },
-    );
+    ));
 
     // 统一应用缓存命中与新鲜结果；rename 批量、确定性回写映射（只改命名，不改 resolution 状态）
     const appliedRenames: Array<{ from: string; to: string }> = [];
@@ -699,7 +717,9 @@ export async function recomputeDependencyEdges(
   await ctx.emit("atomic_commit", 0, 1);
   await opts.beforeAtomicCommit?.();
   let persistedEdgeCount = 0;
-  await db.transaction(async (tx) => {
+  await ctx.timeStage("atomic_commit", () => db.transaction(async (tx) => {
+    // 事务首句带行锁复核租约：窗口内被回收的 lease 在此拒绝提交
+    await opts.assertLease?.(tx as unknown as Db);
     const outcome = await replaceRepositoryTechnologyStacksForCurrentSnapshots(
       tx,
       technologyStackSnapshots,
@@ -819,7 +839,7 @@ export async function recomputeDependencyEdges(
         AND id NOT IN (SELECT source_repo_id FROM repo_relationships)
         AND id NOT IN (SELECT target_repo_id FROM repo_relationships)
     `);
-  });
+  }));
   await ctx.emit("atomic_commit", 1, 1);
 
   return persistedEdgeCount;
@@ -1053,39 +1073,26 @@ export async function rebuildRepoGraph(
   opts: RebuildRepoGraphOptions = {}
 ): Promise<RebuildRepoGraphResult> {
   const ctx = resolveRunContext(opts);
-  const stageDurations: GraphStageDuration[] = [];
-  const timeStage = async <T>(
-    stage: GraphRebuildStage,
-    fn: () => Promise<T>,
-  ): Promise<T> => {
-    const startedAt = Date.now();
-    try {
-      return await fn();
-    } finally {
-      stageDurations.push({ stage, durationMs: Date.now() - startedAt });
-    }
-  };
 
-  const pooledRepos = await timeStage("embedding", () =>
+  const pooledRepos = await ctx.timeStage("embedding", () =>
     backfillRepoEmbeddings(db, userId, {
       onProgress: (completed, total) => ctx.emit("embedding", completed, total),
     }));
   // SBOM 回填（含外呼）先于任何图写入，预算耗尽时 similarity/dependency 均零写入
-  const sbomBackfilled = await timeStage("sbom", () =>
+  const sbomBackfilled = await ctx.timeStage("sbom", () =>
     backfillSbomPackages(db, userId, {
       fetchSbom: opts.fetchSbom,
       delayMs: ctx.settings.pacingMs,
       ctx,
       now: opts.now,
     }));
-  const similarityEdges = await timeStage("similarity", async () => {
+  const similarityEdges = await ctx.timeStage("similarity", async () => {
     await ctx.emit("similarity", 0, 1);
     const edges = await recomputeSimilarityEdges(db, userId);
     await ctx.emit("similarity", 1, 1);
     return edges;
   });
-  const dependencyEdges = await timeStage("deps_resolution", () =>
-    recomputeDependencyEdges(db, userId, {
+  const dependencyEdges = await recomputeDependencyEdges(db, userId, {
       resolveMapping: opts.resolveMapping,
       canonicalize: opts.canonicalize,
       settings: opts.settings,
@@ -1094,14 +1101,14 @@ export async function rebuildRepoGraph(
       progress: opts.progress,
       assertLease: opts.assertLease,
       ctx,
-    }));
+    });
 
   return {
     similarityEdges,
     dependencyEdges,
     pooledRepos,
     sbomBackfilled,
-    stages: stageDurations,
+    stages: [...ctx.stageDurations],
     budget: ctx.budget.snapshot(),
     counters: { ...ctx.counters },
   };

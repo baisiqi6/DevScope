@@ -3,7 +3,7 @@
 ## Subject
 
 - Checklist item: `data-correctness-4-deps-cache-recovery`
-- Reviewer: `reviewer-plan`
+- Reviewer: `reviewer-impl`
 - Updated at: `2026-08-19`
 - Canonical plan path: `docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md`
 
@@ -11,7 +11,7 @@
 
 - Title: 使依赖解析缓存可恢复且具备外呼预算
 - Status: doing
-- Workflow status: running
+- Workflow status: review_approved
 - Priority: p1
 - Owner: codex
 - Session: codex-20260818-deps-cache-recovery
@@ -44,7 +44,7 @@ resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外
 
 > Item：`data-correctness-4-deps-cache-recovery`
 > Priority：P1
-> 状态：待领取、待独立 plan review
+> 状态：已领取；plan review 两轮完成，第一轮 `changes_requested` 已修订，第二轮 `approved`
 > 前置：`data-correctness-2-atomic-replacement`
 > 阻断：`data-architecture-3-technology-stack-entities` 的 Phase B
 
@@ -89,55 +89,70 @@ resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外
 - `resolved`：权威响应含 `SOURCE_REPO`；保存 canonical package key 与 source repository；
 - `not_found`：只有权威 404 或成功响应明确无 `SOURCE_REPO` 才能进入；使用长 TTL；
 - `error`：timeout、DNS/TLS/network、429、5xx、非法响应等；保存脱敏短错误和短 `retry_after`；
-- 到达 `retry_after` 的 `error` 可重试并原子转为 `resolved/not_found`；未到期不得重复外呼；
-- `not_found` 到达长 TTL 后允许复查；不得把 transient failure 写成永久 `null`。
+- `retry_after` 记录下一次允许外呼的时间：`error` 为短退避，`not_found` 为长 TTL 复查点，`resolved` 为其长 TTL 复查点；未到期不得重复外呼；
+- 不得把 transient failure 写成永久 `null`，不引入第四状态。
 
-迁移必须确定性解释现有 `source_repo`：非空行可标为 `resolved`；历史 `null` 缺少权威证据，不能无条件宣称 `not_found`，需选择保守 `error/retry_after` 或显式 unknown-compatible 策略并由 reviewer 批准。
+`resolved` 的复查语义（对齐 domain-model「只在到期或规范名称校正时更新」）：
+
+- TTL 内的 warm rebuild 对该行零 deps.dev 外呼，直接使用缓存 `source_repo`；
+- 只在 TTL 到期或 canonical rename 校正涉及该目标时复查；复查失败降级为 `error` + 短 `retry_after`，并把旧值搬入 `last_resolved_repo` 保留 resolution evidence，不清空语义也不伪造权威；
+- cache 读取规则统一为：`resolved`（TTL 内）按缓存值使用；`not_found`（复查点前）与 `error`（`retry_after` 前）不外呼、按无映射参与本次图计算；到期后按可重试 miss 处理；`error` 行的 `last_resolved_repo` 只是证据，不得当作权威映射使用。
+
+迁移语义（已拍板，不留实现期决策）：
+
+- 非空 `source_repo` 历史行 → `resolution_status='resolved'`；
+- 历史 `source_repo=null` 行（日期化基线约 302 行）→ `resolution_status='error'` + 以迁移执行时间为基准的短 `retry_after`；禁止解释为 `not_found`；
+- `resolution_status` 列 DEFAULT 固定为 `'error'`：回滚窗口内旧镜像写入的新 `source_repo=null` 行不会被新代码误读为权威结论，代价仅是重查一次；
+- 历史行用确定性条件 UPDATE 回填，不让 `db:generate` 的朴素 DEFAULT 解释存量数据；重复执行迁移不改变已回填行的状态；
+- CHECK 约束：`resolution_status='resolved'` 当且仅当 `source_repo IS NOT NULL`（降级证据只存在于 `last_resolved_repo`，不污染该约束）。
 
 ### External request budget
 
-- deps.dev 与 GitHub 请求均使用显式 AbortSignal timeout；timeout 必须有默认值和严格范围校验；
-- 对 package key 和 target fullName 先去重，再使用小型 bounded worker pool；禁止无界 `Promise.all`；
-- 每次 graph attempt 有显式最大请求数。预算不足时在 graph 原子提交前 fail closed，已写入的独立 cache receipt 可供下一次重试复用；
-- 429/rate-limit 必须保留 retry evidence，不得继续打满配额；GitHub core 必须保留运维 headroom；
-- 配置项只覆盖 timeout、concurrency、request budget 和 TTL/backoff；解析语义不允许由环境变量切换；非法配置启动时 fail closed；
+- deps.dev 与 GitHub 请求均使用显式 AbortSignal timeout；timeout 必须有默认值和严格范围校验；`getCanonicalFullName` 同步补上 timeout；
+- 预算口径覆盖一次 graph attempt 内的全部外部 HTTP：deps.dev resolution、GitHub canonicalization 和 SBOM backfill 阶段的 GitHub 请求都计入预算并进入进度计数，不允许阶段外游离请求；
+- 预算按 provider 分列（deps.dev 上限、GitHub 上限），任一耗尽即在 graph 原子提交前 fail closed；已写入的独立 cache receipt 可供下一次重试复用；
+- 默认预算必须让日期化冷启动基线（约 6000 deps.dev miss + 3053 canonicalization + SBOM 请求）在单次 attempt 内收敛并留 headroom；若未来数据规模增长导致预算内无法完成，`failJob` 重试与终态重启（`enqueueRestartableJob`）是设计内恢复路径，须在 runbook 记录操作步骤；
+- 对 package key 和 target fullName 先去重，再使用小型 bounded worker pool；默认并发为保守个位数，且在并发之外保留最小请求间隔 pacing，避免 GitHub secondary rate limit；禁止无界 `Promise.all`；
+- 429/rate-limit 必须保留 retry evidence，尊重响应 `Retry-After` 暂停对应 provider 的后续请求并写可解释 receipt，不得继续打满配额；GitHub core 必须保留运维 headroom；
+- 配置项只覆盖 timeout、concurrency、pacing、request budget 和 TTL/backoff；解析语义不允许由环境变量切换；非法配置启动时 fail closed；
 - 网络等待始终位于业务 graph transaction 之外，最终提交继续复核 stable ID、collection token、SBOM baseline 与 lease authority。
 
 默认值由实现者基于生产 19007/约 6000/3053 基线提出并经 review 确认；不得为了让测试变快而采用生产不可用的极端值。
 
 ### Canonicalization freshness
 
-- GitHub fullName canonicalization 必须有持久 freshness，避免每次 warm rebuild 重复 3000+ 请求；
-- 优先扩展现有 `package_repo_mappings` 或其紧邻数据边界，不新建通用第二套 cache/service；
-- 同一 target 在一次 rebuild 最多请求一次；重命名结果批量、确定性回写相关映射；
-- timeout/error 使用原 fullName 维持既有 best-effort graph 行为，但必须留下可重试状态；
-- freshness 到期后允许复查，且 rename 不得擦除 package resolution evidence。
+- GitHub fullName canonicalization 的持久 freshness 落在紧邻新表（如 `github_repo_name_canonicalizations`：小写 `full_name` 唯一键、`canonical_full_name`、`resolution_status`、`retry_after`、`last_error`、`checked_at`）；404 归一为 `not_found` + 长 TTL（沿用原名），网络失败为 `error` + 短退避。不把 fullName 键过载进 `package_repo_mappings` 的 `(system, name, version)` 唯一键，也不新建通用第二套 cache/service；
+- 同一 target 在一次 rebuild 最多请求一次；freshness 未到期的行直接使用持久 `canonical_full_name`，到期后允许复查；
+- rename 结果批量、确定性回写相关 `package_repo_mappings.source_repo`（只改命名，不改 resolution 状态），不得擦除 package resolution evidence；rename 复查失败保持原 fullName 维持既有 best-effort graph 行为，但必须留下可重试状态；
+- `resolved` 的 canonicalization 行复查失败按 deps.dev 同款语义降级 `error` 并保留旧值证据。
 
 ### Progress And Receipts
 
 `graph.getRebuildGraphStatus` 增加向后兼容的 optional progress，至少包含：
 
-- `stage`：`embedding | sbom | deps_resolution | github_canonicalization | atomic_commit | shadow_compare`；
+- `stage`：`embedding | similarity | sbom | deps_resolution | github_canonicalization | atomic_commit | shadow_compare`；
 - 当前 stage 的 `completed/total`；
 - `cacheHits/cacheMisses/externalRequests/timeouts/retryableErrors` 的脱敏计数；
 - terminal result 保留现有字段，并增加各 stage duration 与预算消耗摘要。
 
-进度更新不能成为业务事实来源；lost lease 后旧 Worker 不得继续刷新进度或提交 graph。
+进度存储载体固定为 `jobs` 表新增 nullable `progress` 列（显式迁移），与 `result` 分离；写入只能由当前 lease owner 通过 `WHERE id = … AND lease_owner = … AND lease_expires_at > now()` 的条件 UPDATE 完成（参照 technology-stack-entities 的 lease-authoritative 先例）。进度更新不能成为业务事实来源；lost lease 后旧 Worker 不得继续刷新进度或提交 graph——原子提交路径必须复核 lease authority，lost lease 的提交尝试被拒绝。
 
 ## Test-Driven Implementation
 
 ### RED tests
 
 1. deps.dev 200+SOURCE_REPO → `resolved`；200 无 SOURCE_REPO/权威 404 → `not_found`；429/5xx/network/timeout/malformed → `error`；
-2. `error.retry_after` 前不请求，到期后重试并转 `resolved`；`not_found` 长 TTL 内不请求，到期后可复查；
-3. 历史 non-null/null migration fixture 的状态转换无伪造权威结论；重复 migration 不漂移；
-4. fake HTTP server 强制并发交错，观测到的最大并发不超过配置；单请求超时后 job 可恢复，无永久 pending Promise；
-5. request budget 耗尽时 graph relation/legacy edges/shadow receipt 零写入，cache progress 可复用；下一 attempt 从 cache 继续；
-6. 同一 package key/target 在一次运行只外呼一次；canonical freshness 未到期的第二次 warm rebuild 为零或接近零 GitHub canonicalization 请求；
-7. 429/rate-limit 停止继续消耗预算并产生可解释 retry receipt；日志与 API 不泄露 token、URL credential 或响应敏感内容；
-8. progress 单调、stage 合法、旧 consumer 可忽略新增字段；lost lease 的旧 Worker 无进度/终态写入；
-9. 真实 PostgreSQL 验证 migration、TTL 转移、并发 upsert、reclaim、budget fail/retry 与最终 shadow zero-diff；
-10. 技术栈投影、repo-to-repo edges、repository/watch/group/MCP 列表回归不变。
+2. `error.retry_after` 前不请求，到期后重试并转 `resolved`；`not_found` 长 TTL 内不请求，到期后可复查；`resolved` TTL 内零外呼，到期复查成功刷新值；
+3. 历史 non-null/null migration fixture 的状态转换无伪造权威结论（null → `error`+短 `retry_after`，非 null → `resolved`）；重复 migration 不漂移；DEFAULT `'error'` 与 CHECK 约束生效；
+4. fake HTTP server 强制并发交错，观测到的最大并发不超过配置且保留 pacing；单请求超时后 job 可恢复，无永久 pending Promise；
+5. request budget 耗尽时 graph relation/legacy edges/shadow receipt 零写入，cache progress 可复用；下一 attempt 从 cache 继续；SBOM 阶段请求同样计入预算与进度；
+6. 同一 package key/target 在一次运行只外呼一次；freshness 未到期的第二次 warm rebuild 对 GitHub canonicalization 恰好 0 次请求、对 TTL 内 `resolved` 行 0 次 deps.dev 请求，所有剩余请求可逐条解释；
+7. 429/rate-limit 停止继续消耗预算、尊重 `Retry-After`，并产生可解释 retry receipt；日志与 API 不泄露 token、URL credential 或响应敏感内容；
+8. progress 单调、stage 合法（含 `similarity`）、旧 consumer 可忽略新增字段；lost lease 的旧 Worker 无进度/终态写入，且其 graph 原子提交被 lease authority 复核拒绝；
+9. `resolved` 复查失败降级为 `error`：`last_resolved_repo` 保留旧值证据，本轮按无映射参与图计算，`retry_after` 到期后重试恢复；
+10. canonical rename 批量回写相关 `package_repo_mappings.source_repo` 且不擦除 resolution evidence；rename 复查失败保持原 fullName 并留下可重试状态；
+11. 真实 PostgreSQL 验证 migration、TTL 转移、并发 upsert、reclaim、budget fail/retry、jobs `progress` 的 lease-authoritative 写入与最终 shadow zero-diff；
+12. 技术栈投影、repo-to-repo edges、repository/watch/group/MCP 列表回归不变。
 
 ### Implementation constraints
 
@@ -153,8 +168,8 @@ resolved、not_found、error 与 TTL/retry_after 可验证；deps.dev/GitHub 外
 - `packages/db/src/repo-graph.ts`、`packages/db/src/schema/index.ts`、相邻 cache/job helpers 和 tests；
 - `packages/shared/src/github-client.ts`、graph status schema 与 tests；
 - `apps/worker/src/worker.ts`、`apps/api/src/router/graph.ts` 及 tests；
-- 显式 Drizzle migration 与 metadata；
-- `.env.example`、[runbook.md](../../runbook.md) 中新增配置和生产步骤；
+- 显式 Drizzle migration 与 metadata：`package_repo_mappings` 状态列（含 `last_resolved_repo` 证据列）+ CHECK + DEFAULT `'error'` 回填、`github_repo_name_canonicalizations` 新表（不套用同款 CHECK，降级证据保留在 `canonical_full_name` 本身）、`jobs.progress` 列；
+- `.env.example`、[runbook.md](../../runbook.md) 中新增配置（timeout/concurrency/pacing/budget/TTL）和终态重启操作步骤；
 - 本 item 的 plan/review/verification 与日期化 progress。
 
 ## Local Gates
@@ -202,3 +217,4 @@ Reviewer 将独立复核代码、Git、Actions、生产 DB/jobs/services 与 MCP
 3. 是否越过 architecture 模块边界
 4. 是否偷偷吸收了未来 checklist item 的工作
 5. 当前验证方式是否足以支持结束本轮
+

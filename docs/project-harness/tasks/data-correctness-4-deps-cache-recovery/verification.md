@@ -32,6 +32,19 @@
 - 既有集成测试回归：`technology-stack-entities` 14 + `collection` 10（与新增 9 个串行跑同一库，33/33；注意三个集成文件不能并发跑同一 TEST_DATABASE_URL，属既有行为，data-quality-5 处理）。
 - 全仓门禁：`pnpm lint` ✓、`pnpm typecheck`（14/14 tasks）✓、`pnpm test`（11/11 tasks）✓、`pnpm build`（9/9 tasks）✓、`pnpm db:generate` 再生成无差异 ✓、`git diff --check` ✓。
 
+## Implementation Review 处置（2026-08-19）
+
+第一轮 implementation review verdict 为 `changes_requested`（evt-20260819T024101Z-ed5c6734），全部 findings 已修复：
+
+- **P1 canonicalization 降级擦除旧 canonical 值**：`upsertCanonicalizationOutcome` 增加 `previousCanonicalFullName`，error/not_found 降级保留旧值证据（与 deps.dev 侧 `last_resolved_repo` 对称）；新增单测固定。
+- **P2 429 Retry-After 跨 attempt**：Worker 捕获 `GraphRateLimitedError` 时以 `max(retryDelayMs, retryAfterSeconds*1000)` 传给 `failJob`；新增单测（部分 mock `@devscope/db` 的队列函数）。
+- **P2 lease 复核入事务**：`assertJobLease` 改为 `SELECT ... FOR UPDATE`；graph 事务首句用事务执行器再次复核（对齐 technology-stack-entities 先例），新增"事务外+事务内各一次"断言。
+- **P2 回滚窗口说明**：runbook 记录迁移 0009 后应用层回滚期间旧镜像写非空 `source_repo` 会违反 CHECK 使 graph job 失败、重新升级自愈。
+- **P2 真实 HTTP 层测试**：新增 `deps-cache.http.test.ts`（本地 http server：200/空数组/404/429+Retry-After/5xx/非法 JSON/挂起超时/连接拒绝）+ `parseRetryAfterSeconds` 单测；`fetchDepsDevOutcome` 增加仅供测试的 `baseUrl` 注入参数，生产默认不变。
+- **P3 relatedProjects 缺失 → error**（schema 漂移不伪造阴性，空数组才是明确无映射）；**json 读体中止 → timeout 口径**；**stage duration 细分**（deps_resolution 只计解析池、github_canonicalization/atomic_commit 独立计时、shadow_compare 真实时长）；**预算口径与 similarity 顺序**写入 runbook。
+
+修复后重跑：db 单测 110（deps-cache 41 + repo-graph 51 + http 9 中的新计数）、worker 10、api 13；隔离 PostgreSQL 串行 33/33；全仓 lint/typecheck(14)/test(11)/build(9) 通过。
+
 ## 未验证项
 
 - 生产部署、生产 rebuild（冷/暖两次）、MCP/生产健康检查：按 plan 属 PR/CI 后的生产门禁，需用户显式授权后执行。

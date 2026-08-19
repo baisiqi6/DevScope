@@ -42,9 +42,12 @@ describe("classifyDepsDevResponse", () => {
     expect(outcome.sourceRepo).toBeNull();
   });
 
-  it("200 relatedProjects 缺失 → not_found", () => {
+  it("200 relatedProjects 缺失 → error（schema 漂移不伪造权威阴性；空数组才是明确无映射）", () => {
     const outcome = classifyDepsDevResponse(200, { versionKey: {} }, null);
-    expect(outcome.status).toBe("not_found");
+    expect(outcome.status).toBe("error");
+    expect(outcome.errorSummary).toBe("malformed_response");
+    // 空数组：权威响应明确无 SOURCE_REPO
+    expect(classifyDepsDevResponse(200, { relatedProjects: [] }, null).status).toBe("not_found");
   });
 
   it("200 SOURCE_REPO 指向非 GitHub → not_found（不可用于 GitHub 图谱）", () => {

@@ -191,17 +191,17 @@
       "verification": "",
       "handoff": "按 canonical plan 完成独立 plan/implementation/production review；Reviewer 批准前不得恢复技术栈 Phase B。",
       "workflow": {
-        "status": "review_approved",
+        "status": "changes_requested",
         "updated_at": "2026-08-19",
         "handoff_from": "",
         "branch": "codex/deps-cache-recovery"
       },
       "review": {
-        "decision": "approved",
-        "reviewer": "reviewer-plan",
-        "phase": "changes_requested",
+        "decision": "changes_requested",
+        "reviewer": "reviewer-impl",
+        "phase": "review_requested",
         "updated_at": "2026-08-19",
-        "summary": "第二轮 continuity 复核：11 条 findings 全部 closed；last_resolved_repo 取代 CHECK 后半边获确认（逻辑等价且由数据库强制）；2 条 P3 文字提示已随批修订。批准进入 RED tests"
+        "summary": "P1: canonicalization 降级擦除旧 canonical 值; P2: 429 Retry-After 未跨 attempt、lease 复核应入事务加锁、回滚期 graph job 失败未记录、缺真实 HTTP 层测试; P3: relatedProjects 缺失分类、json 读体 abort 口径、stage duration 拆分等"
       },
       "plan_path": "docs/project-harness/tasks/data-correctness-4-deps-cache-recovery/plan.md",
       "artifacts": {

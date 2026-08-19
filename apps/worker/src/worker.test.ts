@@ -1,4 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
+
+const {
+  mockClaimNextJob,
+  mockFailJob,
+  mockRecoverExpiredJobs,
+  mockRenewJobLease,
+} = vi.hoisted(() => ({
+  mockClaimNextJob: vi.fn(),
+  mockFailJob: vi.fn(),
+  mockRecoverExpiredJobs: vi.fn().mockResolvedValue(0),
+  mockRenewJobLease: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@devscope/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@devscope/db")>();
+  return {
+    ...actual,
+    claimNextJob: mockClaimNextJob,
+    failJob: mockFailJob,
+    recoverExpiredJobs: mockRecoverExpiredJobs,
+    renewJobLease: mockRenewJobLease,
+  };
+});
+
 import { executeJob, runWorker } from "./worker";
 import {
   GITHUB_DISCOVERY_JOB,
@@ -162,6 +186,35 @@ describe("Worker 任务执行", () => {
         process.env.GRAPH_DEPS_CONCURRENCY = previous;
       }
     }
+  });
+
+  it("429 失败时按服务端 Retry-After 推迟重试而不是固定 60s", async () => {
+    const { GraphRateLimitedError, GRAPH_REBUILD_JOB } = await import("@devscope/db");
+    mockClaimNextJob.mockReset();
+    mockFailJob.mockReset().mockResolvedValue({ status: "retry_wait" });
+    mockClaimNextJob
+      .mockResolvedValueOnce(createJob({
+        id: 7,
+        type: GRAPH_REBUILD_JOB,
+        idempotencyKey: "graph:rebuild",
+        payload: { requestedAt: "2026-07-29T00:00:00.000Z" },
+      }))
+      .mockResolvedValue(null);
+
+    let stopped = false;
+    mockFailJob.mockImplementation(async () => {
+      stopped = true;
+      return { status: "retry_wait" };
+    });
+    const rebuildGraph = vi.fn().mockRejectedValue(new GraphRateLimitedError("deps.dev", 300));
+    await runWorker({} as any, { workerId: "w1", pollIntervalMs: 1, leaseDurationMs: 300_000 }, () => stopped, {
+      rebuildGraph,
+      workerId: "w1",
+    });
+
+    expect(mockFailJob).toHaveBeenCalledTimes(1);
+    const retryOptions = mockFailJob.mock.calls[0][4];
+    expect(retryOptions.retryDelayMs).toBeGreaterThanOrEqual(300_000);
   });
 
   it("将三个 GitHub Trending 周期保存为独立快照", async () => {

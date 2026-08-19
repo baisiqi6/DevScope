@@ -225,7 +225,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/devscope
 - `graph.rebuild` 的 `maxAttempts=3`；若数据规模增长导致 3 次尝试后进入 `dead`，通过发现页再次触发重建（`enqueueRestartableJob`）是设计内恢复路径，从 cache receipt 继续即可；
 - 进度通过 `graph.getRebuildGraphStatus` 的 `progress` 字段观察（stage、completed/total、cache/外呼计数）；该字段由持有租约的 Worker 写入，不是业务事实来源；
 - warm rebuild 在 TTL/freshness 内对 `resolved` 映射与已持久化 canonicalization 零外呼；出现大量剩余外呼时先核对 `retry_after` 与新增 SBOM，而不是调大预算；
-- 非法 `GRAPH_*` 配置会让 Worker 启动即失败，修正配置后重启即可，不需要数据修复。
+- 非法 `GRAPH_*` 配置会让 Worker 启动即失败，修正配置后重启即可，不需要数据修复；
+- 预算按逻辑外呼计数：`getSbom` 内部对 5xx 的单次重试计一次预算；similarity 边在 deps 解析前的独立事务提交，因此"预算耗尽零图写入"对 SBOM 阶段耗尽严格成立，deps 阶段耗尽时 similarity 已完成全量替换（与旧版行为一致，边数据仍是完整快照）；
+- 迁移 0009 之后的应用层回滚窗口内，旧镜像写非空 `source_repo` 会违反 CHECK 使 graph job 失败（读路径不受影响、数据不损坏），重新升级新版本即自愈。
 
 ## 生产部署与运维
 

@@ -144,10 +144,7 @@ export function classifyDepsDevResponse(
     return { status: "error", sourceRepo: null, retryAfterSeconds: null, errorSummary: "malformed_response" };
   }
   const parsed = body as DepsDevBody;
-  if (parsed.relatedProjects === undefined) {
-    return { status: "not_found", sourceRepo: null, retryAfterSeconds: null, errorSummary: null };
-  }
-  if (!Array.isArray(parsed.relatedProjects)) {
+  if (parsed.relatedProjects === undefined || !Array.isArray(parsed.relatedProjects)) {
     return { status: "error", sourceRepo: null, retryAfterSeconds: null, errorSummary: "malformed_response" };
   }
   const sourceProject = parsed.relatedProjects.find(
@@ -283,9 +280,10 @@ export async function fetchDepsDevOutcome(
   packageName: string,
   packageVersion: string,
   settings: Pick<ExternalResolutionSettings, "depsTimeoutMs">,
+  baseUrl = "https://api.deps.dev",
 ): Promise<DepsDevOutcome> {
   const encodedName = encodeURIComponent(packageName).replace(/%40/g, "@");
-  const url = `https://api.deps.dev/v3/systems/${system}/packages/${encodedName}/versions/${encodeURIComponent(packageVersion)}`;
+  const url = `${baseUrl}/v3/systems/${system}/packages/${encodedName}/versions/${encodeURIComponent(packageVersion)}`;
 
   let response: Response;
   try {
@@ -303,7 +301,10 @@ export async function fetchDepsDevOutcome(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return networkErrorOutcome("timeout");
+    }
     return networkErrorOutcome("malformed_response");
   }
   return classifyDepsDevResponse(response.status, body, retryAfterSeconds);
@@ -486,11 +487,13 @@ export async function upsertCanonicalizationOutcome(
   fullNameLower: string,
   outcome: CanonicalizationOutcome,
   retryAt: Date,
+  previousCanonicalFullName: string | null = null,
 ): Promise<void> {
   // canonicalization 表不设 status⟺canonical 的 CHECK：error/not_found 降级时
-  // 上一次的 canonical 值保留在 canonicalFullName 本身作为证据。
+  // 上一次的 canonical 值保留在 canonicalFullName 本身作为证据（与 deps.dev
+  // 侧 last_resolved_repo 的"移动"语义对称）。
   const canonicalFullName =
-    outcome.canonicalFullName ?? null;
+    outcome.canonicalFullName ?? previousCanonicalFullName ?? null;
   await db
     .insert(githubRepoNameCanonicalizations)
     .values({
