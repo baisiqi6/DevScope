@@ -68,19 +68,16 @@ API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置�
 
 - `REPOSITORY_IDENTITY_CUTOVER`：正式仓库稳定 ID 的三阶段发布开关。默认 `disabled`；只有最新一次 `repository.identity.backfill` 结果为 `applied`、冲突为空且可解析正式仓库均已带 ID 后，才改为 `enabled`。在 `disabled` 阶段仍可给同名旧行附加 ID、处理已知 ID 的 rename，但拒绝创建 ID 与 `fullName` 都未命中的新正式行。
 
-### 技术栈存储模式（Phase C）
+### 技术栈存储模式（Phase C 终态）
 
-- `TECHNOLOGY_STACK_STORAGE_MODE`：技术栈事实的存储模式，四值枚举
-  `legacy_shadow_dual_write -> new_read_dual_write -> new_only -> legacy_cleaned`。
-  API 与 Worker 必须一致（同一 compose 变量）；缺省回落值为 `legacy_shadow_dual_write`，
-  但当前 revision（cleanup revision）只支持 `new_only | legacy_cleaned`——缺省或
-  dual-write 值会启动直接失败（fail closed，不自动回退）。
-  部署本 revision 与 `.env` 翻转为 `new_only` 必须同批完成
-  （见"技术栈 new_only 切换与 cleanup 维护窗口"一节）。
-- 本地开发 mode 指引：`pnpm db:push` 从 schema 直建库（无 `is_reference` 列），
-  marker 矩阵下仅 `legacy_cleaned` 可启动——本地 `.env.local` 应设
-  `TECHNOLOGY_STACK_STORAGE_MODE=legacy_cleaned`；经迁移文件建成的库
-  （含 `test:integration` 的临时库）保留该列，用 `new_only`。
+- `TECHNOLOGY_STACK_STORAGE_MODE`：技术栈事实的存储模式。Phase C 已于 2026-08-20
+  在生产执行完毕（cleanup + 独立 closeout APPROVE），终态 revision 仅支持
+  `legacy_cleaned`，生产 `.env` 固定该值；枚举中的其余三个迁移中间态值在当前
+  revision 下启动直接失败（fail closed，不自动回退）。历史迁移流程见
+  "技术栈 new_only 切换与 cleanup 维护窗口"一节（已执行完毕，仅作回滚/审计参考）。
+- 本地开发：`.env` / `.env.local` 设 `TECHNOLOGY_STACK_STORAGE_MODE=legacy_cleaned`。
+  `pnpm db:push` 直建库（无 `is_reference` 列）与迁移文件建成的库（列存在但伪数据为 0）
+  在 marker 矩阵下均放行 `legacy_cleaned`。
 
 浏览器请求使用同源路径 `/api/trpc/*` 和 `/api/agent/*`，通常不需要配置公开的后端地址。
 
@@ -158,7 +155,7 @@ Trending 优先抓取 `github.com/trending`。当部署网络无法连接 GitHub
 
 每次 backfill 的终态 job/result 不可重置；新一轮必须使用新 version。任一阶段异常先保持或恢复 `disabled` 并暂停采集；已经完成数据写入而需要整体回退时使用 Stage 1 前备份，不执行临时 down migration。
 
-## 技术栈 new_only 切换与 cleanup 维护窗口
+## 技术栈 new_only 切换与 cleanup 维护窗口（历史流程，2026-08-20 已执行完毕）
 
 Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。当前代码 revision（cleanup revision）支持 `new_only` 与 `legacy_cleaned` 两态——维护窗口前以 new_only 运行，cleanup 脚本切 legacy_cleaned 后以同一 revision 重启；dual-write 兼容、legacy writer、legacy 读路径与 Phase A backfill 均已删除，`repositories.is_reference` 列定义已从 schema 移除（journal 中的 DROP COLUMN 由 cleanup receipt 守卫，常规迁移与 fresh 重放均为 no-op）。
 
