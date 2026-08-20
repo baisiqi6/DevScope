@@ -155,3 +155,10 @@
 - `TECHNOLOGY_STACK_SUPPORTED_MODES` 收紧为仅 `legacy_cleaned`（plan 分 revision supported set 的终态行）；`.env.example` 同步固定 `legacy_cleaned`；runbook 环境变量段改写为终态语义，切换/维护窗口章节标注为历史流程（回滚/审计参考）；
 - deploy workflow 的 deploy job SSH 参数与 cleanup job 统一为 `secrets.SSH_HOST/SSH_USER/SSH_KEY`（消除两套约定；`SSH_PRIVATE_KEY` secret 不再被引用，保留不删）；
 - 遗留清单（终态 revision 批次）全部关闭。回归：unit 232/232、integration 51/51×2、四门禁与 YAML 校验通过。
+
+## 终态 revision 生产部署（2026-08-20）
+
+- PR #48 合并 main@ce7ff16（CI 双绿）；服务器→GitHub TLS 仍中断，走既定降级路径：workflow run 32337214423 的 build 推送 ce7ff16 镜像（deploy job 如预期败于 git pull，无生产影响）→ 本机 amd64 拉取 save/scp/load + git bundle 将服务器工作树 ff 至 ce7ff16 → force-recreate；
+- 无 schema 变更（无迁移）；`.env` 保持 `legacy_cleaned`，终态启动断言通过（api/worker 干净启动，无 mode 拒绝）；
+- 验证：health ok、web 200、新镜像运行（api c0b09f647804）、图谱契约 40 repo + 9 language + 13 technology_stack / 249 边不变；终态 rebuild completed（基线 receipt 79 与新表 79 持续一致）；
+- Phase C 至此全部关闭：代码、生产数据、运行 revision 三者均处于终态。
