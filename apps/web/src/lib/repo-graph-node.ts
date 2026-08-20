@@ -1,8 +1,8 @@
 import type { RepoGraphNode } from "@devscope/shared";
 
-/** Phase A: consume both legacy API nodes and the target graph contract. */
+/** Phase C cleanup revision：legacy `reference` kind 已随契约删除，仅认目标 token。 */
 export function isTechnologyStackGraphNode(
   node: Pick<RepoGraphNode, "kind">,
 ): boolean {
-  return node.kind === "reference" || node.kind === "technology_stack";
+  return node.kind === "technology_stack";
 }

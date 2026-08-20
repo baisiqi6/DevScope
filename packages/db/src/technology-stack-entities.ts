@@ -33,11 +33,13 @@ export function assertTechnologyStackStorageModeSupported(
 
 /**
  * 本代码 revision 声明支持的存储模式（API/Worker 启动断言与 cleanup 前置
- * gate 的单一来源）。new_only revision：legacy writer/读路径已删，不能声称
- * dual-write；legacy_cleaned 随 cleanup revision 加入。
+ * gate 的单一来源）。cleanup revision：维护窗口内 cleanup 前以 new_only
+ * 运行，cleanup 脚本切 legacy_cleaned 后以同一 revision 重启；dual-write
+ * 模式的兼容 revision 已随 new_only revision 退役，不再支持。
  */
 export const TECHNOLOGY_STACK_SUPPORTED_MODES: readonly TechnologyStackStorageMode[] = [
   "new_only",
+  "legacy_cleaned",
 ];
 
 const technologyStackPackageSchema = z.object({

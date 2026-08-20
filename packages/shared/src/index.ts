@@ -1207,14 +1207,12 @@ export type RepoRelationshipEvidence = z.infer<typeof repoRelationshipEvidenceSc
 
 export const repoGraphNodeSchema = z.object({
   id: z.string(),
-  // Phase A compatibility: consumers accept both the legacy and target token.
-  kind: z.enum(["repo", "reference", "technology_stack", "language"]),
+  kind: z.enum(["repo", "technology_stack", "language"]),
   fullName: z.string(),
   name: z.string(),
   language: z.string().nullable(),
   stars: z.number().nullable(),
   description: z.string().nullable(),
-  isReference: z.boolean().optional(),
 });
 
 export const repoGraphEdgeSchema = z.object({

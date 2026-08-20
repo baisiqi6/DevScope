@@ -38,9 +38,9 @@ import { fastifyOptions } from "./server-options";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  // Phase C new_only revision：legacy writer/读路径已删，不再声称 dual-write；
-  // 部署本 revision 必须与 .env mode 翻转为 new_only 同批完成；
-  // legacy_cleaned 随 cleanup revision 加入（TECHNOLOGY_STACK_SUPPORTED_MODES 单一来源）
+  // Phase C cleanup revision：维护窗口内 cleanup 前以 new_only 运行、cleanup 后
+  // 以 legacy_cleaned 重启（TECHNOLOGY_STACK_SUPPORTED_MODES 单一来源）；
+  // 部署本 revision 与 .env mode 翻转为 new_only 同批完成
   TECHNOLOGY_STACK_SUPPORTED_MODES,
 );
 

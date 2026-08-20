@@ -13,22 +13,24 @@ const base = {
   description: "React 技术栈",
 };
 
-describe("graph contract rollout compatibility", () => {
-  it("同时接受旧 reference/isReference 与新 technology_stack contract", () => {
-    const legacy = repoGraphNodeSchema.parse({
+describe("graph contract (Phase C cleanup revision)", () => {
+  it("technology_stack contract 被识别为技术栈节点", () => {
+    const node = repoGraphNodeSchema.parse({
+      ...base,
+      kind: "technology_stack",
+    });
+    expect(isTechnologyStackGraphNode(node)).toBe(true);
+    expect(isTechnologyStackGraphNode({ ...node, kind: "repo" })).toBe(false);
+    expect(isTechnologyStackGraphNode({ ...node, kind: "language" })).toBe(false);
+  });
+
+  it("legacy reference kind 与 isReference 字段已随契约删除（fail closed）", () => {
+    expect(() => repoGraphNodeSchema.parse({
       ...base,
       id: "41",
       kind: "reference",
       isReference: true,
-    });
-    const current = repoGraphNodeSchema.parse({
-      ...base,
-      kind: "technology_stack",
-    });
-
-    expect(isTechnologyStackGraphNode(legacy)).toBe(true);
-    expect(isTechnologyStackGraphNode(current)).toBe(true);
-    expect(current.isReference).toBeUndefined();
+    })).toThrow();
   });
 
   it("未知 kind 仍 fail closed", () => {

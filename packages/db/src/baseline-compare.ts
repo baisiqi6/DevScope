@@ -46,9 +46,13 @@ export async function snapshotLegacyTechnologyStackBaseline(
       github_repository_id text not null,
       slug text not null,
       packages_digest text not null,
-      frozen_at timestamp not null,
-      unique (user_id, github_repository_id, slug)
+      frozen_at timestamp not null
     )
+  `);
+  // 唯一索引与 journal 0010 同名（运行期建表先于迁移应用的错序窗口也不会留下双索引）
+  await db.execute(sql`
+    create unique index if not exists technology_stack_baseline_receipts_user_repo_stack_unique
+      on technology_stack_baseline_receipts (user_id, github_repository_id, slug)
   `);
   // 清除该用户旧快照（裁定更新路径也走这里）
   await db.execute(sql`

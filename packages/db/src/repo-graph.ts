@@ -773,13 +773,12 @@ export async function recomputeDependencyEdges(
 
 export interface RepoGraphDataNode {
   id: string;
-  kind: "repo" | "reference" | "language" | "technology_stack";
+  kind: "repo" | "language" | "technology_stack";
   fullName: string;
   name: string;
   language: string | null;
   stars: number | null;
   description: string | null;
-  isReference: boolean;
 }
 
 export interface RepoGraphDataEdge {
@@ -836,10 +835,9 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
     language: r.language,
     stars: r.stars,
     description: r.description,
-    isReference: false,
   }));
 
-  // 语言节点即时合成（与 legacy 一致）
+  // 语言节点即时合成
   const languages = new Set<string>();
   for (const r of repos) {
     if (r.language) languages.add(r.language);
@@ -853,7 +851,6 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
       language: null,
       stars: null,
       description: null,
-      isReference: false,
     });
   }
 
@@ -894,7 +891,6 @@ export async function getRepoGraphDataFromNewTables(db: Db, userId: number): Pro
       language: null,
       stars: null,
       description: `${row.stackName} 技术栈`,
-      isReference: false,
     });
   }
 

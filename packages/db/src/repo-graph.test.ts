@@ -568,8 +568,7 @@ describe("recomputeDependencyEdges", () => {
         {
           id: 1,
           fullName: "org-a/app-a",
-          isReference: false,
-          sbomPackages: [
+            sbomPackages: [
             { name: "react", version: "19.2.6", system: "npm" },
             { name: "vue", version: "3.5.0", system: "npm" },
             { name: "org.springframework.boot:spring-boot-starter-web", version: "3.5.0", system: "maven" },
@@ -625,8 +624,7 @@ describe("recomputeDependencyEdges", () => {
         {
           id: 1,
           fullName: "org-a/app-a",
-          isReference: false,
-          sbomPackages: [
+            sbomPackages: [
             { name: "react", version: "19.2.6", system: "npm" },
             { name: "react-dom", version: "19.2.6", system: "npm" },
           ],
@@ -1435,8 +1433,7 @@ describe("rebuildRepoGraph（deps cache recovery）", () => {
         {
           id: 1,
           fullName: "org-a/app-a",
-          isReference: false,
-          sbomPackages: null,
+            sbomPackages: null,
         },
       ],
     });
@@ -1507,7 +1504,7 @@ describe("rebuildRepoGraph（deps cache recovery）", () => {
 // Phase B：new_read_dual_write 新表读投影
 // ============================================================================
 
-describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
+describe("getRepoGraphData（新表投影）", () => {
   interface NewReadFixture {
     repos: Array<{ id: number; fullName: string; name: string; language: string | null; stars: number | null; description: string | null; githubRepositoryId?: string }>;
     stackRows: Array<{ repoId: number; slug: string; stackName: string }>;
@@ -1579,13 +1576,12 @@ describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
   });
 
   it("新读：stack:<slug> 节点 + 合成 repo→stack 边 + 语言合成", async () => {
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const { getRepoGraphData } = await import("./repo-graph");
     const data = await getRepoGraphData(createNewReadMockDb(fx()), 1);
 
     const stackNodes = data.nodes.filter((n) => n.kind === "technology_stack");
     expect(stackNodes.map((n) => n.id).sort()).toEqual(["stack:react", "stack:vite"]);
-    expect(stackNodes[0]).toMatchObject({ fullName: "tech-stack/react", isReference: false });
+    expect(stackNodes[0]).toMatchObject({ fullName: "tech-stack/react" });
 
     const stackEdges = data.edges.filter((e) => e.target.startsWith("stack:"));
     expect(stackEdges).toHaveLength(3); // 1→react, 1→vite, 2→react
@@ -1594,7 +1590,6 @@ describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
   });
 
   it("legacy 栈边被排除：无悬空边、无指向 reference 的双重计数", async () => {
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const { getRepoGraphData } = await import("./repo-graph");
     const data = await getRepoGraphData(createNewReadMockDb(fx()), 1);
 
@@ -1605,7 +1600,6 @@ describe("getRepoGraphData（new_read_dual_write 新读投影）", () => {
   });
 
   it("top-N 投影：低频 stack 被裁剪、高频保留（与 shadow 选择语义一致）", async () => {
-    vi.stubEnv("TECHNOLOGY_STACK_STORAGE_MODE", "new_read_dual_write");
     const data2 = fx();
     // vite 只有 1 个使用仓库，react 有 2 个——topN=1 时应保留 react
     data2.repos = [

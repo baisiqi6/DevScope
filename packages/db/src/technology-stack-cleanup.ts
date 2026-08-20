@@ -192,6 +192,8 @@ export interface CleanupReceipt {
 /**
  * 执行 cleanup：前置校验通过后单事务删除 legacy 栈边 → 伪 watched → 伪 repositories，
  * 写 cleanup receipt，再执行 receipt 守卫的 DROP COLUMN is_reference。
+ * 删除与 DDL 均带有限 lock_timeout/statement_timeout（plan 第 76 行）：
+ * 长事务阻塞时快速失败回滚，不做无限等待。
  * 任何失败整体回滚，不留半清理状态。
  */
 export async function executeTechnologyStackCleanup(
@@ -204,6 +206,9 @@ export async function executeTechnologyStackCleanup(
   }
 
   await db.transaction(async (tx) => {
+    // 有界锁/语句超时：SET LOCAL 只作用于本事务
+    await tx.execute(sql`set local lock_timeout = '10s'`);
+    await tx.execute(sql`set local statement_timeout = '120s'`);
     if (validation.alreadyCleaned) {
       // 补删路径：数据删除与 receipt 已在先前事务提交，此处不再触碰数据
     } else {
@@ -243,11 +248,15 @@ export async function executeTechnologyStackCleanup(
     }
   });
 
-  // DROP COLUMN 在事务后执行（DDL 需独立锁窗口；receipt 已持久化）；
+  // DROP COLUMN 在独立短事务内执行（receipt 已持久化；锁竞争时快速失败）
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`set local lock_timeout = '10s'`);
+    await tx.execute(sql`set local statement_timeout = '30s'`);
+    await tx.execute(sql`
+      alter table repositories drop column if exists is_reference
+    `);
+  });
   // 返回值来自 information_schema 实测而非假定（implementation review P3-3）
-  await db.execute(sql`
-    alter table repositories drop column if exists is_reference
-  `);
   const dropped = await db.execute<{ col_exists: boolean }>(sql`
     select exists(
       select 1 from information_schema.columns
