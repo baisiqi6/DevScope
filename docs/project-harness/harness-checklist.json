@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-08-19",
+  "updated_at": "2026-08-20",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -376,41 +376,43 @@
     {
       "id": "data-architecture-3c-technology-stack-legacy-cleanup",
       "title": "技术栈实体分离 Phase C：停止旧写入并清理伪数据",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260819-phase-c",
-      "updated_at": "2026-08-19",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-20",
       "dependencies": [
         "data-architecture-3b-technology-stack-read-cutover"
       ],
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "new_only 观察、显式 cleanup workflow、备份恢复演练和生产 closeout 通过；伪仓库/伪收藏/legacy stack edges/is_reference 安全移除，真实业务数据不变。",
-      "verification": "",
+      "verification": "PR #45（new_only revision）+ PR #46（cleanup revision）合并 main@451f6f0；两轮独立 implementation review APPROVE；2026-08-20 生产全链执行（用户授权）：new_only 切换（迁移 0010、基线 79 keys 固化、冷/热 rebuild P0 验证）→ cleanup 维护窗口（run 32335156638：79 边/13 伪仓库/13 伪 watch 删除、receipt 落盘、is_reference 列删除、切 legacy_cleaned）→ 独立 production closeout APPROVE；证据见 tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md",
       "handoff": "Phase B closeout 后领取；实现与演练不等于生产删除授权，真实 cleanup 需用户再次明确授权。",
       "plan_path": "docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md",
       "workflow": {
-        "status": "review_approved",
-        "updated_at": "2026-08-19",
+        "status": "closed",
+        "updated_at": "2026-08-20",
         "branch": "codex/phase-c-cleanup"
       },
       "artifacts": {
-        "branch": "codex/phase-c-cleanup"
+        "branch": "codex/phase-c-cleanup",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260819-phase-c",
         "acquired_at": "2026-08-19T13:57:37Z",
         "expires_at": "2026-08-19T15:57:37Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-08-20T05:32:15Z"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "reviewer-plan",
-        "phase": "changes_requested",
-        "updated_at": "2026-08-19",
-        "summary": "continuity：P0 与三项 P1 拍板落实；N1 journal 调和（receipt 守卫 DO block+互斥）、N2 分 revision supported set、N3 谓词改写清单、N4 workflow 正文标注、N5 裁定路径/表载体/脚本职责均已写入。按 reviewer 条件视为 approved"
+        "reviewer": "reviewer-closeout",
+        "phase": "closeout_requested",
+        "updated_at": "2026-08-20",
+        "summary": "生产 closeout 独立终审 APPROVE（详见 tasks/.../verification.md 生产执行记录节）：数据终态实测吻合、备份/回滚材料齐备、契约干净、legacy_cleaned rebuild 成功；遗留两项属终态 revision 批次不阻断。"
       }
     },
     {

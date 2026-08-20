@@ -111,3 +111,41 @@
 - P3-3：runbook 补删段写明 `.env` 已切 legacy_cleaned 后的触发方式（人工 SSH 执行 cleanup-cli）。
 
 回归：integration 51/51、四门禁全绿。
+
+## 生产执行记录（2026-08-20，用户授权全链执行）
+
+### 切换前 preflight（只读，UTC 05:03 前）
+
+- 服务器 HEAD 8cd17c3、mode `new_read_dual_write`、容器健康（api/worker 15h、postgres 5 周 healthy）；
+- 最后一次 rebuild succeeded 2026-08-19 13:45（new_read 下成功 = shadow 零差异）、active job 0、无长事务；
+- 数据形态：40 真实 / 13 伪仓库 / 53 watched / 13 stacks / 79 rts / 79 legacy 栈边（与 Phase B closeout 一致）。
+
+### new_only 切换窗口（UTC 05:04-05:12）
+
+- `.env` 翻转 `new_only`（运行容器 env 在创建时固化，随 force-recreate 同批生效）；回滚镜像 digest 三份记录于 `phase-c-cutover-rollback-images-*.txt`（api 681333e3、worker 7d97db3a、web 70f341fe）；
+- deploy workflow run 32333869113（451f6f0 + apply_database_migration=true）因服务器→github TLS 全败（git pull 3 次重试均败，容器零影响）；改走降级路径：git bundle fast-forward 服务器工作树至 451f6f0 + 本机拉 amd64 镜像 docker save/scp/load 并重打 `latest`（api ee5578546ac2 / worker 5f14174c688a / web a0aa5e9bfd1e）；
+- 迁移前备份 `phase-c-cutover-20260820-130834.dump`（141M，custom format，pg_restore --list 验证可读）；`db:migrate` 应用 0010：两 receipt 表创建、DROP COLUMN 守卫 no-op（列保留）、journal 11 条；
+- 容器 force-recreate：启动一致性 new_only 全链通过（api listening、worker 启动、health ok、web 200）；
+- **冻结基线固化**：`snapshotLegacyTechnologyStackBaseline` 容器内执行 → **79 keys** frozen_at 2026-08-20T05:10:22Z（与 79 legacy 栈边一一对应）。
+
+### 观察窗口（UTC 05:10-05:19）
+
+- 冷 rebuild：succeeded 05:10:48（deps.dev 118 外呼、全 stage；budget 快照入结果）；**P0 逐项复核**：legacy 栈边 79、伪仓库 13、伪 watch 13 全部不变，dep 总数 93 = 14 重写 + 79 冻结，新表 79 relation 原样重建——冻结形态未被摧毁；
+- 热 rebuild：succeeded（幂等）；
+- 基线单向包含由 cleanup preflight 复核通过（见下）。
+
+### cleanup 维护窗口（UTC 05:16-05:22）
+
+- 首次 dispatch run 32334785571：preflight 即败——batch 2 潜在 bug，cleanup job 引用的 `secrets.SSH_HOST/SSH_USER/SSH_KEY` 未配置（仓库仅有 `SSH_PRIVATE_KEY`）；破坏性步骤全部 skipped，零影响；补齐三个 secrets 后重试；
+- run 32335156638：SUCCESS。流程：revision 对账（HEAD=451f6f0=run SHA、运行容器=当前镜像）→ `cleanup-cli --validate` 全 gate 通过 → pre-cleanup 备份 `pre-cleanup-20260820-131935.dump`（141M，pg_restore --list 验证）→ 停 api/worker → 单事务删除 + receipt + 切 `legacy_cleaned` + DROP COLUMN → 重启 → health ok。
+
+### 清理后核验（UTC 05:22-05:26）
+
+- 伪仓库 0 / 伪 watch 0 / legacy 栈边 0；真实 40 仓库 / 40 watched / 116 sim 边 / 14 dep 边 / 79 rts 全部保持；repo_chunks 35819 完整；cleanup receipt 1 行；`is_reference` 列已删除；
+- mode `legacy_cleaned`，worker/api 干净启动；图谱读契约：40 repo + 9 language + 13 technology_stack 节点、无 reference kind、249 边（116 sim + 14 dep + 79 repo→stack + 40 written_in）；
+- legacy_cleaned 下完整 rebuild：succeeded（基线单向包含持续通过）。
+
+### 遗留（随终态 revision 批次）
+
+- 终态 revision：supported set 收紧为仅 `legacy_cleaned`，`.env` 固定；
+- workflow cleanup job 的 SSH secret 命名与 deploy job 对齐（当前靠补齐的三个 secrets 工作，存在两套约定）。

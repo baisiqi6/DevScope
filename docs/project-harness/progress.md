@@ -118,6 +118,13 @@
 - 可并行 item：`platform-ai-7-minimax-m3-default`；其 provider 迁移与数据整改使用独立 PR、部署和 closeout。
 - 后续串行 item：Phase A closeout -> `data-quality-5-postgres-integration-gates` -> Phase B -> Phase C。
 
+## Phase C 关闭（2026-08-20）
+
+- `data-architecture-3c-technology-stack-legacy-cleanup` **done**：PR #45（new_only revision）+ PR #46（cleanup revision）合并 main@451f6f0；两轮独立 implementation review APPROVE；
+- 生产全链执行（用户授权）：new_only 切换（迁移 0010 receipt 守卫、冻结基线 79 keys 固化、冷/热 rebuild P0 验证）→ cleanup 维护窗口（79 legacy 栈边 / 13 伪仓库 / 13 伪 watch 删除、cleanup receipt 落盘、`is_reference` 列删除、mode 切 `legacy_cleaned`）→ 独立 production closeout APPROVE（实测与记录零出入）；
+- 生产终态：新表为技术栈唯一事实来源；图谱契约 40 repo + 9 language + 13 technology_stack 节点、无 reference kind；两份备份（cutover/pre-cleanup）与回滚镜像 digest 齐备；
+- 遗留（下一批，不阻断）：终态 revision（supported set 收紧 legacy_cleaned-only、`.env` 固定）、deploy workflow 两套 SSH secret 命名对齐（本次靠补齐 SSH_HOST/SSH_USER/SSH_KEY 解堵）。
+
 ## Harness 初始化验证
 
 - EXharness checklist semantic validator：通过，0 warnings；
