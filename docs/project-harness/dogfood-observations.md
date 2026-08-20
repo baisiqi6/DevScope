@@ -16,7 +16,7 @@
 
 | ID                | 标题                                              | 状态       | 优先级 | 类型     | 影响                      |
 | ----------------- | ------------------------------------------------- | ---------- | ------ | -------- | ------------------------- |
-| `DF-20260818-001` | MCP 分组列表因 `repoCount` 类型不一致失败         | `triaged`  | `p1`   | 产品缺陷 | blocked                   |
+| `DF-20260818-001` | MCP 分组列表因 `repoCount` 类型不一致失败         | `closed`   | `p1`   | 产品缺陷 | blocked                   |
 | `DF-20260818-002` | MCP 分组成员接口返回完整重对象                    | `triaged`  | `p1`   | 产品缺陷 | performance               |
 | `DF-20260818-003` | 许可证字段不能区分开源、source-available 与未识别 | `open`     | `p2`   | 能力缺口 | wrong data / confusing UX |
 | `DF-20260818-004` | 分组不支持父子层级                                | `accepted` | `p2`   | 能力缺口 | confusing UX              |
@@ -27,7 +27,7 @@
 
 ### DF-20260818-001：MCP 分组列表因 `repoCount` 类型不一致失败
 
-- Status: `triaged`
+- Status: `closed`
 - Priority: `p1`
 - Time: 2026-08-18
 - Entry point: MCP `devscope_list_groups`
@@ -40,9 +40,11 @@
 - Frequency: reproducible
 - Workaround: 已知分组 ID 时调用 `devscope_get_group_members`；否则改用 Web。该 workaround 不替代修复。
 - Classification: 产品缺陷；API 运行时输出与共享契约不一致。
-- Related issue/checklist: none
+- Related issue/checklist: `data-correctness-1c-group-count-contract`; [verification](tasks/data-correctness-1c-group-count-contract/verification.md)
 - Timeline:
   - 2026-08-18: 在真实云端 dogfood 会话首次观察并通过源码确认根因；未修改代码。
+  - 2026-08-18: API 边界增加严格 runtime normalization，PR #31 合并并完成无迁移生产部署。
+  - 2026-08-18: 认证 MCP 复查 7 个分组的 `repoCount` 均为 number 且与在线成员数一致，独立 closeout APPROVE，状态关闭。
 
 ### DF-20260818-002：MCP 分组成员接口返回完整重对象
 
