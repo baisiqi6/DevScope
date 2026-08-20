@@ -1,7 +1,7 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-20
-> 代码基线：`origin/main@4772098`（与生产运行 revision 一致）
+> 生产运行基线：`4772098`；`main` 可仅因本 item 的 closeout 文档提交而领先生产
 > 部署形态：Standalone
 > 当前状态：可靠性整改与部署链路收口均已完成；无 active item；下一产品节点为公开多用户加固，尚未启动
 
