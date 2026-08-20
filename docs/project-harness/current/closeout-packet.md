@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `data-architecture-3b-technology-stack-read-cutover`
-- Reviewer: `reviewer-pb-closeout`
-- Updated at: `2026-08-19`
-- Canonical plan path: `docs/project-harness/tasks/data-architecture-3b-technology-stack-read-cutover/plan.md`
+- Checklist item: `data-architecture-3c-technology-stack-legacy-cleanup`
+- Reviewer: `reviewer-closeout`
+- Updated at: `2026-08-20`
+- Canonical plan path: `docs/project-harness/tasks/data-architecture-3c-technology-stack-legacy-cleanup/plan.md`
 
 ## Item Snapshot
 
-- Title: 技术栈实体分离 Phase B：切换新模型读取
+- Title: 技术栈实体分离 Phase C：停止旧写入并清理伪数据
 - Status: doing
 - Workflow status: closeout_requested
 - Priority: p1
 - Owner: codex
-- Session: codex-20260819-phase-b
-- Dependencies: data-architecture-3-technology-stack-entities, data-correctness-4-deps-cache-recovery, data-quality-5-postgres-integration-gates
+- Session: codex-20260819-phase-c
+- Dependencies: data-architecture-3b-technology-stack-read-cutover
 
 ## Acceptance
 
-API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-write 在明确 rollback window 内保持零差异，真实仓库业务路径不依赖伪仓库过滤。
+new_only 观察、显式 cleanup workflow、备份恢复演练和生产 closeout 通过；伪仓库/伪收藏/legacy stack edges/is_reference 安全移除，真实业务数据不变。
 
 ## Verification
 
-
+PR #45（new_only revision）+ PR #46（cleanup revision）合并 main@451f6f0；两轮独立 implementation review APPROVE；2026-08-20 生产全链执行（用户授权）：new_only 切换（迁移 0010、基线 79 keys 固化、冷/热 rebuild P0 验证）→ cleanup 维护窗口（run 32335156638：79 边/13 伪仓库/13 伪 watch 删除、receipt 落盘、is_reference 列删除、切 legacy_cleaned）→ 独立 production closeout APPROVE；证据见 tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md
 
 ## Handoff
 
-三个前置 item 全部 closeout 后领取；只做 consumer-first read cutover，不停止旧写入、不清理 legacy 数据。
+Phase B closeout 后领取；实现与演练不等于生产删除授权，真实 cleanup 需用户再次明确授权。
 
 ## Review Inputs
 
@@ -40,105 +40,126 @@ API/Web/CLI/MCP 使用 technology_stack contract 和新表读取；legacy dual-w
 ## Canonical Plan Content
 
 ```md
-# 技术栈实体分离 Phase B：切换新模型读取
+# 技术栈实体分离 Phase C：停止旧写入并清理伪数据
 
 ## Item
 
-- Checklist item：`data-architecture-3b-technology-stack-read-cutover`
-- Target mode：`new_read_dual_write`
+- Checklist item：`data-architecture-3c-technology-stack-legacy-cleanup`
+- Target modes：`new_only` -> `legacy_cleaned`
 - Priority：P1
-- 前置：Phase A closeout、deps.dev cache recovery closeout、正式 PostgreSQL integration gate
+- 前置：Phase B production closeout
 
 ## Outcome
 
-API 与 Web 从 `technology_stacks` / `repository_technology_stacks` 读取技术栈事实，并输出 `technology_stack` graph contract（CLI/MCP 不直接解析 graph contract——经仓库列表的正向条件间接受益，无兼容改动点）；兼容期继续 dual-write legacy representation，使整个观察窗口内可确定性回退。真实仓库列表、收藏、分组、采集、Radar 与 Scheduler 不再依赖“排除伪仓库”的偶然过滤。
+停止 legacy graph representation 写入，在可审计、可恢复的维护窗口中删除技术栈伪 `repositories`、伪 `user_watched_repositories`、legacy stack dependency edges 和 `repositories.is_reference`，并把新表确立为唯一持久事实来源。
 
-## Authority Boundary
+## Destructive Authority Boundary
 
-本 item 只授权 consumer-first contract rollout、read cutover 和 rollback-window 验证。它不授权停止 legacy writer、删除 legacy 行、移除 `repositories.is_reference`、执行 destructive migration 或切换 AI provider。
+本计划是高风险执行说明，不等于立即授权生产删除。Worker 可实现、测试和演练；真实 cleanup 仍必须取得用户对目标 SHA、备份、维护窗口和生产操作的明确授权。
 
-## Required Design
+**cleanup 的执行载体与 journal 调和**：破坏性操作（DELETE + `DROP COLUMN`）由 opt-in workflow 调用的独立脚本执行（单事务：写 receipt + 执行删除）。schema 中的 `is_reference` 列定义随 new_only revision 移除，`db:generate` 产出的 journal migration 中的 `DROP COLUMN` 语句**改写为 receipt 守卫的 `DO` block**——存在 cleanup receipt 行（且 `to_regclass` 守卫 receipt 表存在，兼容全新环境重放）才执行 `DROP COLUMN`，否则 no-op 跳过。receipt 表本身声明进 schema（CREATE TABLE 非破坏性，journal 化无妨）。由此：常规 migrate 结构上跳过破坏性部分、fresh DB 重放安全、drizzle snapshot 与 schema 保持一致。**互斥**：cleanup 输入与 `apply_database_migration=true` 同时为 true 时 workflow 首步即 fail。
 
-### Read model
+**cleaned marker = `is_reference` 列存在性**（`information_schema.columns` 检查，带 `table_schema='public'` 过滤，与 `to_regclass` 同风格）：
 
-- 用户图谱先通过 `user_watched_repositories` 限定真实 source repositories，再 join `repository_technology_stacks`；
-- `TECH_STACK_TOP_N` 只在查询投影层计算，不裁剪全局持久事实；**读投影的选择语义必须与 legacy 写侧/shadow `projectionKeys` 复用同一函数**（按使用仓库数降序、stack name 升序 tie-break），保证 shadow 零差异时 UI 输出也与 legacy 一致；
-- 技术栈 node ID 固定为 `stack:<slug>`，kind 固定为 `technology_stack`；语言节点仍查询时合成；repo→repo 真实边来自 `repo_relationships`，**legacy 技术栈边（target 为 reference 行，即 `evidence.resolvedBy='tech-stack-catalog'`）在新读投影中排除**——repo→stack 边只从 `repository_technology_stacks` 合成，避免悬空边与双重计数；
-- **真实 repository 的正向条件固定为 `github_repository_id IS NOT NULL`**（与身份回填、`repositories_github_repository_id_unique` 唯一索引和轻量行从不写入 stable ID 的写边界一致）；禁止用 `owner <> 'tech-stack'`、fullName 前缀、sbom 存在性等替代。baseline 必须核验不变量 `is_reference=false AND github_repository_id IS NULL` 为 0 行；
-- 正向条件收敛的站点清单（6 处既有 `is_reference` 业务过滤：`apps/api/src/router.ts` 仓库列表、`scheduler.ts`×2、`router/groups.ts`、`packages/db/src/radar.ts`、`repository-identity.ts`；`repo-graph.ts` 内 dual-write/rebuild 机制性引用 Phase C 前保留）**加上 3 处当前未过滤的 watched-join 站点一并收敛**：`getRepository` 详情、`requireWatchedRepositoryByFullName`、embedding reconcile 列表（改为 watched + 正向条件，消除第二套偶然行为）；每个站点在 RED 清单有对应用例。
+- 列存在：`legacy_shadow_dual_write | new_read_dual_write | new_only` 放行（保留现有子检查）；`legacy_cleaned` 仅当伪仓库计数为 0 时放行——覆盖 cleanup 删除事务已提交但 DROP COLUMN 前中断的补删窗口，以及从未存在 legacy 表示的 fresh 重放库（implementation review P1-2 拍板：伪数据为 0 时不存在需要守护的冻结形态）；
+- 列不存在：仅 `legacy_cleaned` 放行，其余任何 mode（含缺省回落值）→ 启动 fail；
+- journal 0010 在 fresh 重放库上保留该列（receipt 守卫 no-op）属预期行为，由 migration matrix 集成用例断言钉住。
 
-### Contract rollout
+**分 revision supported set**（与启动矩阵共同生效；单一来源为 `TECHNOLOGY_STACK_SUPPORTED_MODES`）：
 
-1. 先发布 consumer compatibility revision：shared schema 与 Web 2D/3D 同时接受 legacy `reference` 与新 `technology_stack`（生产 Web@916bc66 已具备双 kind 兼容；CLI/MCP 经实测不解析 graph contract，无兼容改动点，该结论记入 baseline）；
-2. 用旧 API + compatibility consumer、新 API + compatibility consumer 做混合 revision 测试；
-3. 所有受支持 consumer 已部署后，API 才显式进入 `new_read_dual_write`；
-4. 未知 mode、数据库已 cleaned 却配置 legacy mode、缺少新表或 shadow drift 均启动失败，不自动回退。
+- new_only revision：仅支持 `new_only`（legacy writer/旧 compare 已删，不能声称 dual-write）；部署与 `.env` mode 翻转为 `new_only` **同批**（compose 重启窗口内完成）；
+- cleanup revision：支持 `{new_only, legacy_cleaned}`；
+- **revision gate（implementation review P1-1）**：`cleanup-cli --validate` 校验执行 revision 的支持集含 `legacy_cleaned`，否则在破坏性步骤前拒绝——防止在 new_only revision 上触发 cleanup 后不存在任何可启动 mode；
+- 终态 revision：仅 `legacy_cleaned`，`.env` 固定该值；`getRepoGraphData` 中 new_only/legacy_cleaned 的显式 throw 替换为新表读路径（读语义与 new_read 相同）。
 
-### Writer and rollback window
+**保留代码的谓词改写清单**（这些站点显式改写，不是"自动满足"）：收窄删除判据只用自包含的 `evidence->>'resolvedBy' = 'tech-stack-catalog'`（不读 is_reference；legacy 数据中指向 reference 行的边必然如此标记）；启动检查 counts SQL 的 `is_reference = true` 改写为 `github_repository_id IS NULL AND full_name LIKE 'tech-stack/%'`；`repo-graph.ts` 内部 6-7 处 `isReference` 读写站点（L184/222/365-375/513/699/1165 一带）换 `isRealGitHubRepository` 或删除。
 
-- normal graph rebuild 继续在同一 source transaction 内写 new 和 legacy representation；
-- 每次 rebuild 都生成按 `(source stable ID, stack slug, sorted packages)` 比较的 shadow receipt；
-- rollback window 内旧 representation 必须持续新鲜；发现 drift 时停止推进，先修复并重新达到零差异；
-- 回退只允许显式切回上一兼容镜像与 `legacy_shadow_dual_write`，不得修改数据或猜测重建。
+## Required State Machine
+
+```text
+new_read_dual_write
+  -> new_only
+  -> legacy_cleaned
+```
+
+- 进入 `new_only` 前再次要求 shadow zero-diff，并明确冻结“直接切回旧镜像”的承诺；
+- `new_only` 后、cleanup 前若必须回退，先从 new tables 确定性 materialize legacy 并验证零差异；
+- `legacy_cleaned` 后只能通过恢复 cleanup 前数据库备份 + 上一兼容 revision 回滚；
+- cleaned marker 与任何 legacy/shadow mode 组合必须 fail at startup。
 
 ## Execution Plan
 
-### 1. Baseline and plan review
+### 1. New-only compatibility revision
 
-- 核对三个前置 item 均为 `done` 且独立 review approved；
-- 记录当前 mode、migration rows、真实 repository/watched/group 数、new/legacy 投影摘要和所有受支持 consumer revision；
-- 请求独立 plan review，重点审查 tenant boundary、top-N、mixed-version contract、rollback 与 stale writer。
+**legacy writer 停写与冻结基线保持（P0 语义）**：
 
-### 2. RED tests
+- `recomputeDependencyEdges` 的 dependency 边全量替换必须收窄到**非 legacy 栈边**（`WHERE` 排除 target 为 reference 行 / `evidence.resolvedBy='tech-stack-catalog'` 的边）——否则 new_only 首次 rebuild 会清空冻结的 legacy 栈边；
+- 事务尾部两个 GC DELETE（无边引用的 reference watched、无人引用的 reference repositories）在 new_only+ 模式下**不执行**（mode 门或随 legacy writer 一同移除）；
+- RED 固化：new_only 下执行完整 rebuild 后，legacy 栈边行数、伪 watched 行数、伪 repositories 行数**逐项不变**。
 
-先建立失败用例：
+**冻结基线快照与比较语义**：
 
-- new read 不经 watched source join 时会泄漏另一个用户的 stack；
-- top-N 被错误写入持久层时丢失低频事实；
-- 旧 consumer 无法解析 `technology_stack` 的反例；
-- legacy/new source、relation、packages 任一漂移时拒绝 cutover；
-- unknown mode 和 cleaned+legacy mode 启动失败；
-- 真实仓库 list/group/collection/Scheduler/Radar 不应读取 technology stack 行；3 处未过滤 watched-join 站点（`getRepository` 详情、`requireWatchedRepositoryByFullName`、embedding reconcile 列表）各自有对应用例；
-- 新读投影不产生悬空边（legacy 栈边被排除）与重复 repo→stack 边（只从新表合成）；
-- 读投影 top-N 与 legacy/shadow `projectionKeys` 选择语义逐 slug 一致（usage 降序 + name 升序 tie-break）；
-- 正向条件恰好覆盖当前真实行、排除 reference 行（按 baseline 不变量计数）。
+- 进入 new_only 前，最后一次 dual-write rebuild 通过 shadow zero-diff；随后持久化 legacy baseline 快照：full-set 的 `(githubRepositoryId, slug)` 存在性 key + packages digest（**不做 top-N 裁剪**），存独立 **receipt 表**（窗口比较器跑在 Worker 内，文件不可用）；
+- 观察窗口比较改为**单向包含**：baseline key ⊆ new 全集；missing 的裁定路径 = 复核该仓库 SBOM 重采集（relation 合法消失则更新快照 receipt 并记录，禁止手工 SQL），无解释的 missing 才 fail；digest 只对 `repository_technology_stacks.updatedAt` 不晚于冻结时间的行要求一致（窗口内合法重采集导致的 digest 漂移记数不 fail）；
+- 既有 `compareTechnologyStackProjection`（双向 + is_reference 读取）随 legacy writer 一同退役；新比较不读 `is_reference`。
 
-真实 PostgreSQL 用例至少覆盖两个用户的 disjoint/overlap watched set、同 stack 多 package evidence、成功空 relation 清理和 rebuild-vs-collection 强制交错。
+**兼容代码删除时序**：`getRepoGraphDataLegacy`、dual-write legacy 分支、Phase A 一次性 backfill 机制、旧 compare 实现随 new_only revision 删除（隔离 PG 无列测试强制这一点）；shared `repoGraphNodeSchema` 的 `reference` kind/`isReference` 字段与 Web 双 kind 兼容随 cleanup revision 删除。
 
-### 3. Minimal implementation
+**验证**：源码扫描证明运行 SQL 不再引用 `is_reference` 或 legacy stack rows（比较/启动检查改用 marker 矩阵后自动满足）；在“`is_reference` 列不存在、legacy 伪数据不存在”的隔离 PostgreSQL 中运行 API、Worker、graph、list、group、collection、identity、Scheduler、Radar、CLI/MCP 关键路径；独立 review approved 后才进入 cleanup preparation。
 
-- 在现有 graph query 内增加明确的 new-table projection，不引入 Repository layer、通用 graph abstraction 或第二套缓存；
-- 收紧 shared graph schema 与 2D/3D kind 判断；删除对外 `isReference` 的新 contract 使用，但 compatibility consumer 在窗口内保留 legacy 解析；
-- 把 repository truth 的正向条件集中到现有最接近的数据访问函数，逐个替换散落过滤；
-- mode 是严格枚举且进程启动时验证；**API 与 Worker 一致性的选定机制为部署时核验**（compose 单一 `TECHNOLOGY_STACK_STORAGE_MODE` 变量同时注入两进程 + 部署后核对 revisions 与 mode），进程内各自校验支持集与启动检查，不新建 DB mode ledger 或跨进程状态；
-- 启动检查与任务检查分层：mode 枚举合法、新表存在、cleaned+legacy 组合（启动时 shadow compare 得 legacyCount=0 且 newCount>0）在**进程启动**时 fail closed；shadow drift 在 **rebuild job 内**失败（既有语义）；Worker 的 shadow compare mode 门扩展到 `new_read_dual_write`（现仅 `legacy_shadow_dual_write` 分支）；
-- 添加结构化 shadow/cutover diagnostics，日志不得包含 token、密码或完整敏感 prompt。
+### 2. Dedicated cleanup operation
 
-### 4. Verification and review
+在 deploy workflow 增加默认关闭、显式 opt-in 的 `technology_stack_legacy_cleanup` 操作（独立 job；workflow 顶层 `concurrency: production` 防与普通 deploy 并发；SSH `command_timeout` 按维护窗口放大；producer block 用有界机制阻止 Scheduler/API 创建新的 rebuild/backfill job；每步等待均有界，超时即退出而非无限等待）。固定顺序：
 
-- focused unit/contract tests；
-- `pnpm test:integration`；
-- `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；
-- 独立 implementation review 关闭全部 P0-P3 finding；
-- PR 与 CI 通过后才能合并。
+1. 校验 target SHA、API/Worker revisions、`new_only` mode 和 approved Phase B receipt；
+2. 阻止 Scheduler/API 创建新的 `graph.rebuild` 或 technology-stack backfill；
+3. 排空并复核相关 `queued/running/retry_wait` jobs，不重置 terminal history；
+4. 停止 DevScope API/Worker；Web 可显示维护态，PostgreSQL、Nginx 和同机其他站点不重启；
+5. 检查旧/长事务、advisory-lock writer 和非预期连接；
+6. 创建可读取、校验过的即时备份，并记录真实仓库、watched、groups、repo edges、stack relations/evidence 的有序摘要；
+7. 以有限 `lock_timeout` 与 `statement_timeout` 执行显式 cleanup migration；
+8. 启动已知 new-only/cleaned revision；
+9. 验证 health、401、认证 MCP、repository/watch/group/graph 以及 migration/摘要不变量；
+10. 写入不可变 cleanup receipt，再解除 producer block。
 
-### 5. Production rollout
+任一 gate 失败必须在 destructive migration 前退出；不得通过无限等待锁或临时关闭校验继续。
 
-1. 备份并记录 target SHA、现有 mode、容器 revisions 和投影摘要；
-2. 先部署 compatibility consumers，保持 legacy read；
-3. dogfood Web 2D/3D、CLI/MCP graph 与 repository/group/collection 路径；
-4. 部署/配置 API 与 Worker 为 `new_read_dual_write`，要求 revisions 和 mode 一致；
-5. 运行受预算约束的 graph rebuild，复核 new/legacy 零差异与真实业务不变量；
-6. 保持一个明确、写入量足够的 rollback observation window，记录开始/结束条件；
-7. 独立 production closeout approved 后才把 item 标记 `done`。
+### 3. Cleanup migration semantics
+
+- 只删除能与新表一一映射且 packages evidence 摘要一致的 legacy stack edges；
+- 只删除能证明属于技术栈 representation、且没有真实 group/collection 语义的伪 watched/reference rows；
+- 删除前显式断言为 0（fail closed，不依赖 FK 碰巧拒绝或 cascade）：`repo_chunks`/`hackernews_items`/`releases` 对伪仓库的引用（NO ACTION 外键），以及 **`group_members` 对伪仓库的引用（cascade 外键，必须显式检查防静默级联）**；`repository_technology_stacks` 只挂真实仓库不受影响但同样断言；
+- 任何孤儿、额外引用、摘要漂移或未知 `is_reference` 用法使整个 migration fail closed；
+- 删除顺序服从外键，不使用宽泛名称前缀作为唯一判据；
+- 最后由脚本执行数据删除与 `repositories.is_reference` 列移除（代码层面的 legacy compatibility 与 dual-write branch 删除发生在 new_only revision，不属脚本职责）。
+
+### 4. RED and integration tests
+
+- cleanup 保留所有真实 repositories、真实 watched/group 关系和 repo-to-repo edges；
+- nonterminal job、旧 revision、旧/长事务、摘要不一致、备份不可读时拒绝 cleanup；
+- migration 中途失败整体回滚，不留下半清理 schema；
+- cleanup 后关键路径在真实 PostgreSQL 16 + pgvector 运行，旧 SQL 会明确失败；
+- backup restore + 上一 revision + 配置恢复的完整 rollback rehearsal 通过；
+- deploy workflow 的默认路径绝不运行 cleanup，只有精确 opt-in 输入可进入。
+
+### 5. Review and production closeout
+
+- focused tests、`pnpm test:integration` 与全仓四项门禁；
+- 独立 implementation/security/operations review；
+- PR/CI 合并后先 dry-run 与隔离环境演练；
+- 用户明确授权维护窗口后才执行生产 cleanup；
+- 独立 Reviewer 核对备份可恢复性、receipt、数据摘要、服务和 auth 后给出 production closeout。
+
+## Rollback
+
+cleanup 后固定执行：停止新 API/Worker -> 恢复 cleanup 前数据库备份 -> 恢复 Phase B compatibility image 与 mode -> 启动 -> 复核 legacy/new 摘要与业务不变量。不得靠重新抓取 GitHub、重新生成伪仓库或手工补行恢复。
 
 ## Exit Criteria
 
-- 所有支持的 consumer 使用 `technology_stack` contract，node ID 稳定且无悬空边；
-- API 从新表读取，dual-write 仍维持 legacy projection 零差异；
-- repository/watch/group/collection/Radar/Scheduler 只表达真实 GitHub repository；
-- mixed revision、跨用户、top-N、并发和 rollback 演练通过；
-- Phase C 尚未启动，legacy rows 和 `is_reference` 仍完整可回退。
+- 新表是技术栈唯一持久事实来源；
+- legacy writer、compatibility read、`reference/isReference` contract 和 `is_reference` 列均删除；
+- 伪仓库、伪收藏、legacy stack edges 清零，真实业务数据与图谱语义保持一致；
+- cleanup 和 rollback 均完成真实 PostgreSQL 演练，生产 receipt 与独立 closeout approved。
 ```
 
 ## Recent Progress Context
