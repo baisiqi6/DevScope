@@ -1,16 +1,16 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-20
-> 代码基线：`origin/main@5e06c8f`（相对生产 `ce7ff16` 仅增加 Phase C 部署记录）
+> 代码基线：`origin/main@4772098`（与生产运行 revision 一致）
 > 部署形态：Standalone
-> 当前状态：可靠性整改批次已关闭；正在修复自动部署对生产公网代理的单点依赖
+> 当前状态：可靠性整改与部署链路收口均已完成；无 active item；下一产品节点为公开多用户加固，尚未启动
 
 ## 当前状态
 
-- [Harness checklist](harness-checklist.json)：10 个 item `done`，1 个 item `doing`，1 个 item `todo`，无 `blocked`；
-- [Current task pointer](current/task_plan.md)：当前指向 `operations-8-proxy-independent-deploy`；
-- 生产当前运行终态 revision `ce7ff16`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
-- 无迁移复验 run `32344426947` 再次确认服务器 repo-local Mihomo proxy 的全部 91 个节点不可用；新链路 run `32346776308` 已证明 bundle/archive 生成和 SSH 传输成功，但旧 `script_stop` 重写 `case` 语法而在远端解释阶段 fail closed；生产仍为 `ce7ff16`，当前正在收口 follow-up。
+- [Harness checklist](harness-checklist.json)：11 个 item `done`，1 个 item `todo`，无 `doing` / `blocked`；
+- [Current task pointer](current/task_plan.md)：已清空，没有正在执行的 canonical plan；
+- 生产当前运行 revision `4772098`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
+- 无迁移、无 cleanup 的自动部署 run `32348360956` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成；服务器无需访问 GitHub/GHCR，迁移记录和业务数据不变量保持。
 
 ## 已完成整改
 
@@ -43,10 +43,10 @@
 
 ## 当前 handoff
 
-- 当前只执行 [operations-8-proxy-independent-deploy](tasks/operations-8-proxy-independent-deploy/plan.md)；不要继续沿用 Phase A/B/C 的历史 handoff；
+- 当前没有未完成的可靠性或运维整改 item；不要继续沿用 Phase A/B/C 与部署链路的历史 handoff；
 - 下一产品节点是 `product-6-public-multi-user-hardening`，仍为 `todo`。启动前必须先形成独立 canonical plan，并重新确认应用鉴权、租户隔离、HTTPS 与公开运营范围；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
-- 本 item 经 PR/CI 和无迁移生产复验关闭后，把成功 run ID、目标 SHA 与生产复核写回本文件及 item verification，再结束本 handoff。
+- 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
 
 ## 更新规则
 
