@@ -455,6 +455,40 @@
         "updated_at": "2026-08-19",
         "summary": "15 项实测一致：PR/健康/provider/镜像 main@59066cd/迁移 10/canary succeeded 无 think 污染 report 入库/回滚配置与备份/key 零泄漏；APPROVE（2 P3 措辞）"
       }
+    },
+    {
+      "id": "operations-8-proxy-independent-deploy",
+      "title": "自动部署去除服务器公网代理单点",
+      "status": "doing",
+      "priority": "p1",
+      "owner": "root",
+      "selected_in_session": "ops-closeout-20260820-root",
+      "updated_at": "2026-08-20",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "GitHub Actions 通过 SSH 传输精确 Git bundle 与镜像归档完成无迁移部署；服务器无需访问 GitHub/GHCR；生产健康、访问控制与数据不变量保持",
+      "verification": "",
+      "handoff": "按 plan 实现 transfer/checksum/fast-forward/image revision gates，CI 通过后执行一次无迁移生产复验",
+      "plan_path": "docs/project-harness/tasks/operations-8-proxy-independent-deploy/plan.md",
+      "workflow": {
+        "status": "running",
+        "updated_at": "2026-08-20",
+        "branch": "codex/operations-closeout"
+      },
+      "artifacts": {
+        "branch": "codex/operations-closeout"
+      },
+      "review": {
+        "decision": null
+      },
+      "lease": {
+        "owner": "root",
+        "session": "ops-closeout-20260820-root",
+        "acquired_at": "2026-08-20T07:46:04Z",
+        "expires_at": "2026-08-20T09:46:04Z",
+        "ttl_minutes": 120
+      }
     }
   ]
 }

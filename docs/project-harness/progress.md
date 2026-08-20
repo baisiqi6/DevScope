@@ -3,14 +3,14 @@
 > 更新时间：2026-08-20
 > 代码基线：`origin/main@5e06c8f`（相对生产 `ce7ff16` 仅增加 Phase C 部署记录）
 > 部署形态：Standalone
-> 当前状态：可靠性整改批次已全部关闭；无 active item；下一产品节点为公开多用户加固，尚未启动
+> 当前状态：可靠性整改批次已关闭；正在修复自动部署对生产公网代理的单点依赖
 
 ## 当前状态
 
-- [Harness checklist](harness-checklist.json)：10 个 item `done`，1 个 item `todo`，无 `doing` / `blocked`；
-- [Current task pointer](current/task_plan.md)：已清空，没有正在执行的 canonical plan；
+- [Harness checklist](harness-checklist.json)：10 个 item `done`，1 个 item `doing`，1 个 item `todo`，无 `blocked`；
+- [Current task pointer](current/task_plan.md)：当前指向 `operations-8-proxy-independent-deploy`；
 - 生产当前运行终态 revision `ce7ff16`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
-- 本批仍需完成一次无迁移自动部署复验，以关闭终态 revision 曾因服务器到 GitHub TLS 中断而使用手工兜底的运维证据缺口。
+- 无迁移复验 run `32344426947` 再次确认服务器 repo-local Mihomo proxy 的全部 91 个节点不可用；失败发生在服务重建前，生产未受影响；当前 item 改为由 GitHub runner 通过 SSH 传入精确 Git bundle 与镜像归档。
 
 ## 已完成整改
 
@@ -43,10 +43,10 @@
 
 ## 当前 handoff
 
-- 当前没有未完成的可靠性整改 item；不要继续沿用 Phase A/B/C 的历史 handoff；
+- 当前只执行 [operations-8-proxy-independent-deploy](tasks/operations-8-proxy-independent-deploy/plan.md)；不要继续沿用 Phase A/B/C 的历史 handoff；
 - 下一产品节点是 `product-6-public-multi-user-hardening`，仍为 `todo`。启动前必须先形成独立 canonical plan，并重新确认应用鉴权、租户隔离、HTTPS 与公开运营范围；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
-- 本批自动部署复验完成后，把 run ID、目标 SHA、无迁移事实和生产复核写回本文件及 Phase C verification，再结束本 handoff。
+- 本 item 经 PR/CI 和无迁移生产复验关闭后，把成功 run ID、目标 SHA 与生产复核写回本文件及 item verification，再结束本 handoff。
 
 ## 更新规则
 

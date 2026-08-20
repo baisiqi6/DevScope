@@ -327,11 +327,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 1. 确认目标提交和镜像已通过 CI；
 2. 备份生产 `.env`、Nginx 配置和必要数据；
-3. 使用 `git pull --ff-only` 更新，不在服务器直接合并；
-4. 拉取固定版本镜像，避免不可追溯的临时构建；
-5. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
-6. 如有数据库迁移，单独审查、备份、执行和验证；
-7. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx。
+3. GitHub Actions runner 用完整 Git 历史生成目标 SHA 的 Git bundle，并把三个 full-SHA 镜像保存为压缩 Docker archive；
+4. runner 为 bundle/archive 生成 SHA-256 清单，通过现有 SSH authority 传入按 `SHA-run_id` 隔离的服务器 staging 目录；生产服务器不主动访问 GitHub/GHCR；
+5. 服务器先验证 checksum、bundle target、fast-forward ancestry、磁盘空间和三个 image revision，再 `docker load`、更新 `latest` 与单一 `rollback` tag，并执行 `git merge --ff-only`；
+6. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
+7. 如有数据库迁移，单独审查、备份、执行和验证；
+8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；成功后删除本次 staging，失败时保留它用于诊断。
+
+生产服务器的 Mihomo 或其他公网代理不是常规部署链路的依赖。代理订阅失效不得通过关闭 checksum、改用镜像 `latest` 猜测值或恢复服务器侧 `git pull/docker pull` 绕过；应先保持现有生产容器不动，再修复受控的 runner→SSH 传输链路。`rollback` tag 只保存上一次运行镜像，业务健康检查失败时按本节回滚流程恢复。
 
 生产 API 容器默认使用 `SCHEDULER_TIMEZONE=Asia/Shanghai` 解释 cron 时间，不依赖容器自身的 UTC 时区。
 

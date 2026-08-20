@@ -1,21 +1,55 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-20T05:32:18Z",
+  "generated_at": "2026-08-20T07:56:38Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "f042e320c32626697d3a334fb22fd8e4dcd5d37b0a3902446a40b0fa030b7873"
+    "checklist_sha256": "775752f8e22a816dc71c60a3e90eb62d4416e4fbd6069056f73acf8ef01c5337"
   },
   "current_status": "",
-  "current_item": null,
+  "current_item": {
+    "id": "operations-8-proxy-independent-deploy",
+    "title": "自动部署去除服务器公网代理单点",
+    "status": "doing",
+    "owner": "root",
+    "selected_in_session": "ops-closeout-20260820-root",
+    "updated_at": "2026-08-20",
+    "workflow": {
+      "status": "running",
+      "updated_at": "2026-08-20",
+      "branch": "codex/operations-closeout"
+    },
+    "lease": {
+      "owner": "root",
+      "session": "ops-closeout-20260820-root",
+      "acquired_at": "2026-08-20T07:46:04Z",
+      "expires_at": "2026-08-20T09:46:04Z",
+      "ttl_minutes": 120
+    },
+    "active_lease": {
+      "owner": "root",
+      "session": "ops-closeout-20260820-root",
+      "acquired_at": "2026-08-20T07:46:04Z",
+      "expires_at": "2026-08-20T09:46:04Z",
+      "ttl_minutes": 120
+    },
+    "artifacts": {
+      "branch": "codex/operations-closeout"
+    },
+    "review": {
+      "decision": null
+    },
+    "plan_path": "docs/project-harness/tasks/operations-8-proxy-independent-deploy/plan.md"
+  },
   "checklist_summary": {
     "todo": 1,
-    "doing": 0,
+    "doing": 1,
     "done": 10,
     "blocked": 0
   },
   "workflow_summary": {
     "closed": 10,
+    "running": 1,
     "todo": 1
   },
   "paths": {
@@ -55,51 +89,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "operator",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-08-19T13:57:31Z",
-      "id": "evt-20260819T135731Z-e7863818",
-      "idempotency_key": "CLOSE:data-architecture-3b-technology-stack-read-cutover:done:operator",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "done",
-      "summary": "operator closed data-architecture-3b-technology-stack-read-cutover",
-      "target": null,
-      "task": "data-architecture-3b-technology-stack-read-cutover",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260819T135731Z-e7863818 task=data-architecture-3b-technology-stack-read-cutover actor=operator status=done"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": "codex/phase-c-cleanup",
-      "causation_id": null,
-      "created_at": "2026-08-19T13:57:37Z",
-      "id": "evt-20260819T135737Z-bae5851b",
-      "idempotency_key": "ACCEPT:data-architecture-3c-technology-stack-legacy-cleanup:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260819-phase-c"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex accepted data-architecture-3c-technology-stack-legacy-cleanup",
-      "target": "codex",
-      "task": "data-architecture-3c-technology-stack-legacy-cleanup",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260819T135737Z-bae5851b task=data-architecture-3c-technology-stack-legacy-cleanup actor=codex target=codex status=running branch=codex/phase-c-cleanup"
-    },
     {
       "actor": "reviewer-plan",
       "artifacts": [],
@@ -223,6 +212,54 @@
       "task": "data-architecture-3c-technology-stack-legacy-cleanup",
       "type": "CLOSE",
       "visible_header": "[CLOSE] id=evt-20260820T053215Z-38ec6131 task=data-architecture-3c-technology-stack-legacy-cleanup actor=codex status=done"
+    },
+    {
+      "actor": "operator",
+      "artifacts": [
+        "docs/project-harness/tasks/operations-8-proxy-independent-deploy/plan.md"
+      ],
+      "branch": "codex/operations-closeout",
+      "causation_id": null,
+      "created_at": "2026-08-20T07:46:04Z",
+      "id": "evt-20260820T074604Z-5eec45ed",
+      "idempotency_key": "ASSIGN:operations-8-proxy-independent-deploy:assigned:operator",
+      "metadata": {
+        "force_reason": null,
+        "session": "ops-closeout-20260820-root"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "assigned",
+      "summary": "operator assigned operations-8-proxy-independent-deploy to root",
+      "target": "root",
+      "task": "operations-8-proxy-independent-deploy",
+      "type": "ASSIGN",
+      "visible_header": "[ASSIGN] id=evt-20260820T074604Z-5eec45ed task=operations-8-proxy-independent-deploy actor=operator target=root status=assigned branch=codex/operations-closeout artifacts=docs/project-harness/tasks/operations-8-proxy-independent-deploy/plan.md"
+    },
+    {
+      "actor": "root",
+      "artifacts": [],
+      "branch": "codex/operations-closeout",
+      "causation_id": null,
+      "created_at": "2026-08-20T07:46:04Z",
+      "id": "evt-20260820T074604Z-d11dc723",
+      "idempotency_key": "ACCEPT:operations-8-proxy-independent-deploy:running:root",
+      "metadata": {
+        "force_reason": null,
+        "session": "ops-closeout-20260820-root"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "root accepted operations-8-proxy-independent-deploy",
+      "target": "root",
+      "task": "operations-8-proxy-independent-deploy",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20260820T074604Z-d11dc723 task=operations-8-proxy-independent-deploy actor=root target=root status=running branch=codex/operations-closeout"
     }
   ]
 }
