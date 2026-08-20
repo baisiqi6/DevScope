@@ -149,3 +149,9 @@
 
 - 终态 revision：supported set 收紧为仅 `legacy_cleaned`，`.env` 固定；
 - workflow cleanup job 的 SSH secret 命名与 deploy job 对齐（当前靠补齐的三个 secrets 工作，存在两套约定）。
+
+## 终态 revision（2026-08-20）
+
+- `TECHNOLOGY_STACK_SUPPORTED_MODES` 收紧为仅 `legacy_cleaned`（plan 分 revision supported set 的终态行）；`.env.example` 同步固定 `legacy_cleaned`；runbook 环境变量段改写为终态语义，切换/维护窗口章节标注为历史流程（回滚/审计参考）；
+- deploy workflow 的 deploy job SSH 参数与 cleanup job 统一为 `secrets.SSH_HOST/SSH_USER/SSH_KEY`（消除两套约定；`SSH_PRIVATE_KEY` secret 不再被引用，保留不删）；
+- 遗留清单（终态 revision 批次）全部关闭。回归：unit 232/232、integration 51/51×2、四门禁与 YAML 校验通过。

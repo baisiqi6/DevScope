@@ -16,9 +16,8 @@ import { runWorker } from "./worker";
 
 assertTechnologyStackStorageModeSupported(
   parseTechnologyStackStorageMode(process.env.TECHNOLOGY_STACK_STORAGE_MODE),
-  // Phase C cleanup revision：维护窗口内 cleanup 前以 new_only 运行、cleanup 后
-  // 以 legacy_cleaned 重启（TECHNOLOGY_STACK_SUPPORTED_MODES 单一来源）；
-  // 部署本 revision 与 .env mode 翻转为 new_only 同批完成
+  // Phase C 终态 revision：cleanup 已执行，仅支持 legacy_cleaned
+  // （TECHNOLOGY_STACK_SUPPORTED_MODES 单一来源）
   TECHNOLOGY_STACK_SUPPORTED_MODES,
 );
 
