@@ -29,6 +29,8 @@
 - `pnpm typecheck`：14/14 tasks 通过；
 - `pnpm test`：11/11 workspace tasks + Skills pipeline 21/21 通过（DB unit 232/232）；
 - `pnpm build`：9/9 tasks 通过；
-- GitHub CI required checks：待 PR；
+- PR #50：GitHub CI `quality` 与真实 PostgreSQL `integration` required checks 均通过，合并为 `f0571d5`；
+- 首次新链路 run `32346776308`：build、bundle/archive 生成和 217 MB SSH transfer 成功；deploy 在解释脚本时因旧 `script_stop: true` 对 `case ... ;;` 的逐行重写而语法失败，未执行 checksum 之后的任何逻辑；生产保持 `ce7ff16`、工作树 clean、三个运行 image revision 不变、migration journal 仍为 11；
+- follow-up：删除 `script_stop`，改由脚本首行 `set -euo pipefail` 提供 Bash 原生 fail-fast 与 pipeline 失败传播；
 - 无迁移生产 workflow：待 CI 后执行；
 - 生产独立复核：待 workflow 成功后执行。
