@@ -10,7 +10,7 @@
 - [Harness checklist](harness-checklist.json)：10 个 item `done`，1 个 item `doing`，1 个 item `todo`，无 `blocked`；
 - [Current task pointer](current/task_plan.md)：当前指向 `operations-8-proxy-independent-deploy`；
 - 生产当前运行终态 revision `ce7ff16`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
-- 无迁移复验 run `32344426947` 再次确认服务器 repo-local Mihomo proxy 的全部 91 个节点不可用；失败发生在服务重建前，生产未受影响；当前 item 改为由 GitHub runner 通过 SSH 传入精确 Git bundle 与镜像归档。
+- 无迁移复验 run `32344426947` 再次确认服务器 repo-local Mihomo proxy 的全部 91 个节点不可用；新链路 run `32346776308` 已证明 bundle/archive 生成和 SSH 传输成功，但旧 `script_stop` 重写 `case` 语法而在远端解释阶段 fail closed；生产仍为 `ce7ff16`，当前正在收口 follow-up。
 
 ## 已完成整改
 

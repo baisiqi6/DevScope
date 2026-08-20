@@ -166,10 +166,11 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          script_stop: true
           command_timeout: 5m
           script: |
-            set -e
+            # script_stop 会逐行重写脚本，破坏 case 的 `;;` 语法；由 Bash
+            # 自身负责 fail-fast，并让 archive load pipeline 正确传播失败。
+            set -euo pipefail
             cd /home/devscope/DevScope
 
             target_sha="${{ github.sha }}"
