@@ -111,6 +111,9 @@ jobs:
 
   deploy:
     needs: build
+    # cleanup 维护窗口 run 不做普通部署（review P2-1：避免 force-recreate 与
+    # cleanup 停服/删除链并行交错；cleanup 面向的是已部署 revision）
+    if: github.event.inputs.technology_stack_legacy_cleanup != 'true'
     runs-on: ubuntu-latest
 
     steps:

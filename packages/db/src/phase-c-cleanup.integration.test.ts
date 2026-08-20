@@ -10,6 +10,7 @@ import {
   validateTechnologyStackCleanup,
   executeTechnologyStackCleanup,
 } from "./technology-stack-cleanup";
+import { TECHNOLOGY_STACK_SUPPORTED_MODES } from "./technology-stack-entities";
 
 // ============================================================================
 // Phase C cleanup：前置校验 gate、执行语义、回滚 rehearsal
@@ -118,8 +119,10 @@ describeIntegration("phase C cleanup operation", () => {
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toContain("legacy_cleaned");
 
-    // 对照：cleanup revision 默认支持集通过该 gate（其余 gate 由其他用例覆盖）
-    const v2 = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
+    // 对照：编译期常量必须含 legacy_cleaned，且默认分支（不传 supportedModes）
+    // 通过该 gate——若常量被误改回 new_only-only，此处立即失败（review P3-1）
+    expect(TECHNOLOGY_STACK_SUPPORTED_MODES).toContain("legacy_cleaned");
+    const v2 = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
     expect(v2.reasons.join(" ")).not.toContain("legacy_cleaned");
   });
 

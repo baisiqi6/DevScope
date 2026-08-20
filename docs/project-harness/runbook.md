@@ -160,7 +160,7 @@ Trending 优先抓取 `github.com/trending`。当部署网络无法连接 GitHub
 
 ## 技术栈 new_only 切换与 cleanup 维护窗口
 
-Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。当前代码 revision（new_only revision）只支持 `new_only`；legacy writer、legacy 读路径与 Phase A backfill 已删除，`repositories.is_reference` 列定义已从 schema 移除（journal 中的 DROP COLUMN 由 cleanup receipt 守卫，常规迁移与 fresh 重放均为 no-op）。
+Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。当前代码 revision（cleanup revision）支持 `new_only` 与 `legacy_cleaned` 两态——维护窗口前以 new_only 运行，cleanup 脚本切 legacy_cleaned 后以同一 revision 重启；dual-write 兼容、legacy writer、legacy 读路径与 Phase A backfill 均已删除，`repositories.is_reference` 列定义已从 schema 移除（journal 中的 DROP COLUMN 由 cleanup receipt 守卫，常规迁移与 fresh 重放均为 no-op）。
 
 ### new_only 切换（维护窗口，人工执行）
 
@@ -182,7 +182,7 @@ Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。�
 
 执行：手动触发 deploy workflow 并置 `technology_stack_legacy_cleanup=true`（与 `apply_database_migration=true` 互斥；workflow 级 `concurrency: production` 防与普通部署并发）。固定顺序为 preflight 校验 → pg_dump 备份并验证可读 → 停服务执行删除事务+写 receipt+切 `legacy_cleaned`+DROP COLUMN → 重启 → health/401/业务不变量验证。
 
-回滚：停止新服务 → 恢复 cleanup 前数据库备份 → 恢复上一兼容镜像与 mode → 启动 → 复核摘要。不靠重新抓取或手工补行恢复。若 cleanup 删除事务已提交但 DROP COLUMN 前中断，重跑 `--execute` 走补删完成路径（不再写第二条 receipt）。
+回滚：停止新服务 → 恢复 cleanup 前数据库备份 → 恢复上一兼容镜像与 mode → 启动 → 复核摘要。不靠重新抓取或手工补行恢复。若 cleanup 删除事务已提交但 DROP COLUMN 前中断，重跑 `--execute` 走补删完成路径（不再写第二条 receipt）。注意此时 `.env` 已被切为 `legacy_cleaned`，workflow preflight 的 new_only 检查不再放行——补删需人工 SSH 执行 `docker compose ... run --rm --no-deps api node packages/db/dist/cleanup-cli.mjs --execute`（gate 语义不变，mode 由 CLI 环境读取）。
 
 ## CLI 与 MCP
 
