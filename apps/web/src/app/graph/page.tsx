@@ -74,7 +74,6 @@ function buildMockGraph(size: number): { nodes: RepoGraphNode[]; edges: RepoGrap
     language: langs[Math.floor(rand() * langs.length)],
     stars: Math.floor(10 ** (rand() * 5)),
     description: `用于图谱性能验证的模拟仓库 ${i}`,
-    isReference: false,
   }));
   const edges: RepoGraphEdge[] = [];
   for (let i = 1; i < size; i++) {
@@ -112,7 +111,6 @@ function buildMockGraph(size: number): { nodes: RepoGraphNode[]; edges: RepoGrap
       language: null,
       stars: null,
       description: null,
-      isReference: false,
     });
     for (const n of nodes) {
       if (n.kind === "repo" && n.language === lang) {
@@ -130,25 +128,24 @@ function buildMockGraph(size: number): { nodes: RepoGraphNode[]; edges: RepoGrap
     { slug: "django", name: "Django" },
     { slug: "vite", name: "Vite" },
   ];
-  const refCount = Math.min(6, Math.max(2, Math.floor(size / 50)));
-  for (let r = 0; r < refCount; r++) {
-    const stack = mockStacks[r];
-    const refId = `9000${r}`;
+  const stackCount = Math.min(6, Math.max(2, Math.floor(size / 50)));
+  for (let s = 0; s < stackCount; s++) {
+    const stack = mockStacks[s];
+    const stackId = `stack:${stack.slug}`;
     nodes.push({
-      id: refId,
-      kind: "reference",
+      id: stackId,
+      kind: "technology_stack" as const,
       fullName: `tech-stack/${stack.slug}`,
       name: stack.name,
       language: null,
       stars: null,
       description: `${stack.name} 技术栈`,
-      isReference: true,
     });
     const dependents = 2 + Math.floor(rand() * 3);
     for (let d = 0; d < dependents; d++) {
       edges.push({
         source: String(Math.floor(rand() * size) + 1),
-        target: refId,
+        target: stackId,
         type: "dependency",
         score: null,
       });

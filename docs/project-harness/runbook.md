@@ -73,9 +73,14 @@ API 启动时会先读取根目录 `.env.local`，再用 `.env` 补齐未配置�
 - `TECHNOLOGY_STACK_STORAGE_MODE`：技术栈事实的存储模式，四值枚举
   `legacy_shadow_dual_write -> new_read_dual_write -> new_only -> legacy_cleaned`。
   API 与 Worker 必须一致（同一 compose 变量）；缺省回落值为 `legacy_shadow_dual_write`，
-  但当前 revision 只支持 `new_only`——缺省或错配会启动直接失败（fail closed，不自动回退）。
-  部署 new_only revision 必须与 `.env` 翻转 `new_only` 同批完成
+  但当前 revision（cleanup revision）只支持 `new_only | legacy_cleaned`——缺省或
+  dual-write 值会启动直接失败（fail closed，不自动回退）。
+  部署本 revision 与 `.env` 翻转为 `new_only` 必须同批完成
   （见"技术栈 new_only 切换与 cleanup 维护窗口"一节）。
+- 本地开发 mode 指引：`pnpm db:push` 从 schema 直建库（无 `is_reference` 列），
+  marker 矩阵下仅 `legacy_cleaned` 可启动——本地 `.env.local` 应设
+  `TECHNOLOGY_STACK_STORAGE_MODE=legacy_cleaned`；经迁移文件建成的库
+  （含 `test:integration` 的临时库）保留该列，用 `new_only`。
 
 浏览器请求使用同源路径 `/api/trpc/*` 和 `/api/agent/*`，通常不需要配置公开的后端地址。
 
@@ -171,7 +176,7 @@ Phase C 的状态机为 `new_read_dual_write -> new_only -> legacy_cleaned`。�
 前置条件（缺一不可）：
 
 - new_only 观察窗口结束、冻结基线比较持续通过；
-- **已部署 cleanup revision**（`TECHNOLOGY_STACK_SUPPORTED_MODES` 含 `legacy_cleaned`；当前 new_only revision 会被 `cleanup-cli --validate` 的 revision gate 拒绝——cleanup 后不存在可启动 mode）；
+- **已部署 cleanup revision**（`TECHNOLOGY_STACK_SUPPORTED_MODES` 含 `legacy_cleaned`，即当前 main；new_only revision 会被 `cleanup-cli --validate` 的 revision gate 拒绝——cleanup 后不存在可启动 mode）；
 - 记录目标 SHA、API/Worker 运行 revision 与镜像 digest，核对与待部署 main 一致；
 - 确认无 active `graph.rebuild`/backfill job、无长事务或 advisory-lock writer。
 

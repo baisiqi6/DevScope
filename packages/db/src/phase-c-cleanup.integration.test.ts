@@ -107,13 +107,20 @@ describeIntegration("phase C cleanup operation", () => {
     expect(v.reasons.join(" ")).toContain("new_only");
   });
 
-  it("gate：revision 支持集不含 legacy_cleaned 时拒绝（new_only revision 死锁防护）", async () => {
+  it("gate：revision 支持集不含 legacy_cleaned 时拒绝（死锁防护）", async () => {
     await seedCleanable();
-    // 本代码 revision（new_only-only）的编译期默认支持集——cleanup 会把服务切到
-    // legacy_cleaned，执行 revision 必须先支持它（implementation review P1-1）
-    const v = await validateTechnologyStackCleanup(db, { mode: "new_only", userId });
+    // 模拟 new_only revision 的支持集——cleanup 会把服务切到 legacy_cleaned，
+    // 执行 revision 必须先支持它（implementation review P1-1）；当前 cleanup
+    // revision 的编译期默认集含 legacy_cleaned，不受此 gate 拒绝
+    const v = await validateTechnologyStackCleanup(db, {
+      mode: "new_only", userId, supportedModes: ["new_only"],
+    });
     expect(v.ok).toBe(false);
     expect(v.reasons.join(" ")).toContain("legacy_cleaned");
+
+    // 对照：cleanup revision 默认支持集通过该 gate（其余 gate 由其他用例覆盖）
+    const v2 = await validateTechnologyStackCleanup(db, { ...CLEANUP_REVISION_INPUT, userId });
+    expect(v2.reasons.join(" ")).not.toContain("legacy_cleaned");
   });
 
   it("gate：active job 未排空时拒绝", async () => {

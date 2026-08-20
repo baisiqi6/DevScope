@@ -214,9 +214,7 @@ jobs:
     if: github.event.inputs.technology_stack_legacy_cleanup == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    concurrency:
-      group: production
-      cancel-in-progress: false
+    # 与普通 deploy 的互斥由 workflow 顶层 concurrency: production 保证
     steps:
       - name: Refuse concurrent migration and cleanup
         run: |
@@ -226,7 +224,7 @@ jobs:
           fi
 
       - name: Preflight validation (read-only)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -235,12 +233,28 @@ jobs:
           script: |
             set -e
             cd /home/devscope/DevScope
+            # revision 对账（implementation review P2-3）：服务器工作树必须与本 run
+            # 的 commit 一致，运行中容器必须来自当前镜像——防止对滞留旧 revision
+            # 的部署执行 cleanup
+            if [ "$(git rev-parse HEAD)" != "${{ github.sha }}" ]; then
+              echo "服务器工作树 HEAD 与本 run revision 不一致，先完成普通部署再执行 cleanup"
+              exit 1
+            fi
+            for svc in api worker; do
+              ref="$(docker compose -f docker-compose.yml -f docker-compose.prod.yml config --images | grep "/${svc}:")"
+              running="$(docker inspect -f '{{.Image}}' "devscope-${svc}")"
+              expected="$(docker image inspect --format '{{.Id}}' "$ref")"
+              if [ "$running" != "$expected" ]; then
+                echo "devscope-${svc} 未运行当前镜像（revision 滞留），拒绝 cleanup"
+                exit 1
+              fi
+            done
             grep -q '^TECHNOLOGY_STACK_STORAGE_MODE=new_only$' .env || { echo "mode 不是 new_only，拒绝 cleanup"; exit 1; }
             docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps api \
               node packages/db/dist/cleanup-cli.mjs --validate
 
       - name: Backup before cleanup
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -259,7 +273,7 @@ jobs:
               pg_restore --list < "$backup_file" | grep -c "TABLE DATA" && echo "backup readable"
 
       - name: Execute cleanup (maintenance window)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
