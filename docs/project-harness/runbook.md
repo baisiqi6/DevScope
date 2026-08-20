@@ -266,7 +266,7 @@ provider 差异由 `packages/ai/src/request-builder.ts` 统一处理：MiniMax M
 - 隔离门禁 fail closed：危险/业务库名、缺 `TEST_DATABASE_DESTRUCTIVE=1`、`NODE_ENV≠test`、host 不在 allowlist 都会拒绝运行；CI 通过 `INTEGRATION_REQUIRED=1` 保证未配置时直接失败而不是静默跳过；
 - 迁移按 journal 顺序单事务应用并手写 `drizzle.__drizzle_migrations`（hash=文件 SHA-256），`verifyMigrationJournal` 提供 checksum/order drift 校验——drizzle migrator 本身只按时间戳跳过、不比对 hash；
 - `quality` job（lint/typecheck/test/build）不注入任何 `TEST_DATABASE_*` 变量，保持快速反馈；
-- **required check**：首次合并后需在 GitHub 仓库 Settings → Branch protection 中将 `integration` job 加入 required checks（operator 手动操作，一次性）；
+- **required check**：GitHub Ruleset `main-required-checks` 已把 `quality` 与 `integration` 都设为默认分支 required checks；调整 job 名称时必须同批更新 Ruleset，避免门禁因 context 漂移失效；
 - 本机环境注意：若宿主 5432 已被系统 PostgreSQL 占用（docker 端口映射不生效），隔离容器请用其他端口（如 5433）；
 - 进程被硬杀（SIGKILL）时 teardown 不会执行，可能残留 `devscope_test_*` 库；用
   `docker exec <pg容器> psql -U postgres -c "select datname from pg_database where datname like 'devscope_test_%'"` 检查并手动 DROP。
@@ -327,11 +327,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 1. 确认目标提交和镜像已通过 CI；
 2. 备份生产 `.env`、Nginx 配置和必要数据；
-3. 使用 `git pull --ff-only` 更新，不在服务器直接合并；
-4. 拉取固定版本镜像，避免不可追溯的临时构建；
-5. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
-6. 如有数据库迁移，单独审查、备份、执行和验证；
-7. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx。
+3. GitHub Actions runner 用完整 Git 历史生成目标 SHA 的 Git bundle，并把三个 full-SHA 镜像保存为压缩 Docker archive；
+4. runner 为 bundle/archive 生成 SHA-256 清单，通过现有 SSH authority 传入按 `SHA-run_id` 隔离的服务器 staging 目录；生产服务器不主动访问 GitHub/GHCR；
+5. 服务器先验证 checksum、bundle target、fast-forward ancestry、磁盘空间和三个 image revision，再 `docker load`、更新 `latest` 与单一 `rollback` tag，并执行 `git merge --ff-only`；
+6. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
+7. 如有数据库迁移，单独审查、备份、执行和验证；
+8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；成功后删除本次 staging，失败时保留它用于诊断。
+
+生产服务器的 Mihomo 或其他公网代理不是常规部署链路的依赖。代理订阅失效不得通过关闭 checksum、改用镜像 `latest` 猜测值或恢复服务器侧 `git pull/docker pull` 绕过；应先保持现有生产容器不动，再修复受控的 runner→SSH 传输链路。`rollback` tag 只保存上一次运行镜像，业务健康检查失败时按本节回滚流程恢复。
 
 生产 API 容器默认使用 `SCHEDULER_TIMEZONE=Asia/Shanghai` 解释 cron 时间，不依赖容器自身的 UTC 时区。
 
@@ -447,6 +450,8 @@ Trending 任务会按设计失败并保留上一份成功快照，不能用 Rada
 ## Dogfood 反馈闭环
 
 生产持久会话通过 DevScope MCP 完成真实的仓库采集、分组、备注、搜索和分析。该会话使用公开的 API/MCP 边界，不为了完成操作而直接修改 PostgreSQL。
+
+所有跨会话保留的产品观察统一登记在 [Dogfood Observations](dogfood-observations.md)。本节只定义处理流程和最小字段，不在运行手册中复制 observation 正文。
 
 出现问题时，按以下最小格式沉淀：
 

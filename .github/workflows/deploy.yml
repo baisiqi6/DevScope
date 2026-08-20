@@ -38,6 +38,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # 生产服务器不再主动访问 GitHub；完整历史用于生成可验证、可
+          # fast-forward 的 Git bundle。
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -56,6 +60,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
           tags: |
             type=sha,prefix=
+            type=raw,value=${{ github.sha }}
             type=raw,value=latest
 
       - name: Extract metadata for Web
@@ -65,6 +70,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}
           tags: |
             type=sha,prefix=
+            type=raw,value=${{ github.sha }}
             type=raw,value=latest
 
       - name: Extract metadata for Worker
@@ -74,6 +80,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}
           tags: |
             type=sha,prefix=
+            type=raw,value=${{ github.sha }}
             type=raw,value=latest
 
       - name: Build and push API image
@@ -109,6 +116,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Prepare proxy-independent deployment bundle
+        if: github.event.inputs.technology_stack_legacy_cleanup != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 deploy-transfer
+
+          git bundle create deploy-transfer/repository.bundle HEAD
+
+          api_image="${REGISTRY}/${IMAGE_NAME_API}:${GITHUB_SHA}"
+          web_image="${REGISTRY}/${IMAGE_NAME_WEB}:${GITHUB_SHA}"
+          worker_image="${REGISTRY}/${IMAGE_NAME_WORKER}:${GITHUB_SHA}"
+          docker pull "$api_image"
+          docker pull "$web_image"
+          docker pull "$worker_image"
+          docker save "$api_image" "$web_image" "$worker_image" \
+            | gzip -1 > deploy-transfer/images.tar.gz
+
+          (
+            cd deploy-transfer
+            sha256sum repository.bundle images.tar.gz > SHA256SUMS
+          )
+
+      - name: Transfer deployment bundle over SSH
+        if: github.event.inputs.technology_stack_legacy_cleanup != 'true'
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "deploy-transfer/*"
+          target: "/home/devscope/deploy-staging/${{ github.sha }}-${{ github.run_id }}"
+          strip_components: 1
+          overwrite: true
+          command_timeout: 10m
+
   deploy:
     needs: build
     # cleanup 维护窗口 run 不做普通部署（review P2-1：避免 force-recreate 与
@@ -129,31 +172,109 @@ jobs:
             set -e
             cd /home/devscope/DevScope
 
+            target_sha="${{ github.sha }}"
+            run_id="${{ github.run_id }}"
+            case "$target_sha" in
+              ''|*[!0-9a-f]*) echo "Invalid target SHA"; exit 1 ;;
+            esac
+            case "$run_id" in
+              ''|*[!0-9]*) echo "Invalid GitHub run ID"; exit 1 ;;
+            esac
+            if [ "${#target_sha}" -ne 40 ]; then
+              echo "Target SHA must be the full 40-character commit ID"
+              exit 1
+            fi
+            staging_dir="/home/devscope/deploy-staging/${target_sha}-${run_id}"
+            bundle_file="$staging_dir/repository.bundle"
+            image_archive="$staging_dir/images.tar.gz"
+            checksum_file="$staging_dir/SHA256SUMS"
+            registry="${{ env.REGISTRY }}"
+            api_image_name="${{ env.IMAGE_NAME_API }}"
+            web_image_name="${{ env.IMAGE_NAME_WEB }}"
+            worker_image_name="${{ env.IMAGE_NAME_WORKER }}"
+
             # 部署前必须先对账生产工作树，不得覆盖受保护的 compose
             # 或共享 Nginx 配置。
             if ! git diff --quiet || ! git diff --cached --quiet; then
               echo "Server worktree is dirty; reconcile protected config before deployment"
               exit 1
             fi
-            # 服务器到 GitHub 的 TLS 连接不稳定（今夜 4/7 部署首次失败），
-            # git pull 需要有界重试，避免人工重启整个 workflow
-            for attempt in 1 2 3; do
-              if git pull --ff-only origin main; then
-                break
-              fi
-              echo "git pull attempt $attempt failed; retrying in 10s..."
-              sleep 10
-              if [ "$attempt" = "3" ]; then
-                echo "git pull failed after 3 attempts"
+
+            # GitHub runner 已通过现有 SSH authority 传入精确 bundle 与镜像。
+            # checksum、bundle 和 revision 任一不一致都必须在 runtime mutation 前失败。
+            test -f "$bundle_file"
+            test -f "$image_archive"
+            test -f "$checksum_file"
+            chmod 700 "$staging_dir"
+            (
+              cd "$staging_dir"
+              sha256sum -c SHA256SUMS
+            )
+            git bundle verify "$bundle_file"
+            gzip -t "$image_archive"
+
+            deploy_ref="refs/devscope-deploy/${run_id}"
+            git fetch "$bundle_file" "HEAD:${deploy_ref}"
+            fetched_sha="$(git rev-parse "$deploy_ref")"
+            if [ "$fetched_sha" != "$target_sha" ]; then
+              echo "Transferred Git bundle does not match target SHA"
+              git update-ref -d "$deploy_ref"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor HEAD "$deploy_ref"; then
+              echo "Target SHA is not a fast-forward of the production worktree"
+              git update-ref -d "$deploy_ref"
+              exit 1
+            fi
+
+            if [ "${{ inputs.apply_database_migration }}" != "true" ] && \
+              [ "$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+                psql -U postgres -d devscope -tAc "select count(*) from pg_tables where schemaname='public' and tablename in ('jobs','radar_candidates','github_trending_snapshots','github_trending_entries')" | tr -d '[:space:]')" != "4" ]; then
+              echo "Worker schema is missing; rerun with an explicitly reviewed migration"
+              git update-ref -d "$deploy_ref"
+              exit 1
+            fi
+
+            archive_size="$(stat -c '%s' "$image_archive")"
+            available_bytes="$(df --output=avail -B1 "$staging_dir" | tail -1 | tr -d '[:space:]')"
+            if [ "$available_bytes" -lt "$((archive_size * 2))" ]; then
+              echo "Insufficient disk space to load deployment images"
+              git update-ref -d "$deploy_ref"
+              exit 1
+            fi
+
+            gzip -dc "$image_archive" | docker load
+            # 先验证三个镜像全部属于目标提交，再改动任何 latest/rollback tag，
+            # 避免后一个镜像失败时留下部分更新的 tag 状态。
+            for svc in api web worker; do
+              case "$svc" in
+                api) image_name="${registry}/${api_image_name}" ;;
+                web) image_name="${registry}/${web_image_name}" ;;
+                worker) image_name="${registry}/${worker_image_name}" ;;
+              esac
+              exact_image="${image_name}:${target_sha}"
+              revision="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$exact_image")"
+              if [ "$revision" != "$target_sha" ]; then
+                echo "$svc image revision does not match target SHA"
+                git update-ref -d "$deploy_ref"
                 exit 1
               fi
             done
 
-            # 用 PAT 登录 GHCR（GITHUB_TOKEN 无法在 SSH 远程使用）
-            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u baisiqi6 --password-stdin
+            for svc in api web worker; do
+              case "$svc" in
+                api) image_name="${registry}/${api_image_name}" ;;
+                web) image_name="${registry}/${web_image_name}" ;;
+                worker) image_name="${registry}/${worker_image_name}" ;;
+              esac
+              exact_image="${image_name}:${target_sha}"
+              running_image="$(docker inspect -f '{{.Image}}' "devscope-${svc}")"
+              docker tag "$running_image" "${image_name}:rollback"
+              docker tag "$exact_image" "${image_name}:latest"
+            done
 
-            # 拉取最新镜像（不动 postgres 和 nginx）
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api web worker
+            git merge --ff-only "$deploy_ref"
+            git update-ref -d "$deploy_ref"
 
             if [ "${{ inputs.apply_database_migration }}" = "true" ]; then
               backup_dir="/home/devscope/backups/devscope"
@@ -210,6 +331,9 @@ jobs:
 
             # 清理旧镜像
             docker image prune -f
+
+            # target SHA 与 run ID 均已在上方严格验证，避免宽泛删除。
+            rm -rf -- "$staging_dir"
 
             echo "Deployment completed successfully!"
 

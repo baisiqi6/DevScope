@@ -15,7 +15,7 @@ DevScope 是仍在使用的单用户私有开源生态分析平台。当前目�
 1. 所有任务先读 `scope.md`、`progress.md` 和 `current/task_plan.md`；
 2. 编码任务按需读 `architecture.md`；
 3. 数据任务再读 `domain-model.md` 与对应 task plan；
-4. 本地、迁移、部署和 dogfood 操作再读 `runbook.md`；
+4. 本地、迁移、部署和 dogfood 操作再读 `runbook.md`；dogfood 产品反馈还要读取并更新 `dogfood-observations.md`，使用稳定 `DF-*` ID，不另建平行问题清单；
 5. CLI/MCP 任务只在需要时读 `docs/AGENT_INTERFACES.md`。
 
 架构、数据设计、任务状态、运行步骤和接口说明分别只有上述一个事实来源。`README.md` 与本文只提供入口和强制约束，不复制可独立演进的正文。
