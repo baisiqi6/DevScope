@@ -92,6 +92,7 @@ docs/
     harness-checklist.json 任务状态与验收
     progress.md           基线、进展与 handoff
     runbook.md            开发、生产、回滚与 dogfood 操作
+    dogfood-observations.md 持久 dogfood 产品观察登记册
 ```
 
 项目范围从 [Harness 导航](docs/project-harness/scope.md) 开始渐进读取；协作约束见 [AGENTS.md](AGENTS.md)。

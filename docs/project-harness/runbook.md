@@ -448,6 +448,8 @@ Trending 任务会按设计失败并保留上一份成功快照，不能用 Rada
 
 生产持久会话通过 DevScope MCP 完成真实的仓库采集、分组、备注、搜索和分析。该会话使用公开的 API/MCP 边界，不为了完成操作而直接修改 PostgreSQL。
 
+所有跨会话保留的产品观察统一登记在 [Dogfood Observations](dogfood-observations.md)。本节只定义处理流程和最小字段，不在运行手册中复制 observation 正文。
+
 出现问题时，按以下最小格式沉淀：
 
 ```markdown

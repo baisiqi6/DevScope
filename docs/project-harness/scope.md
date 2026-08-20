@@ -45,6 +45,7 @@ DevScope 是仍在使用的单用户私有开源生态分析平台，面向技�
 | `tasks/<item-id>/plan.md` | 单个 item 的唯一执行计划 | 项目总范围、其他 item 状态 |
 | `progress.md` | 日期化基线证据、已完成摘要、当前 handoff | 稳定设计规范 |
 | `runbook.md` | 本地开发、验证、生产部署、回滚和 dogfood 操作 | 架构设计、任务状态 |
+| `dogfood-observations.md` | 持久 dogfood 会话中的产品观察、证据、状态与关联 locator | 修复计划、checklist 状态、操作步骤 |
 | `../AGENT_INTERFACES.md` | CLI/MCP 命令、工具契约和连接方式 | 应用业务逻辑、生产部署 |
 | `../../README.md` | 面向使用者的项目概览和最短启动入口 | 详细架构与工程状态 |
 | `../../AGENTS.md` | Agent 必须先读取的约束与路由 | 重复维护上述规范正文 |
@@ -56,7 +57,7 @@ DevScope 是仍在使用的单用户私有开源生态分析平台，面向技�
 1. 所有任务：`scope.md` → `harness-state.json`（若存在）→ `progress.md` → `current/task_plan.md`；
 2. 编码与架构任务：再读 `architecture.md`；
 3. 数据库任务：再读 `domain-model.md` 和当前 item plan；
-4. 本地、迁移、部署或 dogfood：再读 `runbook.md`；
+4. 本地、迁移、部署或 dogfood：再读 `runbook.md`；涉及 dogfood 产品反馈时同时读取并更新 `dogfood-observations.md`；
 5. CLI/MCP 操作：只在需要时读 `../AGENT_INTERFACES.md`。
 
 不要为了“了解项目”一次性加载全部历史证据；以当前 item 的 acceptance 和 artifact locator 为边界。
