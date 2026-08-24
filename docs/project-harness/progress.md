@@ -1,19 +1,20 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-24
-> 生产运行基线：`4772098`；`main` 可仅因本 item 的 closeout 文档提交而领先生产
+> 生产运行基线：`63ec7c5`；`main` 可仅因本 item 的生产 closeout 文档提交而领先生产
 > 部署形态：Standalone
-> 当前状态：Issue #54 发布候选已完成并获授权进入正式发布流程；尚未合并、迁移或部署生产
+> 当前状态：Issue #54 已合并、完成 `0011` 生产迁移部署并通过运行复核
 
 ## 当前状态
 
 - [Harness checklist](harness-checklist.json)：12 个 item `done`，1 个 item `todo`，无 `doing` 或
   `blocked`；Issue #54 已完成本地实现、门禁、独立审查与 Harness closeout；
 - [Current task pointer](current/task_plan.md)：当前指向 `issue-54` 的 [canonical plan](tasks/issue-54/plan.md)；
-- 生产当前运行 revision `4772098`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
-- 无迁移、无 cleanup 的自动部署 run `32348360956` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成；服务器无需访问 GitHub/GHCR，迁移记录和业务数据不变量保持。
+- 生产 API、Web、Worker 当前运行 revision `63ec7c5`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- 生产部署 run `32704273873` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
+  `0011`；服务器无需访问 GitHub/GHCR，迁移与业务数据不变量保持。
 
-### Issue #54 本地验证进度
+### Issue #54 生产 closeout
 
 - 隔离分支 `codex/issue-54-tree-groups` 已实现单父级邻接树、组合外键、循环 trigger、按用户
   advisory lock、直接/聚合计数与真实 membership 来源；
@@ -24,8 +25,12 @@
   错误及聚合可见性 fallback，并补齐回归测试；Kimi K3 `thinking=max` 独立终审 `APPROVE`，
   无 P0–P3。完整证据见 [verification](tasks/issue-54/verification.md)。该本地验证记录本身不表示
   生产已具备 `0011` schema。
-- 用户已于 2026-08-24 授权按 runbook 继续提交、PR/合并和生产迁移部署；发布必须重新验证
-  GitHub CI、生产备份、迁移、容器 revision、数据库不变量、访问控制和回滚条件。
+- PR #55 在 `quality` 与 `integration` 成功后合并，Issue #54 已关闭；生产 migration journal
+  从 11 增至 12，15 个旧分组全部保持根级，86 条 membership 不变；组合外键、cycle trigger/function
+  均存在；
+- 发布前独立备份与 workflow 备份均验证可读；运行镜像为 `63ec7c5`，rollback 镜像为 `4772098`；
+  API/Web、树读取、聚合读取、MCP 隧道认证、Nginx 与近期错误日志复核通过；详细回执见
+  [verification](tasks/issue-54/verification.md)。
 
 ## 已完成整改
 
@@ -44,10 +49,13 @@
 
 ## 当前生产基线
 
-2026-08-20 UTC 07:03 后完成只读复核：
+2026-08-24 UTC 08:12 后完成只读复核：
 
-- DevScope MCP health 为 `ok`，未认证公网入口返回 `401`；
-- API、Web、Worker 均运行 `ce7ff16`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
+- DevScope MCP health 为 `ok`，SSH tunnel 未认证返回 `401`；公网域名因未完成 ICP 备案由阿里云
+  拦截并返回 `403`，当前不作为可用入口；
+- API、Web、Worker 均运行 `63ec7c5`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
+- migration journal 为 12；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
+  根级，86 条 membership 不变；
 - 正式仓库 40、伪仓库 0、伪收藏 0；`is_reference` 列已删除；
 - 图谱为 40 个 repository + 9 个 language + 13 个 technology stack 节点，共 249 条边；
 - 新表保存 13 个技术栈和 79 条 repository-to-stack 关系；cleanup receipt 与 baseline receipt 均在位；
@@ -58,8 +66,8 @@
 
 ## 当前 handoff
 
-- 当前只按 [Issue #54 canonical plan](tasks/issue-54/plan.md) 收口树状分组，不继续沿用 Phase A/B/C
-  与部署链路的历史 handoff；
+- Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
+  创建、移动、聚合与排序体验；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。

@@ -507,8 +507,8 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "现有分组无损迁移为根级；数据库拒绝跨用户父级、循环和删除含子组；父级聚合仓库去重并保留真实 membership 来源；同级排序事务化；旧 repoCount/扁平接口兼容；Web/API/Client/CLI/MCP 契约一致；PostgreSQL 迁移与并发测试及完整门禁通过",
-      "verification": "docs/project-harness/tasks/issue-54/verification.md；Kimi K3 thinking=max 独立终审 APPROVE；lint/typecheck/test/build 与真实 PostgreSQL 集成连续两轮通过。",
-      "handoff": "本地发布候选、门禁、独立审查与 Harness closeout 已完成；用户已授权按 runbook 继续提交、PR/合并和生产迁移部署。发布过程必须保留备份、回滚与运行验证证据。",
+      "verification": "docs/project-harness/tasks/issue-54/verification.md；PR #55/CI、生产 deploy run 32704273873、0011 迁移、15 分组/86 membership 不变量、目标/rollback revision、API/MCP/访问控制均已验证。",
+      "handoff": "Issue #54 已完成并部署生产；当前无后续发布动作。公网域名仍被阿里云 ICP 拦截，生产使用 SSH tunnel；真实 dogfood 反馈继续写入 dogfood-observations.md。",
       "plan_path": "docs/project-harness/tasks/issue-54/plan.md",
       "workflow": {
         "status": "closed",

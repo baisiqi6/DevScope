@@ -1,10 +1,10 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-08-24T07:54:34Z",
+  "generated_at": "2026-08-24T08:15:55Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "0af67cfc9e7d315f9804032d49a67bdd9aa4d1863b838e10e740354715146023"
+    "checklist_sha256": "b0d40c0751ff05ca70f7fd15b2753745024cf7f4e78601c20b6d2890f1dd788b"
   },
   "current_status": "",
   "current_item": null,

@@ -2,7 +2,7 @@
 
 > 记录日期：2026-08-24
 > 分支：`codex/issue-54-tree-groups`（base `main@0be6f2e`）
-> 状态：本地实现与独立审查完成；未提交、push、合并、迁移、部署或关闭 GitHub Issue
+> 状态：实现、PR/CI、生产迁移部署与运行复核完成
 
 ## 实现范围
 
@@ -45,8 +45,28 @@
 - 首轮及复核发现均已修正；最终终审结论 `APPROVE`，无 P0–P3、无未决阻塞项。
 - Reviewer 只读核验代码与测试钉住逻辑；门禁结果由 Operator 执行并记录，Reviewer 未修改工作树。
 
-## 未执行项
+## 生产发布与回执
 
-- 未 commit、push、创建或合并 PR、关闭 GitHub Issue。
-- 未迁移或部署生产；生产仍运行旧 schema 与旧版本。后续发布必须重新核对生产备份、迁移、
-  回滚、容器健康、反向代理、访问控制和外部请求。
+- PR [#55](https://github.com/baisiqi6/DevScope/pull/55) 在 `quality`、`integration` 两项 CI
+  成功后合并；GitHub Issue #54 自动关闭。生产目标为 merge commit
+  `63ec7c5e68c1a63fa7f6e1a918a5677db12b9cff`。
+- 手动部署 run
+  [32704273873](https://github.com/baisiqi6/DevScope/actions/runs/32704273873) 使用
+  `apply_database_migration=true`、`technology_stack_legacy_cleanup=false`，build 与 deploy
+  均成功；服务器通过 Git bundle、镜像 archive、checksum 与 fast-forward 门禁更新。
+- 发布前独立备份目录：
+  `/home/devscope/backups/devscope/release-issue54-20260824-080029-63ec7c5/`，包含 `.env`、
+  Nginx `server-local` 与 PostgreSQL custom-format dump；三项 SHA-256 均通过，dump 已由容器内
+  `pg_restore --list` 验证可读。workflow 自身备份
+  `/home/devscope/backups/devscope/pre-migration-20260824-160927.dump` 亦验证可读、权限 `600`。
+- 迁移前后不变量：migration journal `11 → 12`；`repository_groups = 15`、
+  `group_members = 86` 保持不变；迁移后 15 个分组全部为根级，非根分组为 0。
+- 数据库对象：`repository_groups_parent_user_fk`、`repository_groups_hierarchy_guard` 与
+  `enforce_repository_group_hierarchy` 均存在；无超过 30 秒的长事务。
+- API、Web、Worker 均运行目标 revision `63ec7c5`；rollback tags 均精确指向发布前
+  `4772098`；PostgreSQL 健康、Nginx 配置校验成功、服务器工作树干净。
+- 生产读取：health 200、Web 200；`groups.getTree` 返回 15 个根组和聚合总数 86；分组 3 的
+  direct/aggregate/members 均为 27，membership 来源完整；近 10 分钟错误/5xx 扫描为空。
+- 访问控制：服务器 Nginx 与 SSH tunnel 未认证均返回 401；经 Keychain 注入的 MCP health 和
+  `list_groups` 成功。公网 `http://devscope.cn` 由阿里云返回 `403 Non-compliance ICP Filing`，
+  因而当前仍以 SSH tunnel 为生产使用入口；这不是本次应用部署故障。
