@@ -7,7 +7,7 @@
 - Priority：P2
 - 风险模式：`high-risk`（schema、迁移、递归约束和并发）
 - 分支：`codex/issue-54-tree-groups`
-- 状态：发布候选、门禁、独立 Reviewer 审查与 Harness closeout 完成；发布流程进行中
+- 状态：实现、独立审查、PR/CI、生产迁移部署与运行复核完成
 
 ## Outcome
 
