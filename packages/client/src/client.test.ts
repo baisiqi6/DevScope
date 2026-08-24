@@ -73,6 +73,7 @@ describe("DevScope Client 新增方法", () => {
     const groupResult = {
       id: 2,
       userId: 1,
+      parentId: null,
       name: "新分组",
       color: "blue",
       icon: "folder",
@@ -81,6 +82,8 @@ describe("DevScope Client 新增方法", () => {
       createdAt: "2026-07-01T00:00:00.000Z",
       updatedAt: "2026-07-01T00:00:00.000Z",
       repoCount: 0,
+      directRepoCount: 0,
+      aggregateRepoCount: 0,
     };
     const client = createClientWithMockFetch({
       "groups.create": groupResult,
@@ -89,6 +92,87 @@ describe("DevScope Client 新增方法", () => {
     const result = await client.createGroup({ name: "新分组", description: "描述" });
     expect(result.id).toBe(2);
     expect(result.name).toBe("新分组");
+  });
+
+  it("读取树与聚合成员时校验层级、计数和真实 membership 来源", async () => {
+    const tree = [{
+      id: 1,
+      userId: 1,
+      parentId: null,
+      name: "根分组",
+      color: "blue",
+      icon: "folder",
+      description: null,
+      orderIndex: 0,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      repoCount: 0,
+      directRepoCount: 0,
+      aggregateRepoCount: 1,
+      children: [],
+    }];
+    const aggregate = {
+      group: { ...tree[0], children: undefined },
+      members: [{
+        repoId: 5,
+        repository: {
+          id: 5,
+          fullName: "owner/repo",
+          name: "repo",
+          owner: "owner",
+          description: null,
+          url: "https://github.com/owner/repo",
+          stars: 1,
+          forks: 0,
+          openIssues: 0,
+          language: "TypeScript",
+          license: "MIT",
+          lastFetchedAt: null,
+          starredAt: null,
+          note: null,
+        },
+        memberships: [{
+          membershipId: 9,
+          groupId: 2,
+          groupName: "子分组",
+          depth: 1,
+          orderIndex: 0,
+          isDirect: false,
+        }],
+      }],
+    };
+    const client = createClientWithMockFetch({
+      "groups.getTree": tree,
+      "groups.getAggregateWithMembers": aggregate,
+    });
+
+    await expect(client.getGroupTree()).resolves.toEqual(tree);
+    const result = await client.getAggregateGroupWithMembers(1);
+    expect(result.group.aggregateRepoCount).toBe(1);
+    expect(result.members[0].memberships[0]).toMatchObject({ groupId: 2, isDirect: false });
+  });
+
+  it("移动分组和同级重排使用明确的新 mutation", async () => {
+    const moved = {
+      id: 2,
+      userId: 1,
+      parentId: 1,
+      name: "子分组",
+      color: "blue",
+      icon: "folder",
+      description: null,
+      orderIndex: 0,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    };
+    const client = createClientWithMockFetch({
+      "groups.move": moved,
+      "groups.reorderSiblings": { success: true },
+    });
+
+    await expect(client.moveGroup(2, 1)).resolves.toMatchObject({ id: 2, parentId: 1 });
+    await expect(client.reorderGroupSiblings(1, [3, 2]))
+      .resolves.toEqual({ success: true });
   });
 
   it("createGroup 拒绝空名称", () => {

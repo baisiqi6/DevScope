@@ -1,49 +1,3 @@
-# Review Packet
-
-> 本文件保留发起审查时的快照；最终状态以 [task pointer](task_plan.md)、
-> [review](review.md) 与 [verification](../tasks/issue-54/verification.md) 为准。
-
-## Subject
-
-- Checklist item: `issue-54`
-- Reviewer: `independent-reviewer`
-- Updated at: `2026-08-24`
-- Canonical plan path: `docs/project-harness/tasks/issue-54/plan.md`
-
-## Item Snapshot
-
-- Title: 支持单父级树状分组与后代仓库汇总
-- Status: doing
-- Workflow status: running
-- Priority: p2
-- Owner: codex
-- Session: codex-20260823-issue54
-- Dependencies: data-quality-5-postgres-integration-gates
-
-## Acceptance
-
-现有分组无损迁移为根级；数据库拒绝跨用户父级、循环和删除含子组；父级聚合仓库去重并保留真实 membership 来源；同级排序事务化；旧 repoCount/扁平接口兼容；Web/API/Client/CLI/MCP 契约一致；PostgreSQL 迁移与并发测试及完整门禁通过
-
-## Verification
-
-最终 `pnpm lint/typecheck/test/build` 全通过；PostgreSQL 16 + pgvector integration 连续两轮各
-9 files / 57 tests 通过且无残留库；`db:generate` 无漂移；独立终审 `APPROVE`，无 P0–P3。
-
-## Handoff
-
-实现与门禁完成；请独立审查 0011 迁移/回滚、advisory lock+cycle trigger、旧接口兼容、聚合 membership 来源和 Web 移除目标。禁止修改、提交、push、部署或生产迁移。
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-````md
 # 单父级树状分组与后代仓库汇总
 
 ## Item
@@ -53,7 +7,7 @@
 - Priority：P2
 - 风险模式：`high-risk`（schema、迁移、递归约束和并发）
 - 分支：`codex/issue-54-tree-groups`
-- 状态：实现与门禁完成，等待独立 Reviewer
+- 状态：发布候选、门禁、独立 Reviewer 审查与 Harness closeout 完成；发布流程进行中
 
 ## Outcome
 
@@ -127,7 +81,6 @@ pnpm build
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:<port>/postgres \
   TEST_DATABASE_DESTRUCTIVE=1 NODE_ENV=test pnpm test:integration
 ```
-````
 
 - `test:integration` 连续运行两次且没有残留测试库。
 
@@ -152,16 +105,7 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:<port>/postgres \
   只保留本 item 之前已有的 16 条 Web warning；
 - 真实 PostgreSQL 16 + pgvector 集成门禁连续两轮通过：每轮 9 个测试文件、57 项测试；
 - 最终静态审查修复了删除子组预检误置于 update 路由的问题，并增加“父组可改名、含子组不可删”
-  两项 API 回归测试；独立 Reviewer 尚待完成；
+  两项 API 回归测试；Kimi K3 `thinking=max` 独立终审为 `APPROVE`，无 P0–P3；
+- 聚合可见性 fallback 已修为 0，并由“直接成员数为 1、全部不可见时聚合计数为 0”的真实
+  PostgreSQL 断言钉住；完整证据见 [verification.md](verification.md)；
 - 生产迁移、部署、push、merge 与 Issue 关闭仍不在当前 authority 内。
-
-```
-
-## Review Focus
-
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮
-```

@@ -145,3 +145,4 @@ export * from "./baseline-compare";
 export * from "./technology-stack-cleanup";
 export * from "./deps-cache";
 export * from "./repo-graph";
+export * from "./repository-groups";

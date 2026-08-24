@@ -19,9 +19,25 @@ import { SortControl, sortRepositories, useSortPreferences } from '@/components/
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Check, Trash2, Edit, FolderOpen, Plus, RefreshCw, Search, X } from 'lucide-react';
-import type { CreateGroupInput, Repository, RepositoryGroup } from '@devscope/shared';
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Trash2,
+  Edit,
+  FolderOpen,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
+import type { CreateGroupInput, Repository, RepositoryGroupTreeNode } from '@devscope/shared';
 import { getGroupIcon, getGroupColor } from '@/lib/group-config';
+import {
+  flattenGroupTree,
+  getDescendantGroupIds,
+  getSiblingGroupIds,
+} from '@/lib/group-tree';
 
 function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
   return Array.from(new Map(repos.map((repo) => [repo.id, repo])).values());
@@ -79,13 +95,13 @@ export default function GroupsManagementPage() {
   const dropEnterCounterRef = useRef(0);
   const { sortBy, order, setSortBy, toggleOrder } = useSortPreferences('stars', 'desc');
 
-  // 获取分组列表
+  // 获取分组树
   const {
     data: groups = [],
     isLoading: isGroupsLoading,
     error: groupsError,
     refetch: refetchGroups,
-  } = trpc.groups.getAll.useQuery(undefined, {
+  } = trpc.groups.getTree.useQuery(undefined, {
     enabled: true,
     refetchOnWindowFocus: false,
   });
@@ -114,8 +130,12 @@ export default function GroupsManagementPage() {
   const selectedGroupQueryInput =
     selectedGroupId !== null ? { groupId: selectedGroupId } : skipToken;
 
-  const { data: selectedGroup, refetch: refetchSelectedGroup } =
-    trpc.groups.getWithMembers.useQuery(selectedGroupQueryInput, {
+  const {
+    data: selectedGroup,
+    isLoading: isSelectedGroupLoading,
+    error: selectedGroupError,
+    refetch: refetchSelectedGroup,
+  } = trpc.groups.getAggregateWithMembers.useQuery(selectedGroupQueryInput, {
       refetchOnWindowFocus: false,
     });
 
@@ -150,8 +170,33 @@ export default function GroupsManagementPage() {
     },
   });
 
+  const moveGroupMutation = trpc.groups.move.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        refetchGroups(),
+        selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+      ]);
+    },
+  });
+
+  const reorderGroupsMutation = trpc.groups.reorderSiblings.useMutation({
+    onSuccess: async () => {
+      await refetchGroups();
+    },
+  });
+
   // 处理函数
   const addGroupMemberMutation = trpc.groupMembers.add.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        refetchGroups(),
+        refetchUngroupedRepos(),
+        selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
+      ]);
+    },
+  });
+
+  const removeGroupMemberMutation = trpc.groupMembers.remove.useMutation({
     onSuccess: async () => {
       await Promise.all([
         refetchGroups(),
@@ -170,6 +215,11 @@ export default function GroupsManagementPage() {
     () => dedupeRepositories(ungroupedRepos.map(normalizeRepository)),
     [ungroupedRepos]
   );
+  const flatGroups = useMemo(() => flattenGroupTree(groups), [groups]);
+  const groupById = useMemo(
+    () => new Map(flatGroups.map(({ group }) => [group.id, group])),
+    [flatGroups],
+  );
 
   const selectedGroupRepositories = useMemo<Repository[]>(() => {
     if (!selectedGroup) {
@@ -177,9 +227,7 @@ export default function GroupsManagementPage() {
     }
 
     return dedupeRepositories(
-      selectedGroup.members.flatMap((member) =>
-        member.repository ? [normalizeRepository(member.repository)] : []
-      )
+      selectedGroup.members.map((member) => normalizeRepository(member.repository))
     );
   }, [selectedGroup]);
 
@@ -273,7 +321,7 @@ export default function GroupsManagementPage() {
     setSelectedGroupId(null);
   };
 
-  const handleSelectGroup = (group: RepositoryGroup) => {
+  const handleSelectGroup = (group: RepositoryGroupTreeNode) => {
     setSelectedGroupId(group.id);
   };
 
@@ -292,7 +340,7 @@ export default function GroupsManagementPage() {
     deleteGroupMutation.mutate({ groupId });
   };
 
-  const handleStartEditing = (group: RepositoryGroup) => {
+  const handleStartEditing = (group: RepositoryGroupTreeNode) => {
     setEditingGroupId(group.id);
     setEditingGroupName(group.name);
     setEditingGroupDescription(group.description ?? '');
@@ -316,6 +364,34 @@ export default function GroupsManagementPage() {
     });
   };
 
+  const handleMoveGroup = (groupId: number, parentValue: string) => {
+    moveGroupMutation.mutate({
+      groupId,
+      parentId: parentValue === 'root' ? null : Number(parentValue),
+    });
+  };
+
+  const handleReorderGroup = (
+    group: RepositoryGroupTreeNode,
+    direction: -1 | 1,
+  ) => {
+    const siblings = getSiblingGroupIds(groups, group.parentId);
+    const currentIndex = siblings.indexOf(group.id);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= siblings.length) return;
+    const reordered = [...siblings];
+    [reordered[currentIndex], reordered[targetIndex]] = [
+      reordered[targetIndex],
+      reordered[currentIndex],
+    ];
+    reorderGroupsMutation.mutate({ parentId: group.parentId, groupIds: reordered });
+  };
+
+  const handleRemoveMembership = (groupId: number, repoId: number, groupName: string) => {
+    if (!confirm(`确定要从分组“${groupName}”移除这个仓库吗？`)) return;
+    removeGroupMemberMutation.mutate({ groupId, repoId });
+  };
+
   const handleRetry = () => {
     void Promise.all([
       refetchGroups(),
@@ -327,10 +403,18 @@ export default function GroupsManagementPage() {
 
   // 过滤分组
   const filteredGroups = searchQuery
-    ? groups.filter((g) => g.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : groups;
-  const pageError = groupsError ?? ungroupedReposError ?? repositoriesError;
-  const isPageLoading = isGroupsLoading || isRepositoriesLoading;
+    ? flatGroups.filter(({ group }) => group.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : flatGroups;
+  const pageError = groupsError ?? ungroupedReposError ?? repositoriesError ?? selectedGroupError;
+  const mutationError = createGroupMutation.error
+    ?? deleteGroupMutation.error
+    ?? moveGroupMutation.error
+    ?? reorderGroupsMutation.error
+    ?? addGroupMemberMutation.error
+    ?? removeGroupMemberMutation.error;
+  const isPageLoading = isGroupsLoading
+    || isRepositoriesLoading
+    || (selectedGroupId !== null && isSelectedGroupLoading);
 
   return (
     <main className="min-h-screen">
@@ -385,7 +469,7 @@ export default function GroupsManagementPage() {
 
             <dl className="telemetry-strip grid grid-cols-3 text-sm">
               {[
-                ['分组', groups.length],
+                ['分组', flatGroups.length],
                 ['已分组', groupedRepoCount],
                 ['未分组', ungroupedRepoCount],
               ].map(([label, value]) => (
@@ -412,6 +496,12 @@ export default function GroupsManagementPage() {
                 <RefreshCw />
                 重新加载
               </Button>
+            </div>
+          )}
+
+          {mutationError && (
+            <div role="alert" className="mb-6 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              操作失败：{mutationError.message}
             </div>
           )}
 
@@ -445,7 +535,7 @@ export default function GroupsManagementPage() {
             <div className="mb-4 flex flex-col items-stretch gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 id="repository-section-title" className="text-lg font-semibold">
-                  {selectedGroupId !== null ? (selectedGroup?.name ?? '分组仓库') : '全部仓库'}
+                  {selectedGroupId !== null ? (selectedGroup?.group.name ?? '分组仓库') : '全部仓库'}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   当前显示 {sortedDisplayRepos.length} 个唯一仓库
@@ -479,24 +569,62 @@ export default function GroupsManagementPage() {
                 <CardContent className="py-10 text-center">
                   <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground" />
                   <p className="mt-3 text-sm font-medium">
-                    {selectedGroupId !== null ? '这个分组下还没有仓库' : '还没有可展示的仓库'}
+                    {selectedGroupId !== null ? '这个分组及后代还没有仓库' : '还没有可展示的仓库'}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {selectedGroupId !== null
-                      ? '展开右侧未分组列表，把仓库拖到这里。'
+                      ? '展开右侧未分组列表，把仓库直接加入当前分组。'
                       : '先从仓库工作区采集仓库。'}
                   </p>
                 </CardContent>
               </Card>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                {sortedDisplayRepos.map((repo) => (
-                  <RepositoryCard
-                    key={repo.id}
-                    repository={repo}
-                    onViewDetails={handleViewDetails}
-                  />
-                ))}
+                {sortedDisplayRepos.map((repo) => {
+                  const aggregateMember = selectedGroup?.members.find(
+                    (member) => member.repoId === repo.id,
+                  );
+                  const sourceGroups = aggregateMember?.memberships.flatMap((membership) => {
+                    const group = groupById.get(membership.groupId);
+                    return group ? [group] : [];
+                  }) ?? [];
+
+                  return (
+                    <div key={repo.id} className="min-w-0">
+                      <RepositoryCard
+                        repository={repo}
+                        onViewDetails={handleViewDetails}
+                        groups={sourceGroups}
+                      />
+                      {aggregateMember && aggregateMember.memberships.length > 0 && (
+                        <div className="mx-2 flex flex-wrap items-center gap-2 rounded-b-md border border-t-0 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                          <span>直接归属：</span>
+                          {aggregateMember.memberships.map((membership) => (
+                            <span
+                              key={membership.membershipId}
+                              className="inline-flex items-center gap-1 rounded border bg-background px-2 py-1"
+                            >
+                              {membership.groupName}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMembership(
+                                  membership.groupId,
+                                  repo.id,
+                                  membership.groupName,
+                                )}
+                                disabled={removeGroupMemberMutation.isPending}
+                                className="rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                aria-label={`从分组 ${membership.groupName} 移除 ${repo.fullName}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -530,16 +658,21 @@ export default function GroupsManagementPage() {
               </div>
             ) : (
               <div className="command-surface divide-y overflow-hidden">
-                {filteredGroups.map((group) => {
+                {filteredGroups.map(({ group, depth }) => {
                   const colorConfig = getGroupColor(group.color);
                   const IconComponent = getGroupIcon(group.icon).icon;
                   const isEditing = editingGroupId === group.id;
                   const isSelected = selectedGroupId === group.id;
+                  const siblingIds = getSiblingGroupIds(groups, group.parentId);
+                  const siblingIndex = siblingIds.indexOf(group.id);
+                  const invalidParentIds = getDescendantGroupIds(group);
+                  invalidParentIds.add(group.id);
 
                   return (
                     <div
                       key={group.id}
                       className={`p-4 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
+                      style={{ paddingLeft: `${depth * 20 + 16}px` }}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                         <div
@@ -617,10 +750,51 @@ export default function GroupsManagementPage() {
                                 {group.description || '暂无说明'}
                               </p>
                               <p className="mt-2 text-xs tabular-nums text-muted-foreground">
-                                {group.repoCount ?? 0} 个仓库
+                                直接 {group.directRepoCount} 个 · 含后代 {group.aggregateRepoCount} 个
                               </p>
                             </div>
                             <div className="flex shrink-0 flex-wrap items-center gap-1">
+                              <label htmlFor={`group-parent-${group.id}`} className="sr-only">
+                                移动分组 {group.name} 到
+                              </label>
+                              <select
+                                id={`group-parent-${group.id}`}
+                                value={group.parentId ?? 'root'}
+                                onChange={(event) => handleMoveGroup(group.id, event.target.value)}
+                                disabled={moveGroupMutation.isPending}
+                                className="h-9 max-w-44 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <option value="root">根级分组</option>
+                                {flatGroups.map(({ group: parent, depth: parentDepth }) => (
+                                  <option
+                                    key={parent.id}
+                                    value={parent.id}
+                                    disabled={invalidParentIds.has(parent.id)}
+                                  >
+                                    {`${'— '.repeat(parentDepth)}${parent.name}`}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleReorderGroup(group, -1)}
+                                disabled={siblingIndex <= 0 || reorderGroupsMutation.isPending}
+                                aria-label={`上移分组 ${group.name}`}
+                              >
+                                <ArrowUp />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleReorderGroup(group, 1)}
+                                disabled={siblingIndex < 0
+                                  || siblingIndex >= siblingIds.length - 1
+                                  || reorderGroupsMutation.isPending}
+                                aria-label={`下移分组 ${group.name}`}
+                              >
+                                <ArrowDown />
+                              </Button>
                               {!isSelected && (
                                 <Button
                                   variant="outline"
@@ -642,9 +816,10 @@ export default function GroupsManagementPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleDeleteGroup(group.id, group.name)}
-                                disabled={deleteGroupMutation.isPending}
+                                disabled={deleteGroupMutation.isPending || group.children.length > 0}
                                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 aria-label={`删除分组 ${group.name}`}
+                                title={group.children.length > 0 ? '请先移动或删除子分组' : undefined}
                               >
                                 <Trash2 />
                               </Button>
@@ -663,6 +838,8 @@ export default function GroupsManagementPage() {
             open={showCreateGroupDialog}
             onOpenChange={setShowCreateGroupDialog}
             onCreate={handleCreateGroup}
+            groups={groups}
+            defaultParentId={selectedGroupId}
           />
         </div>
 

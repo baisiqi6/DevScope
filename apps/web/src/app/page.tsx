@@ -3,7 +3,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { skipToken } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import type { CreateGroupInput, Repository, RepositoryGroup } from '@devscope/shared';
+import type { CreateGroupInput, Repository, RepositoryGroupTreeNode } from '@devscope/shared';
 import { trpc } from '@/lib/trpc';
 import { RepositoryCard } from '@/components/repository-card';
 import { CollectForm } from '@/components/collect-form';
@@ -15,6 +15,7 @@ import { CreateGroupDialog } from '@/components/create-group-dialog';
 import { Button } from '@/components/ui/button';
 import { AnimatedBackground } from '@/components/animated-background';
 import { Plus, RefreshCw, Star, X } from 'lucide-react';
+import { findGroupInTree, flattenGroupTree } from '@/lib/group-tree';
 
 function dedupeRepositories<T extends { id: number }>(repos: T[]): T[] {
   return Array.from(new Map(repos.map((repo) => [repo.id, repo])).values());
@@ -84,7 +85,11 @@ export default function HomePage() {
     setRepoLimit((prev) => prev + 50);
   }, []);
 
-  const { data: groups = [], refetch: refetchGroups } = trpc.groups.getAll.useQuery(undefined, {
+  const {
+    data: groups = [],
+    error: groupsError,
+    refetch: refetchGroups,
+  } = trpc.groups.getTree.useQuery(undefined, {
     enabled: true,
     refetchOnWindowFocus: false,
   });
@@ -103,7 +108,7 @@ export default function HomePage() {
     isLoading: isSelectedGroupLoading,
     error: selectedGroupError,
     refetch: refetchSelectedGroup,
-  } = trpc.groups.getWithMembers.useQuery(selectedGroupQueryInput, {
+  } = trpc.groups.getAggregateWithMembers.useQuery(selectedGroupQueryInput, {
     refetchOnWindowFocus: false,
   });
 
@@ -118,6 +123,11 @@ export default function HomePage() {
     () => dedupeRepositories((repositories ?? []).map(normalizeRepository)),
     [repositories]
   );
+  const flatGroups = useMemo(() => flattenGroupTree(groups), [groups]);
+  const groupById = useMemo(
+    () => new Map(flatGroups.map(({ group }) => [group.id, group])),
+    [flatGroups],
+  );
 
   const uniqueUngroupedRepos = useMemo<Repository[]>(
     () => dedupeRepositories(ungroupedRepos.map(normalizeRepository)),
@@ -130,9 +140,7 @@ export default function HomePage() {
     }
 
     return dedupeRepositories(
-      selectedGroup.members.flatMap((member) =>
-        member.repository ? [normalizeRepository(member.repository)] : []
-      )
+      selectedGroup.members.map((member) => normalizeRepository(member.repository))
     );
   }, [selectedGroup]);
 
@@ -161,8 +169,8 @@ export default function HomePage() {
 
   const currentGroupName =
     selectedGroupId !== null
-      ? (selectedGroup?.name ??
-        groups.find((group) => group.id === selectedGroupId)?.name ??
+      ? (selectedGroup?.group.name ??
+        findGroupInTree(groups, selectedGroupId)?.name ??
         '\u5206\u7ec4\u4ed3\u5e93')
       : isUngroupedSelected
         ? '未分组仓库'
@@ -170,7 +178,7 @@ export default function HomePage() {
 
   const totalRepoCount = uniqueRepositories.length;
   const ungroupedRepoCount = uniqueUngroupedRepos.length;
-  const pageError = error ?? selectedGroupError;
+  const pageError = error ?? groupsError ?? selectedGroupError;
   const isListLoading = isLoading || (selectedGroupId !== null && isSelectedGroupLoading);
 
   const handleViewDetails = (id: number) => {
@@ -194,6 +202,8 @@ export default function HomePage() {
   const handleRetry = () => {
     void Promise.all([
       refetch(),
+      refetchGroups(),
+      refetchUngrouped(),
       selectedGroupId !== null ? refetchSelectedGroup() : Promise.resolve(),
     ]);
   };
@@ -208,7 +218,7 @@ export default function HomePage() {
     setIsUngroupedSelected(true);
   };
 
-  const handleSelectGroup = (group: RepositoryGroup) => {
+  const handleSelectGroup = (group: RepositoryGroupTreeNode) => {
     setSelectedGroupId(group.id);
     setIsUngroupedSelected(false);
   };
@@ -364,6 +374,13 @@ export default function HomePage() {
                     repository={repo}
                     onViewDetails={handleViewDetails}
                     viewMode={viewMode}
+                    groups={selectedGroup?.members
+                      .find((member) => member.repoId === repo.id)
+                      ?.memberships
+                      .flatMap((membership) => {
+                        const group = groupById.get(membership.groupId);
+                        return group ? [group] : [];
+                      }) ?? []}
                   />
                 ))}
               </div>
@@ -385,6 +402,8 @@ export default function HomePage() {
         open={showCreateGroupDialog}
         onOpenChange={setShowCreateGroupDialog}
         onCreate={handleCreateGroup}
+        groups={groups}
+        defaultParentId={selectedGroupId}
       />
     </main>
   );

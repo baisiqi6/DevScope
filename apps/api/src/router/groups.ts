@@ -16,6 +16,12 @@ import {
   userWatchedRepositories,
   type Db,
   isRealGitHubRepository,
+  createRepositoryGroup,
+  getAggregateRepositoryGroupView,
+  listRepositoryGroupTree,
+  moveRepositoryGroup,
+  normalizeRepositoryGroupCount,
+  reorderRepositoryGroupSiblings,
 } from "@devscope/db";
 import { getOrCreateCurrentUserId } from "../current-user";
 import {
@@ -26,29 +32,13 @@ import {
   moveGroupMemberSchema,
   reorderGroupMembersSchema,
   reorderGroupsSchema,
+  aggregateGroupMembersInputSchema,
+  moveGroupSchema,
+  reorderGroupSiblingsSchema,
 } from "@devscope/shared";
 import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
 
-const INVALID_GROUP_COUNT_MESSAGE =
-  "Repository group count must be a non-negative safe integer";
-
-export function normalizeRepositoryGroupCount(value: unknown): number {
-  if (typeof value === "number") {
-    if (Number.isSafeInteger(value) && value >= 0) {
-      return value;
-    }
-    throw new TypeError(INVALID_GROUP_COUNT_MESSAGE);
-  }
-
-  if (typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)) {
-    const count = Number(value);
-    if (Number.isSafeInteger(count)) {
-      return count;
-    }
-  }
-
-  throw new TypeError(INVALID_GROUP_COUNT_MESSAGE);
-}
+export { normalizeRepositoryGroupCount } from "@devscope/db";
 
 async function requireOwnedGroup(db: Db, userId: number, groupId: number): Promise<void> {
   const [group] = await db
@@ -93,31 +83,33 @@ export const groupsRouter = router({
     .query(async ({ ctx }) => {
       const db = ctx.db;
       const userId = await getOrCreateCurrentUserId(db);
+      const tree = await listRepositoryGroupTree(db, userId);
+      const flat: Array<Omit<(typeof tree)[number], "children">> = [];
+      const visit = (nodes: typeof tree) => {
+        for (const node of nodes) {
+          const { children, ...group } = node;
+          flat.push(group);
+          visit(children);
+        }
+      };
+      visit(tree);
+      return flat;
+    }),
 
-      // 单条 JOIN + GROUP BY 查询，消除 N+1
-      const rows = await db
-        .select({
-          id: repositoryGroups.id,
-          userId: repositoryGroups.userId,
-          name: repositoryGroups.name,
-          color: repositoryGroups.color,
-          icon: repositoryGroups.icon,
-          description: repositoryGroups.description,
-          orderIndex: repositoryGroups.orderIndex,
-          createdAt: repositoryGroups.createdAt,
-          updatedAt: repositoryGroups.updatedAt,
-          repoCount: sql<unknown>`count(distinct ${groupMembers.repoId})`,
-        })
-        .from(repositoryGroups)
-        .leftJoin(groupMembers, eq(groupMembers.groupId, repositoryGroups.id))
-        .where(eq(repositoryGroups.userId, userId))
-        .groupBy(repositoryGroups.id)
-        .orderBy(repositoryGroups.orderIndex);
+  /** 获取当前用户的完整分组树。 */
+  getTree: publicProcedure.query(async ({ ctx }) => {
+    const userId = await getOrCreateCurrentUserId(ctx.db);
+    return listRepositoryGroupTree(ctx.db, userId);
+  }),
 
-      return rows.map((row) => ({
-        ...row,
-        repoCount: normalizeRepositoryGroupCount(row.repoCount),
-      }));
+  /** 获取当前分组及全部后代仓库的去重聚合视图。 */
+  getAggregateWithMembers: publicProcedure
+    .input(aggregateGroupMembersInputSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const view = await getAggregateRepositoryGroupView(ctx.db, userId, input.groupId);
+      if (!view) throw new Error("分组不存在或无权访问");
+      return view;
     }),
 
   /**
@@ -189,30 +181,22 @@ export const groupsRouter = router({
       const db = ctx.db;
       const userId = await getOrCreateCurrentUserId(db);
 
-      // 获取当前最大 orderIndex
-      const [maxOrder] = await db
-        .select({ max: sql<number>`MAX(${repositoryGroups.orderIndex})` })
-        .from(repositoryGroups)
-        .where(eq(repositoryGroups.userId, userId));
-
-      const nextOrder = (maxOrder?.max ?? -1) + 1;
-
-      const [group] = await db
-        .insert(repositoryGroups)
-        .values({
-          userId,
-          name: input.name,
-          color: input.color || "blue",
-          icon: input.icon || "folder",
-          description: input.description,
-          orderIndex: nextOrder,
-        })
-        .returning();
+      const group = await createRepositoryGroup(db, { userId, ...input });
 
       return {
         ...group,
         repoCount: 0,
+        directRepoCount: 0,
+        aggregateRepoCount: 0,
       };
+    }),
+
+  /** 移动分组到另一个父级；null 表示移动到根级。 */
+  move: publicProcedure
+    .input(moveGroupSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      return moveRepositoryGroup(ctx.db, userId, input.groupId, input.parentId);
     }),
 
   /**
@@ -282,6 +266,18 @@ export const groupsRouter = router({
         throw new Error("分组不存在");
       }
 
+      const [child] = await db
+        .select({ id: repositoryGroups.id })
+        .from(repositoryGroups)
+        .where(and(
+          eq(repositoryGroups.parentId, input.groupId),
+          eq(repositoryGroups.userId, userId),
+        ))
+        .limit(1);
+      if (child) {
+        throw new Error("分组包含子分组，不能删除");
+      }
+
       await db
         .delete(repositoryGroups)
         .where(eq(repositoryGroups.id, input.groupId));
@@ -298,31 +294,21 @@ export const groupsRouter = router({
       const db = ctx.db;
       const userId = await getOrCreateCurrentUserId(db);
 
-      // 验证所有分组都属于当前用户
-      const existing = await db
-        .select()
-        .from(repositoryGroups)
-        .where(
-          and(
-            inArray(repositoryGroups.id, input.groupIds),
-            eq(repositoryGroups.userId, userId)
-          )
-        );
+      await reorderRepositoryGroupSiblings(db, userId, null, input.groupIds);
+      return { success: true };
+    }),
 
-      if (existing.length !== input.groupIds.length) {
-        throw new Error("部分分组不存在或无权访问");
-      }
-
-      // 批量更新顺序
-      await Promise.all(
-        input.groupIds.map((id, index) =>
-          db
-            .update(repositoryGroups)
-            .set({ orderIndex: index })
-            .where(eq(repositoryGroups.id, id))
-        )
+  /** 按完整兄弟集合重新排序。 */
+  reorderSiblings: publicProcedure
+    .input(reorderGroupSiblingsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      await reorderRepositoryGroupSiblings(
+        ctx.db,
+        userId,
+        input.parentId,
+        input.groupIds,
       );
-
       return { success: true };
     }),
 });
