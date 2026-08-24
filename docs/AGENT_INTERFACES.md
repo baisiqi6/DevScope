@@ -70,8 +70,15 @@ devscope repo note 1 "重要项目"
 devscope search vercel/next.js "如何部署" --limit 5
 devscope search vercel/next.js "如何部署" --no-answer
 devscope group list
+devscope group tree
 devscope group create "前端框架" --description "前端相关仓库"
+devscope group create "Vue 生态" --parent-id 1
 devscope group members 1
+devscope group aggregate-members 1
+devscope group move 2 1
+devscope group move 2 root
+devscope group reorder 1 4 3 2
+devscope group reorder root 5 1
 devscope group add 1 5
 devscope group remove 1 5
 devscope analyze start vercel/next.js
@@ -94,23 +101,27 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 
 ### 工具列表
 
-| 工具名称                          | 行为      | 说明                             |
-| --------------------------------- | --------- | -------------------------------- |
-| `devscope_health`                 | 只读      | 检查 API 状态                    |
-| `devscope_list_repositories`      | 只读      | 列出已采集仓库                   |
-| `devscope_get_repository`         | 只读      | 读取仓库详情                     |
-| `devscope_collect_repository`     | 写入/外部 | 采集 GitHub 数据并写入数据库     |
-| `devscope_get_embedding_status`   | 只读      | 查询向量化进度                   |
-| `devscope_semantic_search`        | 只读      | 搜索仓库内容，可生成 AI 回答     |
-| `devscope_list_groups`            | 只读      | 列出当前用户的仓库分组           |
-| `devscope_update_repo_note`       | 写入      | 更新仓库备注                     |
-| `devscope_get_group_members`      | 只读      | 读取分组成员及关联仓库           |
-| `devscope_create_group`           | 写入      | 创建仓库分组                     |
-| `devscope_add_repo_to_group`      | 写入      | 添加仓库到分组                   |
-| `devscope_remove_repo_from_group` | 写入      | 从分组移除仓库                   |
-| `devscope_start_health_analysis`  | 写入/外部 | 启动后台 Agent 健康度分析        |
-| `devscope_get_analysis_status`    | 只读      | 查询分析执行状态                 |
-| `devscope_get_health_report`      | 只读      | 获取健康度报告                   |
+| 工具名称                               | 行为      | 说明                             |
+| -------------------------------------- | --------- | -------------------------------- |
+| `devscope_health`                      | 只读      | 检查 API 状态                    |
+| `devscope_list_repositories`           | 只读      | 列出已采集仓库                   |
+| `devscope_get_repository`              | 只读      | 读取仓库详情                     |
+| `devscope_collect_repository`          | 写入/外部 | 采集 GitHub 数据并写入数据库     |
+| `devscope_get_embedding_status`        | 只读      | 查询向量化进度                   |
+| `devscope_semantic_search`             | 只读      | 搜索仓库内容，可生成 AI 回答     |
+| `devscope_list_groups`                 | 只读      | 列出当前用户的仓库分组           |
+| `devscope_get_group_tree`              | 只读      | 读取单父级分组树与聚合计数       |
+| `devscope_update_repo_note`            | 写入      | 更新仓库备注                     |
+| `devscope_get_group_members`           | 只读      | 读取分组成员及关联仓库           |
+| `devscope_get_aggregate_group_members` | 只读      | 读取分组及后代仓库与直接归属来源 |
+| `devscope_create_group`                | 写入      | 创建仓库分组                     |
+| `devscope_move_group`                  | 写入      | 移动分组到父级或根级             |
+| `devscope_reorder_group_siblings`      | 写入      | 按完整 ID 排列事务化重排同级分组 |
+| `devscope_add_repo_to_group`           | 写入      | 添加仓库到分组                   |
+| `devscope_remove_repo_from_group`      | 写入      | 从分组移除仓库                   |
+| `devscope_start_health_analysis`       | 写入/外部 | 启动后台 Agent 健康度分析        |
+| `devscope_get_analysis_status`         | 只读      | 查询分析执行状态                 |
+| `devscope_get_health_report`           | 只读      | 获取健康度报告                   |
 
 ### 本地 MCP 配置
 
@@ -146,6 +157,10 @@ pnpm build
 ```
 
 新增 Agent 能力时，先在 API 中建立经过 Zod 校验的稳定业务接口，再扩展 `packages/client` facade，最后分别映射到 CLI 命令和 MCP tool。不要让 CLI/MCP 形成第二套业务逻辑或数据访问模型。
+
+旧的原始 tRPC mutation `groups.reorder` 现按根级同级重排处理，并要求提交完整、无重复的根分组
+ID 集合；原先只提交部分 ID 的请求会明确失败。新调用方应使用 `groups.reorderSiblings`（Client、
+CLI 与 MCP 已统一映射到该契约），不要依赖旧的部分重排行为。
 
 技术雷达的 `jobs` 与 `radar_candidates` 当前是内部执行基础，尚未暴露 CLI/MCP 工具。
 后续增加 `radar run/status/candidates/feedback/digest` 时仍应先建立按 `userId` 隔离的

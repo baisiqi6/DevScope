@@ -9,7 +9,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { GROUP_COLORS, GROUP_ICONS, getGroupIcon, getGroupColor } from "@/lib/group-config";
-import type { GroupColor, CreateGroupInput } from "@devscope/shared";
+import type { GroupColor, CreateGroupInput, RepositoryGroupTreeNode } from "@devscope/shared";
+import { flattenGroupTree } from "@/lib/group-tree";
 
 // ============================================================================
 // 类型定义
@@ -36,6 +37,10 @@ interface CreateGroupDialogProps {
   onOpenChange: (open: boolean) => void;
   /** 创建分组回调 */
   onCreate: (input: CreateGroupInput) => void;
+  /** 可选父分组树 */
+  groups?: RepositoryGroupTreeNode[];
+  /** 打开时默认选择的父分组 */
+  defaultParentId?: number | null;
 }
 
 // ============================================================================
@@ -49,11 +54,19 @@ export function CreateGroupDialog({
   open,
   onOpenChange,
   onCreate,
+  groups = [],
+  defaultParentId = null,
 }: CreateGroupDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedColor, setSelectedColor] = useState<GroupColor>("blue");
   const [selectedIcon, setSelectedIcon] = useState("folder");
+  const [parentId, setParentId] = useState<number | null>(defaultParentId);
+  const parentOptions = useMemo(() => flattenGroupTree(groups), [groups]);
+
+  useEffect(() => {
+    if (open) setParentId(defaultParentId);
+  }, [defaultParentId, open]);
 
   // 重置表单
   const resetForm = () => {
@@ -61,6 +74,7 @@ export function CreateGroupDialog({
     setDescription("");
     setSelectedColor("blue");
     setSelectedIcon("folder");
+    setParentId(defaultParentId);
   };
 
   // 处理创建
@@ -74,6 +88,7 @@ export function CreateGroupDialog({
       color: selectedColor,
       icon: selectedIcon,
       description: description.trim() || undefined,
+      parentId,
     });
 
     resetForm();
@@ -116,6 +131,28 @@ export function CreateGroupDialog({
             />
             <p className="text-xs text-muted-foreground">
               {name.length}/50
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="group-parent">父分组</Label>
+            <select
+              id="group-parent"
+              value={parentId ?? "root"}
+              onChange={(event) => {
+                setParentId(event.target.value === "root" ? null : Number(event.target.value));
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="root">根级分组</option>
+              {parentOptions.map(({ group, depth }) => (
+                <option key={group.id} value={group.id}>
+                  {`${"— ".repeat(depth)}${group.name}`}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              选择父分组可直接创建子分组，之后仍可移动。
             </p>
           </div>
 

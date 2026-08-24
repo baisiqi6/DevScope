@@ -16,7 +16,7 @@
 pnpm install
 cp .env.example .env
 docker compose up -d postgres
-pnpm db:push
+pnpm db:migrate
 pnpm dev
 ```
 
@@ -122,7 +122,29 @@ pnpm db:push
 pnpm db:studio
 ```
 
-`db:push` 只用于本地开发。`db:migrate` 执行已纳入版本控制且经过审查的迁移；生产环境必须先备份，再通过手动部署输入显式执行。
+`db:migrate` 是本地开发的默认建库入口，会执行已纳入版本控制且经过审查的迁移。
+`db:push` 只用于不依赖手写迁移 SQL 的本地 schema 实验；它不会创建 migration 中的 function、trigger
+等自定义对象。生产环境必须先备份，再通过手动部署输入显式执行迁移。
+
+### 分组树迁移 `0011`
+
+`0011_violet_hammerhead.sql` 为 `repository_groups` 增加单父级层级、同用户组合外键、同级索引
+和循环检测 trigger。既有行保持 `parent_id = null`，不修改 `group_members`。生产执行仍属于
+显式维护动作，不随普通部署自动 `db:push`：
+
+本地开发分组层级功能时也必须使用 `pnpm db:migrate` 建库；`pnpm db:push` 只能同步 Drizzle
+schema，不能安装本迁移的循环检测 function/trigger，因此不具备与迁移库一致的数据库防线。
+
+1. 记录分组与成员行数，并创建、校验 PostgreSQL custom-format 备份；
+2. 审查目标镜像包含 `0011` 迁移和对应 schema，再显式启用部署迁移输入；
+3. 迁移后核对所有旧分组仍为根级、成员行数不变，并验证树读取、创建子组、移动、聚合读取和
+   删除含子组失败；
+4. 只有所有 `parent_id` 仍为空时，才可在停止相关写入后执行
+   `packages/db/drizzle/rollback/0011_repository_group_hierarchy.sql`；已有层级数据时改用迁移前
+   备份恢复或先形成经人工确认的数据降级方案，禁止直接丢弃父子关系。
+
+本迁移的本地门禁必须使用真实 PostgreSQL，覆盖 0010→0011 升级、受保护回滚、跨用户父级、
+循环、删除约束、精确同级排序和双连接并发移动，并连续运行两次。
 
 ## 技术雷达 Worker
 

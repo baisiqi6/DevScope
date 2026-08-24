@@ -19,9 +19,13 @@ function createStubClient(): DevScopeClient {
     getEmbeddingStatus: vi.fn(),
     semanticSearch: vi.fn(),
     listGroups: vi.fn().mockResolvedValue([]),
+    getGroupTree: vi.fn().mockResolvedValue([]),
     updateRepoNote: vi.fn().mockResolvedValue({ success: true }),
     getGroupWithMembers: vi.fn(),
+    getAggregateGroupWithMembers: vi.fn(),
     createGroup: vi.fn(),
+    moveGroup: vi.fn(),
+    reorderGroupSiblings: vi.fn().mockResolvedValue({ success: true }),
     addRepoToGroup: vi.fn(),
     removeRepoFromGroup: vi.fn().mockResolvedValue({ success: true }),
     startHealthAnalysis: vi.fn(),
@@ -189,6 +193,7 @@ describe("DevScope CLI", () => {
     vi.mocked(client.createGroup).mockResolvedValue({
       id: 3,
       userId: 1,
+      parentId: 9,
       name: "前端框架",
       color: "blue",
       icon: "folder",
@@ -197,15 +202,74 @@ describe("DevScope CLI", () => {
       createdAt: "2026-07-28T00:00:00.000Z",
       updatedAt: "2026-07-28T00:00:00.000Z",
       repoCount: 0,
+      directRepoCount: 0,
+      aggregateRepoCount: 0,
     });
 
     const exitCode = await runCli(
-      ["group", "create", "前端框架", "--description", "前端相关"],
+      ["group", "create", "前端框架", "--description", "前端相关", "--parent-id", "9"],
       { createClient: () => client, stdout: stdout.output },
     );
 
     expect(exitCode).toBe(0);
-    expect(client.createGroup).toHaveBeenCalledWith({ name: "前端框架", description: "前端相关" });
+    expect(client.createGroup).toHaveBeenCalledWith({
+      name: "前端框架",
+      description: "前端相关",
+      parentId: 9,
+    });
+  });
+
+  it("group tree、aggregate-members、move 与 reorder 映射统一 Client", async () => {
+    const stdout = captureOutput();
+    const client = createStubClient();
+    vi.mocked(client.getAggregateGroupWithMembers).mockResolvedValue({
+      group: {
+        id: 1,
+        userId: 1,
+        parentId: null,
+        name: "根",
+        color: "blue",
+        icon: "folder",
+        description: null,
+        orderIndex: 0,
+        createdAt: "2026-07-28T00:00:00.000Z",
+        updatedAt: "2026-07-28T00:00:00.000Z",
+        repoCount: 0,
+        directRepoCount: 0,
+        aggregateRepoCount: 0,
+      },
+      members: [],
+    });
+    vi.mocked(client.moveGroup).mockResolvedValue({
+      id: 2,
+      userId: 1,
+      parentId: 1,
+      name: "子",
+      color: "blue",
+      icon: "folder",
+      description: null,
+      orderIndex: 0,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    await expect(runCli(["group", "tree"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    await expect(runCli(["group", "aggregate-members", "1"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    await expect(runCli(["group", "move", "2", "1"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    await expect(runCli(["group", "reorder", "1", "3", "2"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+
+    expect(client.getGroupTree).toHaveBeenCalledOnce();
+    expect(client.getAggregateGroupWithMembers).toHaveBeenCalledWith(1);
+    expect(client.moveGroup).toHaveBeenCalledWith(2, 1);
+    expect(client.reorderGroupSiblings).toHaveBeenCalledWith(1, [3, 2]);
   });
 
   it("group members 获取分组成员", async () => {

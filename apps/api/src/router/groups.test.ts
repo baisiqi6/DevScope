@@ -41,12 +41,40 @@ describe("repository group count contract", () => {
   });
 
   it("groups.getAll 将 PostgreSQL string count 转为 number", async () => {
+    const createdAt = new Date("2026-07-01T00:00:00.000Z");
+    const updatedAt = new Date("2026-07-02T00:00:00.000Z");
     const caller = groupsRouter.createCaller({
-      db: createGroupsDb([{ id: 10, name: "AI", repoCount: "2" }]),
+      db: createGroupsDb([{
+        id: 10,
+        userId: 7,
+        parentId: null,
+        name: "AI",
+        color: "blue",
+        icon: "folder",
+        description: null,
+        orderIndex: 0,
+        createdAt,
+        updatedAt,
+        directRepoCount: "2",
+      }], [{ groupId: 10, aggregateRepoCount: "3" }]),
     } as never);
 
     await expect(caller.getAll()).resolves.toEqual([
-      { id: 10, name: "AI", repoCount: 2 },
+      {
+        id: 10,
+        userId: 7,
+        parentId: null,
+        name: "AI",
+        color: "blue",
+        icon: "folder",
+        description: null,
+        orderIndex: 0,
+        createdAt,
+        updatedAt,
+        repoCount: 2,
+        directRepoCount: 2,
+        aggregateRepoCount: 3,
+      },
     ]);
   });
 });
@@ -75,6 +103,33 @@ describe("groupMembers tenant boundary", () => {
   });
 });
 
+describe("group hierarchy mutation guards", () => {
+  it("父分组存在子组时仍允许更新自身元数据", async () => {
+    const updated = { id: 10, name: "新名称" };
+    const updateReturning = vi.fn().mockResolvedValue([updated]);
+    const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+    const updateSet = vi.fn(() => ({ where: updateWhere }));
+    const db = createGroupMutationDb({ update: vi.fn(() => ({ set: updateSet })) });
+    const caller = groupsRouter.createCaller({ db } as never);
+
+    await expect(caller.update({ groupId: 10, name: "新名称" })).resolves.toEqual(updated);
+    expect(updateSet).toHaveBeenCalled();
+  });
+
+  it("删除含子组的分组时在执行 delete 前返回稳定错误", async () => {
+    const deleteGroup = vi.fn();
+    const db = createGroupMutationDb({
+      childRows: [{ id: 11 }],
+      delete: deleteGroup,
+    });
+    const caller = groupsRouter.createCaller({ db } as never);
+
+    await expect(caller.delete({ groupId: 10 }))
+      .rejects.toThrow("分组包含子分组，不能删除");
+    expect(deleteGroup).not.toHaveBeenCalled();
+  });
+});
+
 function createDb(groupOwned: boolean, deleteMember: ReturnType<typeof vi.fn>) {
   return {
     select: vi.fn(() => ({
@@ -96,7 +151,10 @@ function createDb(groupOwned: boolean, deleteMember: ReturnType<typeof vi.fn>) {
   };
 }
 
-function createGroupsDb(rows: Array<Record<string, unknown>>) {
+function createGroupsDb(
+  rows: Array<Record<string, unknown>>,
+  aggregateRows: Array<Record<string, unknown>>,
+) {
   let selectCall = 0;
   return {
     select: vi.fn(() => {
@@ -120,5 +178,42 @@ function createGroupsDb(rows: Array<Record<string, unknown>>) {
         })),
       };
     }),
+    execute: vi.fn().mockResolvedValue({ rows: aggregateRows }),
+  };
+}
+
+function createGroupMutationDb(options: {
+  childRows?: Array<{ id: number }>;
+  update?: ReturnType<typeof vi.fn>;
+  delete?: ReturnType<typeof vi.fn>;
+}) {
+  let selectCall = 0;
+  return {
+    select: vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return {
+          from: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ id: 7 }]),
+          })),
+        };
+      }
+      if (selectCall === 2) {
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue([{ id: 10 }]),
+          })),
+        };
+      }
+      return {
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue(options.childRows ?? []),
+          })),
+        })),
+      };
+    }),
+    update: options.update,
+    delete: options.delete,
   };
 }
