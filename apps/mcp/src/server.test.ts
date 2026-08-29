@@ -26,6 +26,16 @@ function createStubClient(): DevScopeClient {
     startHealthAnalysis: vi.fn(),
     getAnalysisStatus: vi.fn(),
     getHealthReport: vi.fn(),
+    listExternalResources: vi.fn().mockResolvedValue([]),
+    getExternalResource: vi.fn(),
+    saveExternalResource: vi.fn(),
+    updateExternalResource: vi.fn(),
+    removeExternalResource: vi.fn().mockResolvedValue({ success: true }),
+    listExternalResourceGroups: vi.fn().mockResolvedValue([]),
+    createExternalResourceGroup: vi.fn(),
+    getExternalResourceGroupMembers: vi.fn().mockResolvedValue([]),
+    addExternalResourceToGroup: vi.fn(),
+    removeExternalResourceFromGroup: vi.fn().mockResolvedValue({ success: true }),
   };
 }
 
@@ -54,7 +64,7 @@ afterEach(async () => {
 });
 
 describe("DevScope MCP Server", () => {
-  it("注册全部十九个工具", async () => {
+  it("注册全部二十九个工具", async () => {
     const client = await createConnectedPair(createStubClient());
     const result = await client.listTools();
 
@@ -75,6 +85,16 @@ describe("DevScope MCP Server", () => {
       "devscope_reorder_group_siblings",
       "devscope_add_repo_to_group",
       "devscope_remove_repo_from_group",
+      "devscope_list_external_resources",
+      "devscope_save_external_resource",
+      "devscope_get_external_resource",
+      "devscope_update_external_resource",
+      "devscope_remove_external_resource",
+      "devscope_list_external_resource_groups",
+      "devscope_create_external_resource_group",
+      "devscope_get_external_resource_group_members",
+      "devscope_add_external_resource_to_group",
+      "devscope_remove_external_resource_from_group",
       "devscope_start_health_analysis",
       "devscope_get_analysis_status",
       "devscope_get_health_report",
@@ -148,6 +168,33 @@ describe("DevScope MCP Server", () => {
     );
 
     expect(devScopeClient.updateRepoNote).toHaveBeenCalledWith(1, "测试");
+    expect(result.isError).not.toBe(true);
+  });
+
+  it("转发外部资源保存字段并复用 URL/metadata 校验", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.saveExternalResource).mockResolvedValue({ ok: true } as never);
+    const client = await createConnectedPair(devScopeClient);
+    const result = await client.callTool({
+      name: "devscope_save_external_resource",
+      arguments: {
+        url: "https://example.com/article",
+        resourceType: "article",
+        siteName: "Example",
+        author: "Ada",
+        publishedAt: "2026-08-28T00:00:00.000Z",
+        metadata: { source: "test" },
+        tags: ["design"],
+      },
+    }, CallToolResultSchema);
+
+    expect(devScopeClient.saveExternalResource).toHaveBeenCalledWith(expect.objectContaining({
+      url: "https://example.com/article",
+      siteName: "Example",
+      author: "Ada",
+      metadata: { source: "test" },
+      tags: ["design"],
+    }));
     expect(result.isError).not.toBe(true);
   });
 

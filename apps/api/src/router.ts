@@ -43,6 +43,7 @@ import {
 import { groupsRouter, groupMembersRouter, groupsQueryRouter } from "./router/groups";
 import { graphRouter } from "./router/graph";
 import { discoveryRouter } from "./router/discovery";
+import { externalResourcesRouter, externalResourceGroupsRouter } from "./router/external-resources";
 import { findCurrentUserId, getOrCreateCurrentUserId } from "./current-user";
 import { v4 as uuidv4 } from "uuid";
 
@@ -155,6 +156,10 @@ export const appRouter = router({
 
   // GitHub Trending 与 DevScope 发现榜
   discovery: discoveryRouter,
+
+  // 外部资源（文章、论文、网站）独立收藏与分组
+  externalResources: externalResourcesRouter,
+  externalResourceGroups: externalResourceGroupsRouter,
 
   /**
    * 获取用户关注的仓库列表

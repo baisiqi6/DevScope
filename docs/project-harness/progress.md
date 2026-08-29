@@ -1,6 +1,6 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-08-24
+> 更新时间：2026-08-29
 > 生产运行基线：`63ec7c5`；`main` 可仅因本 item 的生产 closeout 文档提交而领先生产
 > 部署形态：Standalone
 > 当前状态：Issue #54 已合并、完成 `0011` 生产迁移部署并通过运行复核
@@ -46,6 +46,7 @@
 | 技术栈 Phase B  | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成                          | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md)   |
 | 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
+| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
 
 ## 当前生产基线
 
@@ -68,6 +69,7 @@
 
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
+- 外部资源工作区已完成本地验证，待本次合并后的 `0012` 迁移随发布流程执行生产部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。

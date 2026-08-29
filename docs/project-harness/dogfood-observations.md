@@ -19,9 +19,10 @@
 | `DF-20260818-001` | MCP 分组列表因 `repoCount` 类型不一致失败         | `closed`   | `p1`   | 产品缺陷 | blocked                   |
 | `DF-20260818-002` | MCP 分组成员接口返回完整重对象                    | `triaged`  | `p1`   | 产品缺陷 | performance               |
 | `DF-20260818-003` | 许可证字段不能区分开源、source-available 与未识别 | `open`     | `p2`   | 能力缺口 | wrong data / confusing UX |
-| `DF-20260818-004` | 分组不支持父子层级                                | `accepted` | `p2`   | 能力缺口 | confusing UX              |
+| `DF-20260818-004` | 分组不支持父子层级                                | `closed`   | `p2`   | 能力缺口 | confusing UX              |
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `triaged`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `triaged`  | `p2`   | 操作摩擦 | confusing UX              |
+| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `open`     | `p2`   | 产品缺陷 | wrong data                |
 
 ## Observations
 
@@ -86,7 +87,7 @@
 
 ### DF-20260818-004：分组不支持父子层级
 
-- Status: `accepted`
+- Status: `closed`
 - Priority: `p2`
 - Time: 2026-08-18
 - Entry point: MCP 分组规划 + 数据模型核验
@@ -99,10 +100,13 @@
 - Frequency: reproducible
 - Workaround: 保留 `多agent编排工具` 作为 umbrella，再创建四个平行分组；每次变更按“添加 → 验证 → 必要时移除”维护重复成员关系，并明确这不是原生层级。
 - Classification: 当前未支持能力；需要产品决策是增加层级分组，还是明确采用扁平标签式多分组模型。
-- Related issue/checklist: none
+- Related issue/checklist: [GitHub Issue #54](https://github.com/baisiqi6/DevScope/issues/54); checklist none
 - Timeline:
   - 2026-08-18: 在确认多 Agent 项目采集状态时发现用户心智模型与当前分组数据模型不一致；通过源码确认，未修改产品实现。
   - 2026-08-18: 用户接受当前扁平 workaround，未来再评估树状或图状分组；已保留 `多agent编排工具` umbrella，并创建 group `5`–`8` 四个平行分组，最终成员数分别为 27、9、9、8、3。
+  - 2026-08-23: 用户确认将需求提交开发者；创建 GitHub Issue #54，范围限定为单父级树状分组 MVP，保留现有仓库多分组关系，任意图结构不进入第一版。
+  - 2026-08-24: PR #55 合并并完成 `0011` 生产迁移部署；认证 CLI `group tree` 复查返回 15 个根分组及 `parentId`、`directRepoCount`、`aggregateRepoCount`、`children`，树状分组能力已在云端可用，状态关闭。现有分组尚未重组，仍全部位于根级。
+  - 2026-08-24: 首次真实树状重组完成：group `5`–`8` 已依次移动为 group `3` 的子组；确认 27 个父组仓库全部被至少一个子组覆盖后，移除 27 条冗余父组直接 membership。终态为父组 direct/aggregate `0/27`，子组直接成员 `9/9/8/3`，根组数 `11`；`omnigent-ai/omnigent` 与 `awslabs/cli-agent-orchestrator` 保留合理的跨子组归属。
 
 ### DF-20260818-005：已采集仓库没有删除或归档入口
 
@@ -141,6 +145,28 @@
 - Related issue/checklist: none
 - Timeline:
   - 2026-08-18: 用户询问原九个项目是否进入细分组及能否改分组；实时核对成员关系并确认 MCP/CLI 与 API 的能力差异，未修改产品实现。
+  - 2026-08-24: Issue #54 已把树读取、创建子组、原子移动和同级重排贯通到 CLI/MCP；分组名称、说明的更新以及删除仍未在 Agent 操作面暴露，因此本条保持 `triaged`，范围收窄为剩余编辑/删除覆盖缺口。
+
+### DF-20260822-001：仓库采集的 Hacker News 补充数据稳定返回 400
+
+- Status: `open`
+- Priority: `p2`
+- Time: 2026-08-22
+- Entry point: MCP `devscope_collect_repository`
+- User intent: 将一批经过筛选的 GitHub 仓库完整采集到 DevScope 云端，供后续生态搜索和分析。
+- Expected: 仓库内容、向量和可选 Hacker News 讨论均成功采集；如果没有匹配讨论，返回空集合而不是上游请求错误。
+- Actual: 本批 16 个不同仓库的主采集均为 `completed`，embedding 后台任务也均为 `completed / 100%`，但每次响应都附带 `Hacker News: Hacker News API error: 400`，且 `hnItemsCollected` 为 `0`。
+- Reproduction: 对任一尚未采集的公开 GitHub 仓库调用 `devscope_collect_repository({ repo: "owner/repo" })`；2026-08-22 的 16/16 个样本均出现相同 warning。
+- Evidence: repository ids `1265`–`1280`（不连续处为并发分配顺序）；采集响应的 `warning` 字段一致，随后 `devscope_get_embedding_status` 证明所有仓库向量化完成，因此失败边界仅在 HN enrichment。
+- Impact: wrong data。主仓库与向量数据可用，但用户会误以为没有相关 HN 讨论，生态信号不完整；批量采集还会产生重复告警噪声。
+- Frequency: reproducible
+- Workaround: 当前只能接受 warning，并将 `hnItemsCollected: 0` 视为“采集失败或无结果，状态未知”，不能当作确认没有 HN 讨论。
+- Classification: 产品缺陷；HN enrichment 的请求参数、API 契约或错误归一化待进一步诊断。
+- Related issue/checklist: none
+- Timeline:
+  - 2026-08-22: Skills 与前端库云端批量采集时首次登记；16 个样本全部复现，未修改产品代码。
+  - 2026-08-22: 后续采集 `beekeeper-studio/beekeeper-studio` 与 `chenhg5/cc-connect` 时 2/2 再次出现同一 HN 400 warning；两仓库主采集与 embedding 均成功，问题仍限定在 HN enrichment。
+  - 2026-08-24: 采集 AnySearch Skill/MCP、QuantDinger 与 RQAlpha 时 4/4 再次出现同一 HN 400 warning；四仓库 embedding 与分组均成功，累计证据继续支持这是稳定的 HN enrichment 缺陷。
 
 ## 新条目模板
 

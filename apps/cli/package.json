@@ -21,7 +21,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@devscope/client": "workspace:*"
+    "@devscope/client": "workspace:*",
+    "@devscope/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

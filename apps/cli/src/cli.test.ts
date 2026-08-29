@@ -31,6 +31,16 @@ function createStubClient(): DevScopeClient {
     startHealthAnalysis: vi.fn(),
     getAnalysisStatus: vi.fn(),
     getHealthReport: vi.fn(),
+    listExternalResources: vi.fn().mockResolvedValue([]),
+    getExternalResource: vi.fn(),
+    saveExternalResource: vi.fn(),
+    updateExternalResource: vi.fn(),
+    removeExternalResource: vi.fn().mockResolvedValue({ success: true }),
+    listExternalResourceGroups: vi.fn().mockResolvedValue([]),
+    createExternalResourceGroup: vi.fn(),
+    getExternalResourceGroupMembers: vi.fn().mockResolvedValue([]),
+    addExternalResourceToGroup: vi.fn(),
+    removeExternalResourceFromGroup: vi.fn().mockResolvedValue({ success: true }),
   };
 }
 
@@ -76,6 +86,52 @@ describe("DevScope CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(client.listRepositories).toHaveBeenCalledWith({ limit: 10, offset: 20 });
+  });
+
+  it("解析外部资源列表类型", async () => {
+    const stdout = captureOutput();
+    const client = createStubClient();
+
+    const exitCode = await runCli(
+      ["resource", "list", "--type", "website", "--limit", "8"],
+      { createClient: () => client, stdout: stdout.output },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(client.listExternalResources).toHaveBeenCalledWith({
+      limit: 8,
+      offset: 0,
+      resourceType: "website",
+    });
+  });
+
+  it("外部资源保存必须指定类型", async () => {
+    const stderr = captureOutput();
+    const client = createStubClient();
+
+    const exitCode = await runCli(
+      ["resource", "save", "https://example.com"],
+      { createClient: () => client, stderr: stderr.output },
+    );
+
+    expect(exitCode).toBe(2);
+    expect(client.saveExternalResource).not.toHaveBeenCalled();
+  });
+
+  it("解析外部资源预览元数据", async () => {
+    const stdout = captureOutput();
+    const client = createStubClient();
+    const exitCode = await runCli([
+      "resource", "save", "https://example.com/article", "--type", "article",
+      "--site-name", "Example", "--author", "Ada", "--metadata-json", '{"source":"manual"}',
+    ], { createClient: () => client, stdout: stdout.output });
+
+    expect(exitCode).toBe(0);
+    expect(client.saveExternalResource).toHaveBeenCalledWith(expect.objectContaining({
+      siteName: "Example",
+      author: "Ada",
+      metadata: { source: "manual" },
+    }));
   });
 
   it("无效参数写入 stderr 并返回退出码 2", async () => {

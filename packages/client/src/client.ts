@@ -1,6 +1,6 @@
 import { TRPCUntypedClient, httpBatchLink } from "@trpc/client";
 import type { AnyTRPCRouter } from "@trpc/server";
-import type { z } from "zod";
+import { z } from "zod";
 import {
   analysisStatusSchema,
   aggregateGroupViewSchema,
@@ -8,6 +8,10 @@ import {
   collectionResultSchema,
   createGroupInputSchema,
   createGroupResultSchema,
+  externalResourceGroupMemberSchema,
+  externalResourceGroupSchema,
+  externalResourceListInputSchema,
+  externalResourceSchema,
   embeddingStatusSchema,
   groupMemberResultSchema,
   groupMutationSuccessSchema,
@@ -22,6 +26,7 @@ import {
   repositorySummarySchema,
   semanticSearchRequestSchema,
   semanticSearchResponseSchema,
+  saveExternalResourceResultSchema,
   startHealthAnalysisResultSchema,
   updateRepoNoteResultSchema,
   moveGroupResultSchema,
@@ -31,6 +36,10 @@ import {
   type CollectionResult,
   type CreateGroupInput,
   type CreateGroupResult,
+  type ExternalResource,
+  type ExternalResourceGroup,
+  type ExternalResourceGroupMember,
+  type ExternalResourceListInput,
   type EmbeddingStatus,
   type GroupMemberResult,
   type GroupMutationSuccess,
@@ -46,8 +55,15 @@ import {
   type SemanticSearchRequest,
   type SemanticSearchResponse,
   type StartHealthAnalysisResult,
+  type SaveExternalResourceResult,
   type UpdateRepoNoteResult,
 } from "./contracts";
+import {
+  saveExternalResourceInputSchema,
+  updateExternalResourceInputSchema,
+  type SaveExternalResourceInput,
+  type UpdateExternalResourceInput,
+} from "@devscope/shared";
 import {
   normalizeBaseUrl,
   resolveDevScopeConnection,
@@ -80,6 +96,16 @@ export interface DevScopeClient {
   startHealthAnalysis(repoFullName: string): Promise<StartHealthAnalysisResult>;
   getAnalysisStatus(executionId: string): Promise<AnalysisStatus>;
   getHealthReport(executionId: string): Promise<HealthReport>;
+  listExternalResources(input?: ExternalResourceListInput): Promise<ExternalResource[]>;
+  getExternalResource(resourceId: number): Promise<ExternalResource>;
+  saveExternalResource(input: SaveExternalResourceInput): Promise<SaveExternalResourceResult>;
+  updateExternalResource(input: UpdateExternalResourceInput): Promise<ExternalResource>;
+  removeExternalResource(resourceId: number): Promise<{ success: boolean }>;
+  listExternalResourceGroups(): Promise<ExternalResourceGroup[]>;
+  createExternalResourceGroup(input: { name: string; description?: string }): Promise<ExternalResourceGroup>;
+  getExternalResourceGroupMembers(groupId: number): Promise<ExternalResourceGroupMember[]>;
+  addExternalResourceToGroup(groupId: number, resourceId: number): Promise<ExternalResourceGroupMember>;
+  removeExternalResourceFromGroup(groupId: number, resourceId: number): Promise<{ success: boolean }>;
 }
 
 async function parseResult<TSchema extends z.ZodTypeAny>(
@@ -191,6 +217,62 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
       parseResult(
         client.query("getHealthReport", { executionId }),
         healthReportSchema,
+      ),
+    listExternalResources: (input = {}) => {
+      const parsedInput = externalResourceListInputSchema.parse(input);
+      return parseResult(
+        client.query("externalResources.list", parsedInput),
+        externalResourceSchema.array(),
+      );
+    },
+    getExternalResource: (resourceId) =>
+      parseResult(
+        client.query("externalResources.get", { resourceId }),
+        externalResourceSchema,
+      ),
+    saveExternalResource: (input) => {
+      const parsedInput = saveExternalResourceInputSchema.parse(input);
+      return parseResult(
+        client.mutation("externalResources.save", parsedInput),
+        saveExternalResourceResultSchema,
+      );
+    },
+    updateExternalResource: (input) => {
+      const parsedInput = updateExternalResourceInputSchema.parse(input);
+      return parseResult(
+        client.mutation("externalResources.update", parsedInput),
+        externalResourceSchema,
+      );
+    },
+    removeExternalResource: (resourceId) =>
+      parseResult(
+        client.mutation("externalResources.remove", { resourceId }),
+        z.object({ success: z.boolean() }),
+      ),
+    listExternalResourceGroups: () =>
+      parseResult(
+        client.query("externalResourceGroups.list"),
+        externalResourceGroupSchema.array(),
+      ),
+    createExternalResourceGroup: (input) =>
+      parseResult(
+        client.mutation("externalResourceGroups.create", input),
+        externalResourceGroupSchema,
+      ),
+    getExternalResourceGroupMembers: (groupId) =>
+      parseResult(
+        client.query("externalResourceGroups.members", { groupId }),
+        externalResourceGroupMemberSchema.array(),
+      ),
+    addExternalResourceToGroup: (groupId, resourceId) =>
+      parseResult(
+        client.mutation("externalResourceGroups.add", { groupId, resourceId }),
+        externalResourceGroupMemberSchema,
+      ),
+    removeExternalResourceFromGroup: (groupId, resourceId) =>
+      parseResult(
+        client.mutation("externalResourceGroups.remove", { groupId, resourceId }),
+        z.object({ success: z.boolean() }),
       ),
   };
 }
