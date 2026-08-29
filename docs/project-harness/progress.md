@@ -1,18 +1,18 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-08-29
-> 生产运行基线：`63ec7c5`；`main` 可仅因本 item 的生产 closeout 文档提交而领先生产
+> 生产运行基线：`67fc629`；`main` 已通过 PR #57 合并并完成本 item 生产部署
 > 部署形态：Standalone
-> 当前状态：Issue #54 已合并、完成 `0011` 生产迁移部署并通过运行复核
+> 当前状态：Issue #54 已合并；外部资源 `0012` 生产迁移与部署 run `33241430155` 已成功并通过运行复核
 
 ## 当前状态
 
 - [Harness checklist](harness-checklist.json)：12 个 item `done`，1 个 item `todo`，无 `doing` 或
   `blocked`；Issue #54 已完成本地实现、门禁、独立审查与 Harness closeout；
-- [Current task pointer](current/task_plan.md)：当前指向 `issue-54` 的 [canonical plan](tasks/issue-54/plan.md)；
-- 生产 API、Web、Worker 当前运行 revision `63ec7c5`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
-- 生产部署 run `32704273873` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
-  `0011`；服务器无需访问 GitHub/GHCR，迁移与业务数据不变量保持。
+- [Current task pointer](current/task_plan.md)：已清空，没有正在执行的 canonical plan；
+- 生产 API、Web、Worker 当前运行 revision `67fc629`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- 生产部署 run `33241430155` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
+  `0012`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
 ### Issue #54 生产 closeout
 
@@ -50,12 +50,12 @@
 
 ## 当前生产基线
 
-2026-08-24 UTC 08:12 后完成只读复核：
+2026-08-29 UTC 07:50 后完成部署回读：
 
 - DevScope MCP health 为 `ok`，SSH tunnel 未认证返回 `401`；公网域名因未完成 ICP 备案由阿里云
   拦截并返回 `403`，当前不作为可用入口；
-- API、Web、Worker 均运行 `63ec7c5`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
-- migration journal 为 12；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
+- API、Web、Worker 均运行 `67fc629`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
+- migration `0012` 已成功应用（保留分组树 `0011`）；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
   根级，86 条 membership 不变；
 - 正式仓库 40、伪仓库 0、伪收藏 0；`is_reference` 列已删除；
 - 图谱为 40 个 repository + 9 个 language + 13 个 technology stack 节点，共 249 条边；
@@ -69,7 +69,7 @@
 
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
-- 外部资源工作区已完成本地验证，待本次合并后的 `0012` 迁移随发布流程执行生产部署；文章、论文和网站仍与 GitHub 仓库分别管理；
+- 外部资源工作区已完成 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。

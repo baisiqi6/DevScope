@@ -11,7 +11,7 @@
 
 - Title: 外部资源 Web 工作区与数据库打磨
 - Status: done
-- Workflow status: closeout_requested
+- Workflow status: closed
 - Priority: p1
 - Owner: None
 - Session: None
@@ -23,11 +23,11 @@ Web 端可管理 article/paper/website 预览卡片，支持筛选、排序、�
 
 ## Verification
 
-pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integration 9 files/54 tests; independent review approved
+pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integration 10 files/60 tests; independent review approved; PR #57 quality/integration passed; production deploy run `33241430155` completed with backup, migration `0012`, service health, and Nginx checks.
 
 ## Handoff
 
-
+生产部署已由 operator 按 runbook 完成；运行 revision 为 `67fc629`。后续继续观察外部资源 Web/API/MCP dogfood，不启动多用户改造。
 
 ## Review Inputs
 
@@ -92,9 +92,9 @@ pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integratio
 ## 本轮实现与验证记录
 
 - 已完成 `/resources` Web 工作区：卡片/列表密度切换、关键词/类型/阅读状态筛选、置顶优先/最近更新排序、分组筛选、加载更多、创建/编辑/删除、已读/置顶操作、预览图与 favicon fallback、错误/空/加载状态和安全外链。
-- 已补齐共享外部资源类型别名、导航入口，以及 `metadata` 20KB 和收藏 `tags` 最多 30 项的数据库约束；生成迁移 `0013`、`0014`。
-- 已通过：`pnpm lint`（0 errors，18 warnings）、`pnpm typecheck`、`pnpm test`、`pnpm build`；Web 页面/组件 SSR smoke 与筛选测试共 21 项；共享 metadata UTF-8 字节边界测试通过；状态 mutation pending 防重复提交；隔离 `pgvector/pgvector:pg16` 重放全部迁移并通过 9 个 integration test 文件、54 项测试。
-- 独立 reviewer 已只读复核通过；本 item 不包含生产迁移、部署、push 或多用户鉴权。
+- 已补齐共享外部资源类型别名、导航入口，以及 `metadata` 20KB 和收藏 `tags` 最多 30 项的数据库约束；迁移顺延为 `0012` 并保留分组树 `0011` 历史。
+- 已通过：`pnpm lint`（0 errors，18 warnings）、`pnpm typecheck`、`pnpm test`、`pnpm build`；Web 页面/组件 SSR smoke 与筛选测试共 21 项；共享 metadata UTF-8 字节边界测试通过；状态 mutation pending 防重复提交；隔离 `pgvector/pgvector:pg16` 重放全部迁移并通过 10 个 integration test 文件、60 项测试。
+- 独立 reviewer 已只读复核通过；随后由 operator 通过 PR #57 和生产 deploy run `33241430155` 完成发布与迁移。
 
 ## 数据边界
 
