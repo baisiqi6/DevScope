@@ -1,51 +1,9 @@
-# Review Packet
-
-## Subject
-
-- Checklist item: `product-10-external-resources-workspace`
-- Reviewer: `external-resources-reviewer`
-- Updated at: `2026-08-29`
-- Canonical plan path: `docs/project-harness/tasks/product-10-external-resources-workspace/plan.md`
-
-## Item Snapshot
-
-- Title: 外部资源 Web 工作区与数据库打磨
-- Status: doing
-- Workflow status: review_requested
-- Priority: p1
-- Owner: codex
-- Session: codex-20260829-external-resources-workspace
-- Dependencies: product-9-external-resources-preview
-
-## Acceptance
-
-Web 端可管理 article/paper/website 预览卡片，支持筛选、排序、搜索、已读/置顶、备注/标签编辑、删除确认和独立资源分组；数据库约束、索引、迁移与隔离 PostgreSQL 测试通过；不进入正文抓取，不触碰生产。
-
-## Verification
-
-pnpm lint（0 errors，18 warnings）; pnpm typecheck; pnpm test（11 packages + pipeline 21 tests; Web 21 tests）; pnpm build; shared metadata UTF-8 boundary test; isolated PostgreSQL integration: 9 files/54 tests passed
-
-## Handoff
-
-
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-```md
 # 外部资源 Web 工作区与数据库打磨
 
 ## Item
 
 - Checklist item：`product-10-external-resources-workspace`
-- 当前状态：`running`
+- 当前状态：`done`
 - 风险模式：`high-risk`（涉及 schema/migration 与持久化用户数据）
 - 依赖：`product-9-external-resources-preview`
 
@@ -93,8 +51,8 @@ pnpm lint（0 errors，18 warnings）; pnpm typecheck; pnpm test（11 packages +
 
 - 已完成 `/resources` Web 工作区：卡片/列表密度切换、关键词/类型/阅读状态筛选、置顶优先/最近更新排序、分组筛选、加载更多、创建/编辑/删除、已读/置顶操作、预览图与 favicon fallback、错误/空/加载状态和安全外链。
 - 已补齐共享外部资源类型别名、导航入口，以及 `metadata` 20KB 和收藏 `tags` 最多 30 项的数据库约束；生成迁移 `0013`、`0014`。
-- 已通过：`pnpm lint`（0 errors，18 warnings）、`pnpm typecheck`、`pnpm test`、`pnpm build`；Web 组件 SSR smoke 与筛选测试共 20 项；共享 metadata UTF-8 字节边界测试通过；隔离 `pgvector/pgvector:pg16` 重放全部迁移并通过 9 个 integration test 文件、54 项测试。
-- 尚待独立 reviewer 只读复核；本 item 不包含生产迁移、部署、push 或多用户鉴权。
+- 已通过：`pnpm lint`（0 errors，18 warnings）、`pnpm typecheck`、`pnpm test`、`pnpm build`；Web 页面/组件 SSR smoke 与筛选测试共 21 项；共享 metadata UTF-8 字节边界测试通过；状态 mutation pending 防重复提交；隔离 `pgvector/pgvector:pg16` 重放全部迁移并通过 9 个 integration test 文件、54 项测试。
+- 独立 reviewer 已只读复核通过；本 item 不包含生产迁移、部署、push 或多用户鉴权。
 
 ## 数据边界
 
@@ -105,13 +63,3 @@ pnpm lint（0 errors，18 warnings）; pnpm typecheck; pnpm test（11 packages +
 ## 未授权动作
 
 - 生产数据库迁移、生产部署、域名/证书/代理改动、公开多用户鉴权、正文抓取和外部资源内容索引均不在本 item 授权范围内。
-```
-
-## Review Focus
-
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮
-

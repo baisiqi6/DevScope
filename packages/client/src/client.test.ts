@@ -29,6 +29,46 @@ function createClientWithMockFetch(responses: Record<string, unknown>): DevScope
 }
 
 describe("DevScope Client 新增方法", () => {
+  it("保存并读取外部资源预览卡片", async () => {
+    const resource = {
+      id: 9,
+      resourceType: "website",
+      url: "https://example.com/design",
+      canonicalUrl: "https://example.com/design",
+      title: "Design",
+      description: null,
+      siteName: "Example",
+      author: null,
+      publishedAt: null,
+      faviconUrl: null,
+      previewImageUrl: null,
+      metadata: { source: "manual" },
+      ingestionMode: "preview_only",
+      contentStatus: "not_requested",
+      contentFetchedAt: null,
+      contentError: null,
+      notes: "保存",
+      tags: ["ui"],
+      isRead: false,
+      isPinned: true,
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z",
+    };
+    const client = createClientWithMockFetch({
+      "externalResources.save": { created: true, resource },
+      "externalResources.list": [resource],
+    });
+
+    await expect(client.saveExternalResource({
+      url: resource.url,
+      resourceType: "website",
+      metadata: resource.metadata,
+      tags: resource.tags,
+      notes: resource.notes,
+    })).resolves.toMatchObject({ created: true, resource: { id: 9 } });
+    await expect(client.listExternalResources()).resolves.toEqual([resource]);
+  });
+
   it("updateRepoNote 调用 mutation 并校验输出", async () => {
     const client = createClientWithMockFetch({
       updateRepoNote: { success: true },

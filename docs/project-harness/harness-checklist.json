@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-08-20",
+  "updated_at": "2026-08-29",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -268,9 +268,9 @@
       "title": "公开多用户产品加固",
       "status": "todo",
       "priority": "p2",
-      "owner": "",
-      "selected_in_session": "",
-      "updated_at": "2026-08-17",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-29",
       "dependencies": [
         "data-quality-5-postgres-integration-gates",
         "data-architecture-3c-technology-stack-legacy-cleanup"
@@ -281,9 +281,29 @@
       "verification": "",
       "handoff": "范围决策前不得启动；当前 publicProcedure 不是应用鉴权。",
       "workflow": {
-        "status": "todo"
+        "status": "released",
+        "updated_at": "2026-08-29",
+        "branch": "codex/product-6-public-multi-user-hardening"
       },
-      "review": null
+      "review": {
+        "decision": "approved",
+        "reviewer": "external_resources_reviewer",
+        "phase": "running",
+        "updated_at": "2026-08-29",
+        "summary": "Phase 0 architecture review approved: identity/invite/session/OAuth/PAT, route matrix, deletion/export/audit lifecycle, scheduler system/manual split, jobs principal migration, and shared discovery snapshot boundaries are explicit."
+      },
+      "plan_path": "docs/project-harness/tasks/product-6-public-multi-user-hardening/plan.md",
+      "artifacts": {
+        "branch": "codex/product-6-public-multi-user-hardening"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260829-public-multi-user-hardening",
+        "acquired_at": "2026-08-29T06:06:46Z",
+        "expires_at": "2026-08-29T08:06:46Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-08-29T07:22:20Z"
+      }
     },
     {
       "id": "data-correctness-1c-group-count-contract",
@@ -491,6 +511,89 @@
         "expires_at": "2026-08-20T09:46:04Z",
         "ttl_minutes": 120,
         "released_at": "2026-08-20T08:31:12Z"
+      }
+    },
+    {
+      "id": "product-9-external-resources-preview",
+      "title": "外部资源预览收藏第一阶段",
+      "status": "done",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-29",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "文章、论文和网站可在独立资源域中以 preview_only 保存、备注、标签、已读和分组；API/Client/CLI/MCP 契约与 focused/full tests 通过；现有 GitHub 仓库域无回归；仅完成本地/隔离数据库验证，不执行生产迁移或部署。",
+      "verification": "pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated pgvector PostgreSQL integration 53/53; reviewer APPROVED",
+      "handoff": "第一阶段不抓取正文、不接入 PDF/DOI、不做跨类型分组；生产迁移需另行授权。",
+      "plan_path": "docs/project-harness/tasks/product-9-external-resources-preview/plan.md",
+      "workflow": {
+        "status": "closed",
+        "updated_at": "2026-08-29",
+        "branch": "codex/product-9-external-resources-preview"
+      },
+      "artifacts": {
+        "branch": "codex/product-9-external-resources-preview",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "external_resources_reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-08-29",
+        "summary": "closeout approved"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260828-external-resources-preview",
+        "acquired_at": "2026-08-29T05:06:17Z",
+        "expires_at": "2026-08-29T07:06:17Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-08-29T05:59:07Z"
+      }
+    },
+    {
+      "id": "product-10-external-resources-workspace",
+      "title": "外部资源 Web 工作区与数据库打磨",
+      "status": "done",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-29",
+      "dependencies": [
+        "product-9-external-resources-preview"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "Web 端可管理 article/paper/website 预览卡片，支持筛选、排序、搜索、已读/置顶、备注/标签编辑、删除确认和独立资源分组；数据库约束、索引、迁移与隔离 PostgreSQL 测试通过；不进入正文抓取，不触碰生产。",
+      "verification": "pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integration 9 files/54 tests; independent review approved",
+      "handoff": "",
+      "plan_path": "docs/project-harness/tasks/product-10-external-resources-workspace/plan.md",
+      "workflow": {
+        "status": "review_approved",
+        "updated_at": "2026-08-29",
+        "branch": "codex/product-10-external-resources-workspace"
+      },
+      "artifacts": {
+        "branch": "codex/product-10-external-resources-workspace",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "external-resources-reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-08-29",
+        "summary": "最终独立只读复核通过：无 P0/P1/P2；此结果对应已完成 closeout。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260829-external-resources-workspace",
+        "acquired_at": "2026-08-29T06:56:11Z",
+        "expires_at": "2026-08-29T08:56:11Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-08-29T07:22:09Z"
       }
     }
   ]

@@ -74,6 +74,16 @@ devscope group create "前端框架" --description "前端相关仓库"
 devscope group members 1
 devscope group add 1 5
 devscope group remove 1 5
+devscope resource list [--type article|paper|website]
+devscope resource save https://example.com --type website --title "示例网站" --tags ui,素材
+devscope resource get 1
+devscope resource update 1 --read --pin
+devscope resource remove 1
+devscope resource-group list
+devscope resource-group create "UI 素材"
+devscope resource-group members 1
+devscope resource-group add 1 1
+devscope resource-group remove 1 1
 devscope analyze start vercel/next.js
 devscope analyze status <execution-id>
 devscope analyze report <execution-id>
@@ -108,6 +118,16 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 | `devscope_create_group`           | 写入      | 创建仓库分组                     |
 | `devscope_add_repo_to_group`      | 写入      | 添加仓库到分组                   |
 | `devscope_remove_repo_from_group` | 写入      | 从分组移除仓库                   |
+| `devscope_list_external_resources` | 只读      | 列出文章、论文和网站预览卡片     |
+| `devscope_save_external_resource` | 写入      | 保存外部资源 URL（当前 `preview_only`） |
+| `devscope_get_external_resource` | 只读      | 读取外部资源预览卡片             |
+| `devscope_update_external_resource` | 写入      | 更新外部资源备注、标签和阅读状态 |
+| `devscope_remove_external_resource` | 写入      | 删除外部资源                     |
+| `devscope_list_external_resource_groups` | 只读 | 列出外部资源专用分组             |
+| `devscope_create_external_resource_group` | 写入 | 创建外部资源专用分组             |
+| `devscope_get_external_resource_group_members` | 只读 | 读取外部资源分组成员       |
+| `devscope_add_external_resource_to_group` | 写入 | 添加外部资源到专用分组           |
+| `devscope_remove_external_resource_from_group` | 写入 | 从专用分组移除外部资源     |
 | `devscope_start_health_analysis`  | 写入/外部 | 启动后台 Agent 健康度分析        |
 | `devscope_get_analysis_status`    | 只读      | 查询分析执行状态                 |
 | `devscope_get_health_report`      | 只读      | 获取健康度报告                   |

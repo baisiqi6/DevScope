@@ -69,6 +69,124 @@ export type Document = z.infer<typeof documentSchema>;
 export type NewDocument = Omit<Document, "id" | "createdAt" | "updatedAt">;
 
 // ============================================================================
+// 外部资源类型 (External Resource Types)
+// ============================================================================
+
+export const externalResourceTypeSchema = z.enum(["article", "paper", "website"]);
+export type ExternalResourceType = z.infer<typeof externalResourceTypeSchema>;
+
+export const externalResourceIngestionModeSchema = z.enum(["preview_only", "content"]);
+export type ExternalResourceIngestionMode = z.infer<typeof externalResourceIngestionModeSchema>;
+
+export const externalResourceContentStatusSchema = z.enum([
+  "not_requested",
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+export type ExternalResourceContentStatus = z.infer<typeof externalResourceContentStatusSchema>;
+
+export const externalResourceUrlSchema = z.string().trim().url().superRefine((value, context) => {
+  const url = new URL(value);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "只支持 http 或 https URL" });
+  }
+  if (url.username || url.password) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "URL 不得包含用户名或密码" });
+  }
+});
+
+export const externalResourceTagsSchema = z.array(z.string().trim().min(1).max(50)).max(30).default([]);
+export const externalResourceMetadataSchema = z.record(z.unknown()).refine(
+  (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 20_000,
+  "metadata 不能超过 20KB",
+);
+
+export const saveExternalResourceInputSchema = z.object({
+  url: externalResourceUrlSchema,
+  resourceType: externalResourceTypeSchema,
+  title: z.string().trim().min(1).max(300).optional(),
+  description: z.string().trim().max(2000).optional(),
+  siteName: z.string().trim().max(200).optional(),
+  author: z.string().trim().max(200).optional(),
+  publishedAt: z.string().datetime().optional(),
+  faviconUrl: externalResourceUrlSchema.optional(),
+  previewImageUrl: externalResourceUrlSchema.optional(),
+  metadata: externalResourceMetadataSchema.optional(),
+  tags: externalResourceTagsSchema,
+  notes: z.string().max(5000).optional(),
+});
+export type SaveExternalResourceInput = z.infer<typeof saveExternalResourceInputSchema>;
+
+export const updateExternalResourceInputSchema = z.object({
+  resourceId: z.number().int().positive(),
+  title: z.string().trim().min(1).max(300).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  siteName: z.string().trim().max(200).nullable().optional(),
+  author: z.string().trim().max(200).nullable().optional(),
+  publishedAt: z.string().datetime().nullable().optional(),
+  faviconUrl: externalResourceUrlSchema.nullable().optional(),
+  previewImageUrl: externalResourceUrlSchema.nullable().optional(),
+  metadata: externalResourceMetadataSchema.nullable().optional(),
+  tags: externalResourceTagsSchema.optional(),
+  notes: z.string().max(5000).nullable().optional(),
+  isRead: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
+});
+export type UpdateExternalResourceInput = z.infer<typeof updateExternalResourceInputSchema>;
+
+export const externalResourceOutputSchema = z.object({
+  id: z.number(),
+  resourceType: externalResourceTypeSchema,
+  url: externalResourceUrlSchema,
+  canonicalUrl: externalResourceUrlSchema,
+  title: z.string(),
+  description: z.string().nullable(),
+  siteName: z.string().nullable(),
+  author: z.string().nullable(),
+  publishedAt: z.string().datetime().nullable(),
+  faviconUrl: externalResourceUrlSchema.nullable(),
+  previewImageUrl: externalResourceUrlSchema.nullable(),
+  metadata: externalResourceMetadataSchema.nullable(),
+  ingestionMode: externalResourceIngestionModeSchema,
+  contentStatus: externalResourceContentStatusSchema,
+  contentFetchedAt: z.string().datetime().nullable(),
+  contentError: z.string().nullable(),
+  notes: z.string().nullable(),
+  tags: z.array(z.string()),
+  isRead: z.boolean(),
+  isPinned: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ExternalResource = z.infer<typeof externalResourceOutputSchema>;
+
+export const externalResourceGroupOutputSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  name: z.string(),
+  color: z.string(),
+  icon: z.string(),
+  description: z.string().nullable(),
+  orderIndex: z.number(),
+  resourceCount: z.number(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ExternalResourceGroup = z.infer<typeof externalResourceGroupOutputSchema>;
+
+export const externalResourceGroupMemberOutputSchema = z.object({
+  id: z.number(),
+  groupId: z.number(),
+  resourceId: z.number(),
+  orderIndex: z.number(),
+  createdAt: z.string().datetime(),
+  resource: externalResourceOutputSchema,
+});
+export type ExternalResourceGroupMember = z.infer<typeof externalResourceGroupMemberOutputSchema>;
+
+// ============================================================================
 // AI 类型 (AI Types)
 // ============================================================================
 

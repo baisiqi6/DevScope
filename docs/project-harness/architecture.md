@@ -192,9 +192,15 @@ echo "vercel/next.js" \
 关联，并承载备注、star 时间和关注设置。列表、详情、搜索、分组、任务、报告和图谱都以该关联
 或显式 `userId` 作为可见性边界。当前身份来源仍是单用户解析器，不能据此宣称已完成公共多用户鉴权。
 
+外部资源（文章、论文、网站）使用独立的 `external_resources`、
+`external_resource_saves`、`external_resource_groups` 和
+`external_resource_group_members` 表，不复用仓库表或仓库分组成员表。第一阶段保存行为固定为
+`preview_only`：只保存 URL 与预览元数据，不触发正文抓取、分块或 embedding；正文采集属于后续
+独立迭代。Web `/resources` 提供预览卡片工作区、类型/状态/关键词筛选、收藏元数据编辑和独立分组管理；外部资源分组与 GitHub 仓库分组暂不互通。
+
 ### CLI 与 MCP
 
-`packages/client` 是面向外部调用面的稳定 facade。它通过 tRPC HTTP transport 调用 API，并使用 Zod 再次校验响应。`apps/cli` 将该 facade 映射为稳定 JSON 命令；`apps/mcp` 将同一组能力映射为七个 MCP tools。
+`packages/client` 是面向外部调用面的稳定 facade。它通过 tRPC HTTP transport 调用 API，并使用 Zod 再次校验响应。`apps/cli` 将该 facade 映射为稳定 JSON 命令；`apps/mcp` 将同一组能力映射为 MCP tools。
 
 ```text
 人类 / shell / Agent ──► devscope CLI ─┐
@@ -202,7 +208,7 @@ echo "vercel/next.js" \
 MCP Host / Agent ──────► MCP stdio ───┘
 ```
 
-首批范围只包含健康检查、仓库列表/详情/采集、向量化状态、语义搜索和分组列表。采集仍由 API 执行业务逻辑；MCP 工具不会在本地直接调用 GitHub、数据库或模型服务。
+现有 Agent 接口包含健康检查、仓库列表/详情/采集、向量化状态、语义搜索、仓库分组，以及外部资源预览收藏和独立分组。采集仍由 API 执行业务逻辑；MCP 工具不会在本地直接调用 GitHub、数据库或模型服务。外部资源第一阶段固定为 `preview_only`，不触发正文抓取。
 
 ## 类型与验证边界
 

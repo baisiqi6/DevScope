@@ -3,6 +3,7 @@ import {
   type DevScopeClient,
   type EmbeddingStatus,
 } from '@devscope/client';
+import { externalResourceTypeSchema } from '@devscope/shared';
 
 export const CLI_VERSION = '0.0.1';
 
@@ -22,6 +23,17 @@ const HELP_TEXT = `DevScope CLI
   devscope group members <group-id>
   devscope group add <group-id> <repo-id>
   devscope group remove <group-id> <repo-id>
+  devscope resource list [--type article|paper|website]
+  devscope resource save <url> --type article|paper|website [--title <text>]
+                          [--description <text>] [--notes <text>] [--tags a,b]
+  devscope resource get <resource-id>
+  devscope resource update <resource-id> [--title <text>] [--notes <text>]
+  devscope resource remove <resource-id>
+  devscope resource-group list
+  devscope resource-group create <name> [--description <text>]
+  devscope resource-group members <group-id>
+  devscope resource-group add <group-id> <resource-id>
+  devscope resource-group remove <group-id> <resource-id>
   devscope analyze start <owner/repo>
   devscope analyze status <execution-id>
   devscope analyze report <execution-id> [--wait]
@@ -219,6 +231,151 @@ async function runGroupCommand(
   throw new CliUsageError('用法: devscope group <list|create|members|add|remove> ...');
 }
 
+function parseExternalResourceType(value: string | undefined): 'article' | 'paper' | 'website' | undefined {
+  if (value === undefined) return undefined;
+  const parsed = externalResourceTypeSchema.safeParse(value);
+  if (!parsed.success) throw new CliUsageError('--type 必须是 article、paper 或 website');
+  return parsed.data;
+}
+
+function parseTags(value: string | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(',').map((tag) => tag.trim()).filter(Boolean))];
+}
+
+function parseMetadata(value: string | undefined): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('metadata 必须是 JSON 对象');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new CliUsageError(`--metadata-json 不是有效的 JSON 对象: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function runResourceCommand(args: string[], client: DevScopeClient): Promise<unknown> {
+  const [command, ...rest] = args;
+
+  if (command === 'list') {
+    const parsed = parseOptions(rest, new Set(['--limit', '--offset', '--type']), new Set());
+    expectPositionals(parsed.positionals, 0, 'devscope resource list [options]');
+    return client.listExternalResources({
+      limit: parseInteger(parsed.values.get('--limit'), '--limit', 50, 1, 100),
+      offset: parseInteger(parsed.values.get('--offset'), '--offset', 0),
+      resourceType: parseExternalResourceType(parsed.values.get('--type')),
+    });
+  }
+
+  if (command === 'save') {
+    const parsed = parseOptions(
+      rest,
+      new Set(['--type', '--title', '--description', '--site-name', '--author', '--published-at', '--favicon-url', '--preview-image-url', '--metadata-json', '--notes', '--tags']),
+      new Set(),
+    );
+    expectPositionals(parsed.positionals, 1, 'devscope resource save <url> --type <article|paper|website> [options]');
+    const resourceType = parseExternalResourceType(parsed.values.get('--type'));
+    if (!resourceType) throw new CliUsageError('resource save 必须指定 --type');
+    return client.saveExternalResource({
+      url: parsed.positionals[0],
+      resourceType,
+      title: parsed.values.get('--title'),
+      description: parsed.values.get('--description'),
+      siteName: parsed.values.get('--site-name'),
+      author: parsed.values.get('--author'),
+      publishedAt: parsed.values.get('--published-at'),
+      faviconUrl: parsed.values.get('--favicon-url'),
+      previewImageUrl: parsed.values.get('--preview-image-url'),
+      metadata: parseMetadata(parsed.values.get('--metadata-json')),
+      notes: parsed.values.get('--notes'),
+      tags: parseTags(parsed.values.get('--tags')),
+    });
+  }
+
+  if (command === 'get') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope resource get <resource-id>');
+    return client.getExternalResource(parseInteger(parsed.positionals[0], 'resource-id', undefined, 1));
+  }
+
+  if (command === 'update') {
+    const parsed = parseOptions(
+      rest,
+      new Set(['--title', '--description', '--site-name', '--author', '--published-at', '--favicon-url', '--preview-image-url', '--metadata-json', '--notes', '--tags']),
+      new Set(['--read', '--unread', '--pin', '--unpin']),
+    );
+    expectPositionals(parsed.positionals, 1, 'devscope resource update <resource-id> [options]');
+    if (parsed.flags.has('--read') && parsed.flags.has('--unread')) {
+      throw new CliUsageError('--read 与 --unread 不能同时使用');
+    }
+    if (parsed.flags.has('--pin') && parsed.flags.has('--unpin')) {
+      throw new CliUsageError('--pin 与 --unpin 不能同时使用');
+    }
+    const input: Parameters<DevScopeClient['updateExternalResource']>[0] = {
+      resourceId: parseInteger(parsed.positionals[0], 'resource-id', undefined, 1),
+      title: parsed.values.get('--title'),
+      description: parsed.values.get('--description'),
+      siteName: parsed.values.get('--site-name'),
+      author: parsed.values.get('--author'),
+      publishedAt: parsed.values.get('--published-at'),
+      faviconUrl: parsed.values.get('--favicon-url'),
+      previewImageUrl: parsed.values.get('--preview-image-url'),
+      metadata: parsed.values.has('--metadata-json') ? parseMetadata(parsed.values.get('--metadata-json')) : undefined,
+      notes: parsed.values.get('--notes'),
+      tags: parsed.values.has('--tags') ? parseTags(parsed.values.get('--tags')) : undefined,
+      isRead: parsed.flags.has('--read') ? true : parsed.flags.has('--unread') ? false : undefined,
+      isPinned: parsed.flags.has('--pin') ? true : parsed.flags.has('--unpin') ? false : undefined,
+    };
+    return client.updateExternalResource(input);
+  }
+
+  if (command === 'remove') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope resource remove <resource-id>');
+    return client.removeExternalResource(parseInteger(parsed.positionals[0], 'resource-id', undefined, 1));
+  }
+
+  throw new CliUsageError('用法: devscope resource <list|save|get|update|remove> ...');
+}
+
+async function runResourceGroupCommand(args: string[], client: DevScopeClient): Promise<unknown> {
+  const [command, ...rest] = args;
+  if (command === 'list') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 0, 'devscope resource-group list');
+    return client.listExternalResourceGroups();
+  }
+  if (command === 'create') {
+    const parsed = parseOptions(rest, new Set(['--description']), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope resource-group create <name> [--description <text>]');
+    return client.createExternalResourceGroup({ name: parsed.positionals[0], description: parsed.values.get('--description') });
+  }
+  if (command === 'members') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope resource-group members <group-id>');
+    return client.getExternalResourceGroupMembers(parseInteger(parsed.positionals[0], 'group-id', undefined, 1));
+  }
+  if (command === 'add') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope resource-group add <group-id> <resource-id>');
+    return client.addExternalResourceToGroup(
+      parseInteger(parsed.positionals[0], 'group-id', undefined, 1),
+      parseInteger(parsed.positionals[1], 'resource-id', undefined, 1),
+    );
+  }
+  if (command === 'remove') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope resource-group remove <group-id> <resource-id>');
+    return client.removeExternalResourceFromGroup(
+      parseInteger(parsed.positionals[0], 'group-id', undefined, 1),
+      parseInteger(parsed.positionals[1], 'resource-id', undefined, 1),
+    );
+  }
+  throw new CliUsageError('用法: devscope resource-group <list|create|members|add|remove> ...');
+}
+
 async function runAnalyzeCommand(
   args: string[],
   client: DevScopeClient,
@@ -367,6 +524,14 @@ async function dispatch(
 
   if (scope === 'group') {
     return runGroupCommand(rest, client);
+  }
+
+  if (scope === 'resource') {
+    return runResourceCommand(rest, client);
+  }
+
+  if (scope === 'resource-group') {
+    return runResourceGroupCommand(rest, client);
   }
 
   if (scope === 'analyze') {

@@ -1,13 +1,13 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-08-20
+> 更新时间：2026-08-29
 > 生产运行基线：`4772098`；`main` 可仅因本 item 的 closeout 文档提交而领先生产
 > 部署形态：Standalone
 > 当前状态：可靠性整改与部署链路收口均已完成；无 active item；下一产品节点为公开多用户加固，尚未启动
 
 ## 当前状态
 
-- [Harness checklist](harness-checklist.json)：11 个 item `done`，1 个 item `todo`，无 `doing` / `blocked`；
+- [Harness checklist](harness-checklist.json)：12 个 item `done`，1 个 item `todo`，无 `doing` / `blocked`；
 - [Current task pointer](current/task_plan.md)：已清空，没有正在执行的 canonical plan；
 - 生产当前运行 revision `4772098`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
 - 无迁移、无 cleanup 的自动部署 run `32348360956` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成；服务器无需访问 GitHub/GHCR，迁移记录和业务数据不变量保持。
@@ -26,6 +26,7 @@
 | 技术栈 Phase B | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成 | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md) |
 | 技术栈 Phase C | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference` | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成 | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md) |
+| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
 
 ## 当前生产基线
 
@@ -44,7 +45,7 @@
 ## 当前 handoff
 
 - 当前没有未完成的可靠性或运维整改 item；不要继续沿用 Phase A/B/C 与部署链路的历史 handoff；
-- 下一产品节点是 `product-6-public-multi-user-hardening`，仍为 `todo`。启动前必须先形成独立 canonical plan，并重新确认应用鉴权、租户隔离、HTTPS 与公开运营范围；
+- 下一产品节点是 `product-6-public-multi-user-hardening`，仍为 `todo`。已形成唯一 canonical plan（[plan](tasks/product-6-public-multi-user-hardening/plan.md)），启动前仍必须重新确认应用鉴权、租户隔离、HTTPS 与公开运营范围；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
 

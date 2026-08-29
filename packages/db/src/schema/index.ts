@@ -8,7 +8,7 @@
  * @module schema
  */
 
-import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, vector, integer, bigint, real, jsonb, index, uniqueIndex, boolean, pgEnum, check, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ============================================================================
@@ -55,6 +55,28 @@ export const radarCandidateStatusEnum = pgEnum("radar_candidate_status", [
 export const repoRelationshipTypeEnum = pgEnum("repo_relationship_type", [
   "similarity",
   "dependency",
+]);
+
+/** 外部资源类型 */
+export const externalResourceTypeEnum = pgEnum("external_resource_type", [
+  "article",
+  "paper",
+  "website",
+]);
+
+/** 外部资源采集模式 */
+export const externalResourceIngestionModeEnum = pgEnum("external_resource_ingestion_mode", [
+  "preview_only",
+  "content",
+]);
+
+/** 外部资源正文采集状态 */
+export const externalResourceContentStatusEnum = pgEnum("external_resource_content_status", [
+  "not_requested",
+  "pending",
+  "processing",
+  "completed",
+  "failed",
 ]);
 
 // ============================================================================
@@ -374,6 +396,139 @@ export const documents = pgTable("documents", {
   /** 最后更新时间 */
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * 外部资源表
+ * @description 存储文章、论文和网站的预览元数据；正文采集由 ingestionMode 控制
+ */
+export const externalResources = pgTable("external_resources", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  resourceType: externalResourceTypeEnum("resource_type").notNull(),
+  url: text("url").notNull(),
+  canonicalUrl: text("canonical_url").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  siteName: text("site_name"),
+  author: text("author"),
+  publishedAt: timestamp("published_at"),
+  faviconUrl: text("favicon_url"),
+  previewImageUrl: text("preview_image_url"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  ingestionMode: externalResourceIngestionModeEnum("ingestion_mode")
+    .default("preview_only")
+    .notNull(),
+  contentStatus: externalResourceContentStatusEnum("content_status")
+    .default("not_requested")
+    .notNull(),
+  contentFetchedAt: timestamp("content_fetched_at"),
+  contentError: text("content_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userCanonicalUrlUnique: uniqueIndex("external_resources_user_canonical_url_unique")
+    .on(table.userId, table.canonicalUrl),
+  userIdIdx: index("external_resources_user_id_idx").on(table.userId),
+  typeIdx: index("external_resources_type_idx").on(table.userId, table.resourceType),
+  updatedAtIdx: index("external_resources_updated_at_idx").on(table.userId, table.updatedAt),
+  idUserUnique: uniqueIndex("external_resources_id_user_unique").on(table.id, table.userId),
+  metadataSizeCheck: check(
+    "external_resources_metadata_size_check",
+    sql`${table.metadata} IS NULL OR octet_length(${table.metadata}::text) <= 20000`,
+  ),
+}));
+
+/** 用户与外部资源的收藏状态 */
+export const externalResourceSaves = pgTable("external_resource_saves", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  resourceId: integer("resource_id")
+    .references(() => externalResources.id, { onDelete: "cascade" })
+    .notNull(),
+  notes: text("notes"),
+  tags: jsonb("tags").$type<string[]>().default([]).notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  isPinned: boolean("is_pinned").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userResourceUnique: uniqueIndex("external_resource_saves_user_resource_unique")
+    .on(table.userId, table.resourceId),
+  userIdIdx: index("external_resource_saves_user_id_idx").on(table.userId),
+  resourceIdIdx: index("external_resource_saves_resource_id_idx").on(table.resourceId),
+  userStatusUpdatedIdx: index("external_resource_saves_user_status_updated_idx").on(
+    table.userId,
+    table.isPinned,
+    table.isRead,
+    table.updatedAt,
+  ),
+  resourceUserFk: foreignKey({
+    columns: [table.resourceId, table.userId],
+    foreignColumns: [externalResources.id, externalResources.userId],
+    name: "external_resource_saves_resource_user_fk",
+  }),
+  tagsShapeCheck: check(
+    "external_resource_saves_tags_shape_check",
+    sql`jsonb_typeof(${table.tags}) = 'array' AND jsonb_array_length(${table.tags}) <= 30`,
+  ),
+}));
+
+/** 外部资源专用分组 */
+export const externalResourceGroups = pgTable("external_resource_groups", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  color: text("color").default("blue").notNull(),
+  icon: text("icon").default("folder").notNull(),
+  description: text("description"),
+  orderIndex: integer("order_index").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userNameUnique: uniqueIndex("external_resource_groups_user_name_unique").on(table.userId, table.name),
+  idUserUnique: uniqueIndex("external_resource_groups_id_user_unique").on(table.id, table.userId),
+  userIdIdx: index("external_resource_groups_user_id_idx").on(table.userId),
+  orderIdx: index("external_resource_groups_order_idx").on(table.userId, table.orderIndex),
+}));
+
+/** 外部资源分组成员 */
+export const externalResourceGroupMembers = pgTable("external_resource_group_members", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  groupId: integer("group_id")
+    .references(() => externalResourceGroups.id, { onDelete: "cascade" })
+    .notNull(),
+  resourceId: integer("resource_id")
+    .references(() => externalResources.id, { onDelete: "cascade" })
+    .notNull(),
+  orderIndex: integer("order_index").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  groupIdIdx: index("external_resource_group_members_group_id_idx").on(table.groupId),
+  resourceIdIdx: index("external_resource_group_members_resource_id_idx").on(table.resourceId),
+  userGroupOrderIdx: index("external_resource_group_members_user_group_order_idx").on(
+    table.userId,
+    table.groupId,
+    table.orderIndex,
+  ),
+  userResourceIdx: index("external_resource_group_members_user_resource_idx").on(
+    table.userId,
+    table.resourceId,
+  ),
+  groupOrderIdx: index("external_resource_group_members_group_order_idx").on(table.groupId, table.orderIndex),
+  groupResourceUnique: uniqueIndex("external_resource_group_members_group_resource_unique")
+    .on(table.groupId, table.resourceId),
+  groupUserFk: foreignKey({
+    columns: [table.groupId, table.userId],
+    foreignColumns: [externalResourceGroups.id, externalResourceGroups.userId],
+    name: "external_resource_group_members_group_user_fk",
+  }),
+  resourceUserFk: foreignKey({
+    columns: [table.resourceId, table.userId],
+    foreignColumns: [externalResources.id, externalResources.userId],
+    name: "external_resource_group_members_resource_user_fk",
+  }),
+}));
 
 // ============================================================================
 // 类型推断
@@ -967,5 +1122,13 @@ export type RepositoryTechnologyStack = typeof repositoryTechnologyStacks.$infer
 export type NewRepositoryTechnologyStack = typeof repositoryTechnologyStacks.$inferInsert;
 export type PackageRepoMapping = typeof packageRepoMappings.$inferSelect;
 export type NewPackageRepoMapping = typeof packageRepoMappings.$inferInsert;
+export type ExternalResource = typeof externalResources.$inferSelect;
+export type NewExternalResource = typeof externalResources.$inferInsert;
+export type ExternalResourceSave = typeof externalResourceSaves.$inferSelect;
+export type NewExternalResourceSave = typeof externalResourceSaves.$inferInsert;
+export type ExternalResourceGroup = typeof externalResourceGroups.$inferSelect;
+export type NewExternalResourceGroup = typeof externalResourceGroups.$inferInsert;
+export type ExternalResourceGroupMember = typeof externalResourceGroupMembers.$inferSelect;
+export type NewExternalResourceGroupMember = typeof externalResourceGroupMembers.$inferInsert;
 
 export * from "./trending";

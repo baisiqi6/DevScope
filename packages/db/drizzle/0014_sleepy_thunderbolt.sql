@@ -1,0 +1,2 @@
+ALTER TABLE "external_resource_saves" ADD CONSTRAINT "external_resource_saves_tags_shape_check" CHECK (jsonb_typeof("external_resource_saves"."tags") = 'array' AND jsonb_array_length("external_resource_saves"."tags") <= 30);--> statement-breakpoint
+ALTER TABLE "external_resources" ADD CONSTRAINT "external_resources_metadata_size_check" CHECK ("external_resources"."metadata" IS NULL OR octet_length("external_resources"."metadata"::text) <= 20000);

@@ -1,5 +1,10 @@
 import {
   collectionResultSchema,
+  externalResourceContentStatusSchema,
+  externalResourceIngestionModeSchema,
+  externalResourceMetadataSchema,
+  externalResourceTypeSchema,
+  externalResourceUrlSchema,
   repositoryDetailSchema,
   repositoryGroupSchema,
   semanticSearchRequestSchema,
@@ -67,6 +72,69 @@ export const updateRepoNoteResultSchema = z.object({
 });
 
 export type UpdateRepoNoteResult = z.infer<typeof updateRepoNoteResultSchema>;
+
+export const externalResourceSchema = z.object({
+  id: z.number(),
+  resourceType: externalResourceTypeSchema,
+  url: externalResourceUrlSchema,
+  canonicalUrl: externalResourceUrlSchema,
+  title: z.string(),
+  description: z.string().nullable(),
+  siteName: z.string().nullable(),
+  author: z.string().nullable(),
+  publishedAt: z.string().datetime().nullable(),
+  faviconUrl: externalResourceUrlSchema.nullable(),
+  previewImageUrl: externalResourceUrlSchema.nullable(),
+  metadata: externalResourceMetadataSchema.nullable(),
+  ingestionMode: externalResourceIngestionModeSchema,
+  contentStatus: externalResourceContentStatusSchema,
+  contentFetchedAt: z.string().datetime().nullable(),
+  contentError: z.string().nullable(),
+  notes: z.string().nullable(),
+  tags: z.array(z.string()),
+  isRead: z.boolean(),
+  isPinned: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ExternalResource = z.infer<typeof externalResourceSchema>;
+
+export const externalResourceListInputSchema = z.object({
+  limit: z.number().int().min(1).max(100).default(50),
+  offset: z.number().int().min(0).default(0),
+  resourceType: externalResourceTypeSchema.optional(),
+});
+export type ExternalResourceListInput = z.input<typeof externalResourceListInputSchema>;
+
+export const saveExternalResourceResultSchema = z.object({
+  created: z.boolean(),
+  resource: externalResourceSchema,
+});
+export type SaveExternalResourceResult = z.infer<typeof saveExternalResourceResultSchema>;
+
+export const externalResourceGroupSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  name: z.string(),
+  color: z.string(),
+  icon: z.string(),
+  description: z.string().nullable(),
+  orderIndex: z.number(),
+  resourceCount: z.number(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ExternalResourceGroup = z.infer<typeof externalResourceGroupSchema>;
+
+export const externalResourceGroupMemberSchema = z.object({
+  id: z.number(),
+  groupId: z.number(),
+  resourceId: z.number(),
+  orderIndex: z.number(),
+  createdAt: z.string().datetime(),
+  resource: externalResourceSchema,
+});
+export type ExternalResourceGroupMember = z.infer<typeof externalResourceGroupMemberSchema>;
 
 export const groupWithMembersSchema = z.object({
   id: z.number(),

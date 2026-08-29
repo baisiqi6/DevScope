@@ -2,6 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { DevScopeClient } from "@devscope/client";
 import { z } from "zod";
+import {
+  externalResourceMetadataSchema,
+  externalResourceUrlSchema,
+  saveExternalResourceInputSchema,
+  updateExternalResourceInputSchema,
+} from "@devscope/shared";
 
 export const MCP_SERVER_NAME = "devscope";
 export const MCP_SERVER_VERSION = "0.0.1";
@@ -227,6 +233,176 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
       },
     },
     ({ groupId, repoId }) => runTool(() => client.removeRepoFromGroup(groupId, repoId)),
+  );
+
+  server.registerTool(
+    "devscope_list_external_resources",
+    {
+      title: "列出外部资源",
+      description: "只读：列出当前用户保存的文章、论文和网站预览卡片。不会触发正文抓取。",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        resourceType: z.enum(["article", "paper", "website"]).optional(),
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ limit, offset, resourceType }) => runTool(() => client.listExternalResources({ limit, offset, resourceType })),
+  );
+
+  server.registerTool(
+    "devscope_save_external_resource",
+    {
+      title: "保存外部资源预览卡片",
+      description: "写入：保存文章、论文或网站 URL 及手工元数据；当前固定为 preview_only，不抓取正文。",
+      inputSchema: z.object({
+        url: externalResourceUrlSchema,
+        resourceType: z.enum(["article", "paper", "website"]),
+        title: z.string().trim().min(1).max(300).optional(),
+        description: z.string().trim().max(2000).optional(),
+        siteName: z.string().trim().max(200).optional(),
+        author: z.string().trim().max(200).optional(),
+        publishedAt: z.string().datetime().optional(),
+        faviconUrl: externalResourceUrlSchema.optional(),
+        previewImageUrl: externalResourceUrlSchema.optional(),
+        metadata: externalResourceMetadataSchema.optional(),
+        notes: z.string().max(5000).optional(),
+        tags: z.array(z.string().trim().min(1).max(50)).max(30).default([]),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (input) => runTool(() => client.saveExternalResource(saveExternalResourceInputSchema.parse(input))),
+  );
+
+  server.registerTool(
+    "devscope_get_external_resource",
+    {
+      title: "读取外部资源",
+      description: "只读：读取一张外部资源预览卡片。",
+      inputSchema: z.object({ resourceId: z.number().int().positive() }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ resourceId }) => runTool(() => client.getExternalResource(resourceId)),
+  );
+
+  server.registerTool(
+    "devscope_update_external_resource",
+    {
+      title: "更新外部资源收藏",
+      description: "写入：更新外部资源的标题、备注、标签、已读或置顶状态。",
+      inputSchema: z.object({
+        resourceId: z.number().int().positive(),
+        title: z.string().trim().min(1).max(300).optional(),
+        description: z.string().trim().max(2000).nullable().optional(),
+        siteName: z.string().trim().max(200).nullable().optional(),
+        author: z.string().trim().max(200).nullable().optional(),
+        publishedAt: z.string().datetime().nullable().optional(),
+        faviconUrl: externalResourceUrlSchema.nullable().optional(),
+        previewImageUrl: externalResourceUrlSchema.nullable().optional(),
+        metadata: externalResourceMetadataSchema.nullable().optional(),
+        notes: z.string().max(5000).nullable().optional(),
+        tags: z.array(z.string().trim().min(1).max(50)).max(30).optional(),
+        isRead: z.boolean().optional(),
+        isPinned: z.boolean().optional(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (input) => runTool(() => client.updateExternalResource(updateExternalResourceInputSchema.parse(input))),
+  );
+
+  server.registerTool(
+    "devscope_remove_external_resource",
+    {
+      title: "删除外部资源",
+      description: "写入：删除当前用户保存的外部资源及其资源分组成员关系。",
+      inputSchema: z.object({ resourceId: z.number().int().positive() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ resourceId }) => runTool(() => client.removeExternalResource(resourceId)),
+  );
+
+  server.registerTool(
+    "devscope_list_external_resource_groups",
+    {
+      title: "列出外部资源分组",
+      description: "只读：列出文章、论文和网站专用分组。",
+      annotations: readOnlyAnnotations,
+    },
+    () => runTool(() => client.listExternalResourceGroups()),
+  );
+
+  server.registerTool(
+    "devscope_create_external_resource_group",
+    {
+      title: "创建外部资源分组",
+      description: "写入：创建一个只管理外部资源的分组。",
+      inputSchema: z.object({ name: z.string().trim().min(1).max(50), description: z.string().trim().max(500).optional() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    ({ name, description }) => runTool(() => client.createExternalResourceGroup({ name, description })),
+  );
+
+  server.registerTool(
+    "devscope_get_external_resource_group_members",
+    {
+      title: "读取外部资源分组",
+      description: "只读：读取外部资源分组中的预览卡片。",
+      inputSchema: z.object({ groupId: z.number().int().positive() }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ groupId }) => runTool(() => client.getExternalResourceGroupMembers(groupId)),
+  );
+
+  server.registerTool(
+    "devscope_add_external_resource_to_group",
+    {
+      title: "添加外部资源到分组",
+      description: "写入：将外部资源加入外部资源专用分组。",
+      inputSchema: z.object({ groupId: z.number().int().positive(), resourceId: z.number().int().positive() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, resourceId }) => runTool(() => client.addExternalResourceToGroup(groupId, resourceId)),
+  );
+
+  server.registerTool(
+    "devscope_remove_external_resource_from_group",
+    {
+      title: "从外部资源分组移除",
+      description: "写入：从外部资源专用分组移除资源。",
+      inputSchema: z.object({ groupId: z.number().int().positive(), resourceId: z.number().int().positive() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, resourceId }) => runTool(() => client.removeExternalResourceFromGroup(groupId, resourceId)),
   );
 
   server.registerTool(
