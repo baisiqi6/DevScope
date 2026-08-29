@@ -861,6 +861,8 @@ export const repositoryGroups = pgTable("repository_groups", {
   userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
+  /** 父分组 ID；null 表示根分组 */
+  parentId: integer("parent_id"),
   /** 分组名称 */
   name: text("name").notNull(),
   /** 分组颜色 (blue, green, purple, orange, red, pink) */
@@ -877,7 +879,17 @@ export const repositoryGroups = pgTable("repository_groups", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("repository_groups_user_id_idx").on(table.userId),
-  orderIdx: index("repository_groups_order_idx").on(table.userId, table.orderIndex),
+  idUserUnique: uniqueIndex("repository_groups_id_user_unique").on(table.id, table.userId),
+  parentUserForeignKey: foreignKey({
+    columns: [table.parentId, table.userId],
+    foreignColumns: [table.id, table.userId],
+    name: "repository_groups_parent_user_fk",
+  }).onDelete("restrict"),
+  siblingOrderIdx: index("repository_groups_sibling_order_idx").on(
+    table.userId,
+    table.parentId,
+    table.orderIndex,
+  ),
 }));
 
 /**

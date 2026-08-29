@@ -1,3 +1,0 @@
-CREATE INDEX "external_resource_group_members_user_group_order_idx" ON "external_resource_group_members" USING btree ("user_id","group_id","order_index");--> statement-breakpoint
-CREATE INDEX "external_resource_group_members_user_resource_idx" ON "external_resource_group_members" USING btree ("user_id","resource_id");--> statement-breakpoint
-CREATE INDEX "external_resource_saves_user_status_updated_idx" ON "external_resource_saves" USING btree ("user_id","is_pinned","is_read","updated_at");

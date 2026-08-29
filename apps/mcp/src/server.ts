@@ -147,6 +147,16 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
   );
 
   server.registerTool(
+    "devscope_get_group_tree",
+    {
+      title: "读取仓库分组树",
+      description: "只读：按同级顺序返回当前用户的完整分组树、直接计数和后代去重计数。",
+      annotations: readOnlyAnnotations,
+    },
+    () => runTool(() => client.getGroupTree()),
+  );
+
+  server.registerTool(
     "devscope_update_repo_note",
     {
       title: "更新仓库备注",
@@ -179,6 +189,19 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
   );
 
   server.registerTool(
+    "devscope_get_aggregate_group_members",
+    {
+      title: "读取分组及后代仓库",
+      description: "只读：获取指定分组自身及全部后代中的去重仓库，并返回真实直接 membership 来源。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ groupId }) => runTool(() => client.getAggregateGroupWithMembers(groupId)),
+  );
+
+  server.registerTool(
     "devscope_create_group",
     {
       title: "创建仓库分组",
@@ -186,6 +209,7 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
       inputSchema: z.object({
         name: z.string().min(1).max(50),
         description: z.string().optional(),
+        parentId: z.number().int().positive().nullable().optional(),
       }),
       annotations: {
         readOnlyHint: false,
@@ -194,7 +218,47 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
         openWorldHint: false,
       },
     },
-    ({ name, description }) => runTool(() => client.createGroup({ name, description })),
+    ({ name, description, parentId }) =>
+      runTool(() => client.createGroup({ name, description, parentId })),
+  );
+
+  server.registerTool(
+    "devscope_move_group",
+    {
+      title: "移动仓库分组",
+      description: "写入：将分组移动到另一个父分组；parentId=null 表示根级。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+        parentId: z.number().int().positive().nullable(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, parentId }) => runTool(() => client.moveGroup(groupId, parentId)),
+  );
+
+  server.registerTool(
+    "devscope_reorder_group_siblings",
+    {
+      title: "重排同级仓库分组",
+      description: "写入：提交目标父级下完整、无重复的兄弟分组 ID 顺序。",
+      inputSchema: z.object({
+        parentId: z.number().int().positive().nullable(),
+        groupIds: z.array(z.number().int().positive()),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ parentId, groupIds }) =>
+      runTool(() => client.reorderGroupSiblings(parentId, groupIds)),
   );
 
   server.registerTool(

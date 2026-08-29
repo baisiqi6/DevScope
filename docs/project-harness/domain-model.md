@@ -58,6 +58,10 @@ SBOM + 技术栈目录
   → external_resources（文章、论文和网站的预览元数据）
   → external_resource_saves（用户备注、标签、已读与置顶）
   → external_resource_groups / external_resource_group_members（独立资源分组）
+
+用户仓库整理
+  → repository_groups（单父级邻接树）
+  → group_members（仓库的直接、多分组归属）
 ```
 
 外部资源与 GitHub 仓库暂时分别管理，不把 URL 伪装成仓库，也不将现有
@@ -99,6 +103,29 @@ SBOM + 技术栈目录
 迁移不在 SQL 中访问外网。改名重复合并必须保留用户已选状态、最早 `firstSeenAt`、最新 GitHub 名称和可解释证据；无法自动确定的冲突停止迁移并输出待审查清单。
 
 验收：用同一 GitHub ID 的旧名和新名各同步一次，数据库始终只有一个实体，用户状态不丢失。
+
+### 单父级仓库分组树
+
+`repository_groups.parent_id` 表示同一用户内的可空父级：`null` 是根级，一个分组最多一个父级，
+不支持多父级 DAG。`group_members` 仍只保存仓库的直接归属，同一仓库可以直接属于多个分组；
+父级看到的后代仓库合集是查询结果，不写入派生成员。
+
+数据库约束是层级正确性的最终边界：
+
+- `(id, user_id)` 唯一键与 `(parent_id, user_id) -> (id, user_id)` 组合外键拒绝跨用户父子关系，
+  `ON DELETE RESTRICT` 阻止删除仍有子组的分组；
+- 层级写入先取得按 `userId` 的 transaction advisory lock，再由递归 CTE trigger 拒绝自循环与
+  后代循环，避免两个连接并发形成循环；
+- `(user_id, parent_id, order_index)` 定义同级顺序。重排必须在一个事务内提交该父级下完整、
+  无重复的 ID 排列，不对跨父级节点做隐式移动。
+
+读取契约区分直接与聚合语义：兼容字段 `repoCount` 继续表示直接成员数，`directRepoCount` 与其
+一致；`aggregateRepoCount` 是自身及全部后代中、当前用户仍关注可见的仓库去重数，与聚合
+成员列表使用同一可见性口径。聚合成员必须同时返回每个仓库的真实直接 membership 来源，任何
+移除操作都作用于该来源，而不是父级查询视图。
+
+迁移 `0011_violet_hammerhead.sql` 只为既有行增加可空父级和约束，因此旧分组自然保持根级，
+`group_members` 不变。受保护回滚只允许在所有 `parent_id` 均为空时执行，禁止静默丢失层级。
 
 ### 采集结果原子替换
 

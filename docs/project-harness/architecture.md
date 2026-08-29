@@ -208,7 +208,18 @@ echo "vercel/next.js" \
 MCP Host / Agent ──────► MCP stdio ───┘
 ```
 
-现有 Agent 接口包含健康检查、仓库列表/详情/采集、向量化状态、语义搜索、仓库分组，以及外部资源预览收藏和独立分组。采集仍由 API 执行业务逻辑；MCP 工具不会在本地直接调用 GitHub、数据库或模型服务。外部资源第一阶段固定为 `preview_only`，不触发正文抓取。
+当前范围包含健康检查、仓库列表/详情/采集、向量化状态、语义搜索、仓库备注、健康分析，
+以及分组的扁平兼容读取、树读取、聚合成员、创建、移动、同级重排和成员增删。分组树的递归、
+计数、membership 来源与事务规则位于 `packages/db` 领域函数和 API 边界；Web、Client、CLI 与
+MCP 只消费同一契约，不各自复制第二套树业务逻辑。采集仍由 API 执行业务逻辑；MCP 工具不会
+在本地直接调用 GitHub、数据库或模型服务。
+
+`repository_groups` 使用单父级邻接表。`groups.getAll`、`groups.getWithMembers` 和 `repoCount`
+保留旧扁平/直接成员语义；`groups.getTree` 和 `groups.getAggregateWithMembers` 承载树与后代
+聚合语义。这样旧调用方不会因层级功能静默改变结果，新调用面又能获得真实 membership 来源。
+
+现有 Agent 接口也包含外部资源预览收藏和独立分组。外部资源第一阶段固定为
+`preview_only`，不触发正文抓取；MCP 工具不会在本地直接调用 GitHub、数据库或模型服务。
 
 ## 类型与验证边界
 

@@ -19,8 +19,12 @@ const HELP_TEXT = `DevScope CLI
   devscope repo note <repo-id> <text>
   devscope search <owner/repo> <query> [--limit <1-20>] [--no-answer]
   devscope group list
-  devscope group create <name> [--description <text>]
+  devscope group tree
+  devscope group create <name> [--description <text>] [--parent-id <group-id>]
   devscope group members <group-id>
+  devscope group aggregate-members <group-id>
+  devscope group move <group-id> <parent-id|root>
+  devscope group reorder <parent-id|root> <group-id> [<group-id>...]
   devscope group add <group-id> <repo-id>
   devscope group remove <group-id> <repo-id>
   devscope resource list [--type article|paper|website]
@@ -196,12 +200,21 @@ async function runGroupCommand(
     return client.listGroups();
   }
 
+  if (command === 'tree') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 0, 'devscope group tree');
+    return client.getGroupTree();
+  }
+
   if (command === 'create') {
-    const parsed = parseOptions(rest, new Set(['--description']), new Set());
-    expectPositionals(parsed.positionals, 1, 'devscope group create <name> [--description <text>]');
+    const parsed = parseOptions(rest, new Set(['--description', '--parent-id']), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope group create <name> [--description <text>] [--parent-id <group-id>]');
     return client.createGroup({
       name: parsed.positionals[0],
       description: parsed.values.get('--description'),
+      parentId: parsed.values.has('--parent-id')
+        ? parseInteger(parsed.values.get('--parent-id'), '--parent-id', undefined, 1)
+        : undefined,
     });
   }
 
@@ -210,6 +223,36 @@ async function runGroupCommand(
     expectPositionals(parsed.positionals, 1, 'devscope group members <group-id>');
     const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
     return client.getGroupWithMembers(groupId);
+  }
+
+  if (command === 'aggregate-members') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope group aggregate-members <group-id>');
+    const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
+    return client.getAggregateGroupWithMembers(groupId);
+  }
+
+  if (command === 'move') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 2, 'devscope group move <group-id> <parent-id|root>');
+    const groupId = parseInteger(parsed.positionals[0], 'group-id', undefined, 1);
+    const parentId = parsed.positionals[1] === 'root'
+      ? null
+      : parseInteger(parsed.positionals[1], 'parent-id', undefined, 1);
+    return client.moveGroup(groupId, parentId);
+  }
+
+  if (command === 'reorder') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    if (parsed.positionals.length < 2) {
+      throw new CliUsageError('用法: devscope group reorder <parent-id|root> <group-id> [<group-id>...]');
+    }
+    const parentId = parsed.positionals[0] === 'root'
+      ? null
+      : parseInteger(parsed.positionals[0], 'parent-id', undefined, 1);
+    const groupIds = parsed.positionals.slice(1).map((value) =>
+      parseInteger(value, 'group-id', undefined, 1));
+    return client.reorderGroupSiblings(parentId, groupIds);
   }
 
   if (command === 'add') {
@@ -228,7 +271,7 @@ async function runGroupCommand(
     return client.removeRepoFromGroup(groupId, repoId);
   }
 
-  throw new CliUsageError('用法: devscope group <list|create|members|add|remove> ...');
+  throw new CliUsageError('用法: devscope group <list|tree|create|members|aggregate-members|move|reorder|add|remove> ...');
 }
 
 function parseExternalResourceType(value: string | undefined): 'article' | 'paper' | 'website' | undefined {

@@ -571,7 +571,7 @@
       "handoff": "",
       "plan_path": "docs/project-harness/tasks/product-10-external-resources-workspace/plan.md",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-08-29",
         "branch": "codex/product-10-external-resources-workspace"
       },
@@ -595,6 +595,26 @@
         "ttl_minutes": 120,
         "released_at": "2026-08-29T07:22:09Z"
       }
+    },
+    {
+      "id": "issue-54",
+      "title": "支持单父级树状分组与后代仓库汇总",
+      "status": "done",
+      "priority": "p2",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-08-24",
+      "dependencies": ["data-quality-5-postgres-integration-gates"],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "现有分组无损迁移为根级；数据库拒绝跨用户父级、循环和删除含子组；父级聚合仓库去重并保留真实 membership 来源；同级排序事务化；旧 repoCount/扁平接口兼容；Web/API/Client/CLI/MCP 契约一致；PostgreSQL 迁移与并发测试及完整门禁通过",
+      "verification": "docs/project-harness/tasks/issue-54/verification.md；PR #55/CI、生产 deploy run 32704273873、0011 迁移、15 分组/86 membership 不变量、目标/rollback revision、API/MCP/访问控制均已验证。",
+      "handoff": "Issue #54 已完成并部署生产；当前无后续发布动作。公网域名仍被阿里云 ICP 拦截，生产使用 SSH tunnel；真实 dogfood 反馈继续写入 dogfood-observations.md。",
+      "plan_path": "docs/project-harness/tasks/issue-54/plan.md",
+      "workflow": {"status": "closed", "updated_at": "2026-08-24", "branch": "codex/issue-54-tree-groups"},
+      "artifacts": {"branch": "codex/issue-54-tree-groups", "review_packet": "docs/project-harness/current/review-packet.md", "closeout_packet": "docs/project-harness/current/closeout-packet.md"},
+      "review": {"decision": "approved", "reviewer": "kimi-k3-01a0328f", "phase": "closeout_requested", "updated_at": "2026-08-24", "summary": "Closeout 终审 APPROVE；无 P0-P3，全部发现闭环，门禁证据已记录。"},
+      "lease": {"owner": "codex", "session": "codex-20260823-issue54", "acquired_at": "2026-08-24T06:23:30Z", "expires_at": "2026-08-24T08:23:30Z", "ttl_minutes": 120, "released_at": "2026-08-24T07:44:18Z"}
     }
   ]
 }

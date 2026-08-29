@@ -14,9 +14,13 @@ function createStubClient(): DevScopeClient {
     getEmbeddingStatus: vi.fn(),
     semanticSearch: vi.fn(),
     listGroups: vi.fn().mockResolvedValue([]),
+    getGroupTree: vi.fn().mockResolvedValue([]),
     updateRepoNote: vi.fn().mockResolvedValue({ success: true }),
     getGroupWithMembers: vi.fn(),
+    getAggregateGroupWithMembers: vi.fn(),
     createGroup: vi.fn(),
+    moveGroup: vi.fn(),
+    reorderGroupSiblings: vi.fn().mockResolvedValue({ success: true }),
     addRepoToGroup: vi.fn(),
     removeRepoFromGroup: vi.fn().mockResolvedValue({ success: true }),
     startHealthAnalysis: vi.fn(),
@@ -60,7 +64,7 @@ afterEach(async () => {
 });
 
 describe("DevScope MCP Server", () => {
-  it("注册仓库与外部资源工具", async () => {
+  it("注册全部二十九个工具", async () => {
     const client = await createConnectedPair(createStubClient());
     const result = await client.listTools();
 
@@ -72,9 +76,13 @@ describe("DevScope MCP Server", () => {
       "devscope_get_embedding_status",
       "devscope_semantic_search",
       "devscope_list_groups",
+      "devscope_get_group_tree",
       "devscope_update_repo_note",
       "devscope_get_group_members",
+      "devscope_get_aggregate_group_members",
       "devscope_create_group",
+      "devscope_move_group",
+      "devscope_reorder_group_siblings",
       "devscope_add_repo_to_group",
       "devscope_remove_repo_from_group",
       "devscope_list_external_resources",
@@ -188,5 +196,59 @@ describe("DevScope MCP Server", () => {
       tags: ["design"],
     }));
     expect(result.isError).not.toBe(true);
+  });
+
+  it("通过 MCP 调用树读取、聚合成员、移动和同级重排", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.getAggregateGroupWithMembers).mockResolvedValue({
+      group: {
+        id: 1,
+        userId: 1,
+        parentId: null,
+        name: "根",
+        color: "blue",
+        icon: "folder",
+        description: null,
+        orderIndex: 0,
+        createdAt: "2026-07-28T00:00:00.000Z",
+        updatedAt: "2026-07-28T00:00:00.000Z",
+        repoCount: 0,
+        directRepoCount: 0,
+        aggregateRepoCount: 0,
+      },
+      members: [],
+    });
+    vi.mocked(devScopeClient.moveGroup).mockResolvedValue({
+      id: 2,
+      userId: 1,
+      parentId: 1,
+      name: "子",
+      color: "blue",
+      icon: "folder",
+      description: null,
+      orderIndex: 0,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+    const client = await createConnectedPair(devScopeClient);
+
+    await client.callTool({ name: "devscope_get_group_tree", arguments: {} }, CallToolResultSchema);
+    await client.callTool({
+      name: "devscope_get_aggregate_group_members",
+      arguments: { groupId: 1 },
+    }, CallToolResultSchema);
+    await client.callTool({
+      name: "devscope_move_group",
+      arguments: { groupId: 2, parentId: 1 },
+    }, CallToolResultSchema);
+    await client.callTool({
+      name: "devscope_reorder_group_siblings",
+      arguments: { parentId: 1, groupIds: [3, 2] },
+    }, CallToolResultSchema);
+
+    expect(devScopeClient.getGroupTree).toHaveBeenCalledOnce();
+    expect(devScopeClient.getAggregateGroupWithMembers).toHaveBeenCalledWith(1);
+    expect(devScopeClient.moveGroup).toHaveBeenCalledWith(2, 1);
+    expect(devScopeClient.reorderGroupSiblings).toHaveBeenCalledWith(1, [3, 2]);
   });
 });

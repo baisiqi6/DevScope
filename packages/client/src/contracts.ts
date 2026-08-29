@@ -7,6 +7,7 @@ import {
   externalResourceUrlSchema,
   repositoryDetailSchema,
   repositoryGroupSchema,
+  repositoryGroupTreeSchema,
   semanticSearchRequestSchema,
   semanticSearchResponseSchema,
 } from "@devscope/shared";
@@ -66,6 +67,33 @@ export const embeddingStatusSchema = z.object({
 export type EmbeddingStatus = z.infer<typeof embeddingStatusSchema>;
 
 export const repositoryGroupListSchema = z.array(repositoryGroupSchema);
+export { repositoryGroupTreeSchema };
+export type RepositoryGroupTree = z.infer<typeof repositoryGroupTreeSchema>;
+
+export const repositoryGroupWithCountsSchema = repositoryGroupSchema.extend({
+  parentId: z.number().nullable(),
+  repoCount: z.number(),
+  directRepoCount: z.number(),
+  aggregateRepoCount: z.number(),
+});
+
+export const aggregateGroupViewSchema = z.object({
+  group: repositoryGroupWithCountsSchema,
+  members: z.array(z.object({
+    repoId: z.number(),
+    repository: repositorySummarySchema,
+    memberships: z.array(z.object({
+      membershipId: z.number(),
+      groupId: z.number(),
+      groupName: z.string(),
+      depth: z.number(),
+      orderIndex: z.number(),
+      isDirect: z.boolean(),
+    })),
+  })),
+});
+
+export type AggregateGroupView = z.infer<typeof aggregateGroupViewSchema>;
 
 export const updateRepoNoteResultSchema = z.object({
   success: z.boolean(),
@@ -162,6 +190,7 @@ export type GroupWithMembers = z.infer<typeof groupWithMembersSchema>;
 export const createGroupInputSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().optional(),
+  parentId: z.number().int().positive().nullable().optional(),
 });
 
 export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
@@ -169,6 +198,7 @@ export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
 export const createGroupResultSchema = z.object({
   id: z.number(),
   userId: z.number(),
+  parentId: z.number().nullable(),
   name: z.string(),
   color: z.string(),
   icon: z.string(),
@@ -177,9 +207,18 @@ export const createGroupResultSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   repoCount: z.number(),
+  directRepoCount: z.number(),
+  aggregateRepoCount: z.number(),
 });
 
 export type CreateGroupResult = z.infer<typeof createGroupResultSchema>;
+
+export const moveGroupResultSchema = repositoryGroupSchema.extend({
+  parentId: z.number().nullable(),
+});
+
+export const groupMutationSuccessSchema = z.object({ success: z.boolean() });
+export type GroupMutationSuccess = z.infer<typeof groupMutationSuccessSchema>;
 
 export const groupMemberResultSchema = z.object({
   id: z.number(),

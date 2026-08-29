@@ -1144,6 +1144,8 @@ export const repositoryGroupSchema = z.object({
   id: z.number(),
   /** 用户 ID */
   userId: z.number(),
+  /** 父分组 ID；null 表示根分组 */
+  parentId: z.number().nullable().optional(),
   /** 分组名称 */
   name: z.string().min(1).max(50),
   /** 分组颜色 */
@@ -1160,10 +1162,37 @@ export const repositoryGroupSchema = z.object({
   updatedAt: z.string(),
   /** 分组内的仓库数量（扩展字段，查询时计算） */
   repoCount: z.number().optional(),
+  /** 直接加入当前分组的仓库数量 */
+  directRepoCount: z.number().optional(),
+  /** 当前分组及全部后代中的仓库去重数量 */
+  aggregateRepoCount: z.number().optional(),
 });
 
 /** 仓库分组类型 */
 export type RepositoryGroup = z.infer<typeof repositoryGroupSchema>;
+
+/** 树接口使用的严格分组节点；兼容扁平接口仍使用 repositoryGroupSchema。 */
+export type RepositoryGroupTreeNode = RepositoryGroup & {
+  parentId: number | null;
+  repoCount: number;
+  directRepoCount: number;
+  aggregateRepoCount: number;
+  children: RepositoryGroupTreeNode[];
+};
+
+export const repositoryGroupTreeNodeSchema: z.ZodType<RepositoryGroupTreeNode> = z.lazy(() =>
+  repositoryGroupSchema.extend({
+    parentId: z.number().nullable(),
+    color: z.string(),
+    icon: z.string(),
+    repoCount: z.number(),
+    directRepoCount: z.number(),
+    aggregateRepoCount: z.number(),
+    children: z.array(repositoryGroupTreeNodeSchema),
+  }),
+);
+
+export const repositoryGroupTreeSchema = z.array(repositoryGroupTreeNodeSchema);
 
 /**
  * 分组成员 Schema
@@ -1204,6 +1233,8 @@ export const createGroupSchema = z.object({
   icon: z.string().optional(),
   /** 分组描述 */
   description: z.string().optional(),
+  /** 父分组 ID；省略或 null 时创建根分组 */
+  parentId: z.number().int().positive().nullable().optional(),
 });
 
 /** 创建分组请求类型 */
@@ -1227,6 +1258,27 @@ export const updateGroupSchema = z.object({
 
 /** 更新分组请求类型 */
 export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
+
+/** 移动分组请求 Schema */
+export const moveGroupSchema = z.object({
+  groupId: z.number().int().positive(),
+  parentId: z.number().int().positive().nullable(),
+});
+
+export type MoveGroupInput = z.infer<typeof moveGroupSchema>;
+
+/** 同级分组完整重排请求 Schema */
+export const reorderGroupSiblingsSchema = z.object({
+  parentId: z.number().int().positive().nullable(),
+  groupIds: z.array(z.number().int().positive()),
+});
+
+export type ReorderGroupSiblingsInput = z.infer<typeof reorderGroupSiblingsSchema>;
+
+/** 父分组聚合成员查询输入 */
+export const aggregateGroupMembersInputSchema = z.object({
+  groupId: z.number().int().positive(),
+});
 
 /**
  * 添加仓库到分组请求 Schema

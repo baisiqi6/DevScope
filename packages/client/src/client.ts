@@ -3,6 +3,7 @@ import type { AnyTRPCRouter } from "@trpc/server";
 import { z } from "zod";
 import {
   analysisStatusSchema,
+  aggregateGroupViewSchema,
   collectRepositoryInputSchema,
   collectionResultSchema,
   createGroupInputSchema,
@@ -13,12 +14,14 @@ import {
   externalResourceSchema,
   embeddingStatusSchema,
   groupMemberResultSchema,
+  groupMutationSuccessSchema,
   groupWithMembersSchema,
   healthReportSchema,
   healthResultSchema,
   removeRepoFromGroupResultSchema,
   repositoryDetailSchema,
   repositoryGroupListSchema,
+  repositoryGroupTreeSchema,
   repositoryListInputSchema,
   repositorySummarySchema,
   semanticSearchRequestSchema,
@@ -26,7 +29,9 @@ import {
   saveExternalResourceResultSchema,
   startHealthAnalysisResultSchema,
   updateRepoNoteResultSchema,
+  moveGroupResultSchema,
   type AnalysisStatus,
+  type AggregateGroupView,
   type CollectRepositoryInput,
   type CollectionResult,
   type CreateGroupInput,
@@ -37,12 +42,14 @@ import {
   type ExternalResourceListInput,
   type EmbeddingStatus,
   type GroupMemberResult,
+  type GroupMutationSuccess,
   type GroupWithMembers,
   type HealthReport,
   type HealthResult,
   type RemoveRepoFromGroupResult,
   type RepositoryDetail,
   type RepositoryGroup,
+  type RepositoryGroupTree,
   type RepositoryListInput,
   type RepositorySummary,
   type SemanticSearchRequest,
@@ -77,9 +84,13 @@ export interface DevScopeClient {
   getEmbeddingStatus(repoId: number): Promise<EmbeddingStatus>;
   semanticSearch(input: SemanticSearchRequest): Promise<SemanticSearchResponse>;
   listGroups(): Promise<RepositoryGroup[]>;
+  getGroupTree(): Promise<RepositoryGroupTree>;
   updateRepoNote(repoId: number, note: string): Promise<UpdateRepoNoteResult>;
   getGroupWithMembers(groupId: number): Promise<GroupWithMembers>;
+  getAggregateGroupWithMembers(groupId: number): Promise<AggregateGroupView>;
   createGroup(input: CreateGroupInput): Promise<CreateGroupResult>;
+  moveGroup(groupId: number, parentId: number | null): Promise<RepositoryGroup>;
+  reorderGroupSiblings(parentId: number | null, groupIds: number[]): Promise<GroupMutationSuccess>;
   addRepoToGroup(groupId: number, repoId: number): Promise<GroupMemberResult>;
   removeRepoFromGroup(groupId: number, repoId: number): Promise<RemoveRepoFromGroupResult>;
   startHealthAnalysis(repoFullName: string): Promise<StartHealthAnalysisResult>;
@@ -148,6 +159,8 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
     },
     listGroups: () =>
       parseResult(client.query("groups.getAll"), repositoryGroupListSchema),
+    getGroupTree: () =>
+      parseResult(client.query("groups.getTree"), repositoryGroupTreeSchema),
     updateRepoNote: (repoId, note) =>
       parseResult(
         client.mutation("updateRepoNote", { repoId, note }),
@@ -158,6 +171,11 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
         client.query("groups.getWithMembers", { groupId }),
         groupWithMembersSchema,
       ),
+    getAggregateGroupWithMembers: (groupId) =>
+      parseResult(
+        client.query("groups.getAggregateWithMembers", { groupId }),
+        aggregateGroupViewSchema,
+      ),
     createGroup: (input) => {
       const parsedInput = createGroupInputSchema.parse(input);
       return parseResult(
@@ -165,6 +183,16 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
         createGroupResultSchema,
       );
     },
+    moveGroup: (groupId, parentId) =>
+      parseResult(
+        client.mutation("groups.move", { groupId, parentId }),
+        moveGroupResultSchema,
+      ),
+    reorderGroupSiblings: (parentId, groupIds) =>
+      parseResult(
+        client.mutation("groups.reorderSiblings", { parentId, groupIds }),
+        groupMutationSuccessSchema,
+      ),
     addRepoToGroup: (groupId, repoId) =>
       parseResult(
         client.mutation("groupMembers.add", { groupId, repoId }),
