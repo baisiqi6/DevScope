@@ -337,7 +337,7 @@ export default function GroupsManagementPage() {
     if (!confirm(`确定要删除分组"${groupName}"吗？此操作不会删除仓库，只会删除分组。`)) {
       return;
     }
-    deleteGroupMutation.mutate({ groupId });
+    deleteGroupMutation.mutate({ groupId, confirm: true });
   };
 
   const handleStartEditing = (group: RepositoryGroupTreeNode) => {

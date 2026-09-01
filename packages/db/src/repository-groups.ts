@@ -5,7 +5,6 @@ import {
   repositories,
   repositoryGroups,
   userWatchedRepositories,
-  type Repository,
   type RepositoryGroup,
 } from './schema';
 
@@ -37,8 +36,27 @@ export interface RepositoryGroupMembershipSource {
 
 export interface AggregateRepositoryGroupMember {
   repoId: number;
-  repository: Repository;
+  repository: RepositoryGroupRepositorySummary;
   memberships: RepositoryGroupMembershipSource[];
+}
+
+/** 供分组/MCP 使用的仓库摘要，明确排除 README、SBOM、chunks 与 embedding。 */
+export interface RepositoryGroupRepositorySummary {
+  id: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  description: string | null;
+  url: string;
+  stars: number | null;
+  forks: number | null;
+  openIssues: number | null;
+  language: string | null;
+  license: string | null;
+  licenseStatus: 'standard_open_source' | 'source_available' | 'no_license' | 'unknown';
+  lastFetchedAt: Date | null;
+  starredAt: Date | null;
+  note: string | null;
 }
 
 export interface AggregateRepositoryGroupView {
@@ -106,10 +124,18 @@ export async function listRepositoryGroupTree(
       orderIndex: repositoryGroups.orderIndex,
       createdAt: repositoryGroups.createdAt,
       updatedAt: repositoryGroups.updatedAt,
-      directRepoCount: sql<unknown>`count(distinct ${groupMembers.repoId})`,
+      directRepoCount: sql<unknown>`count(distinct ${userWatchedRepositories.repoId})`,
     })
     .from(repositoryGroups)
     .leftJoin(groupMembers, eq(groupMembers.groupId, repositoryGroups.id))
+    .leftJoin(
+      userWatchedRepositories,
+      and(
+        eq(userWatchedRepositories.repoId, groupMembers.repoId),
+        eq(userWatchedRepositories.userId, userId),
+        eq(userWatchedRepositories.isArchived, false),
+      ),
+    )
     .where(eq(repositoryGroups.userId, userId))
     .groupBy(repositoryGroups.id)
     .orderBy(asc(repositoryGroups.orderIndex), asc(repositoryGroups.id));
@@ -139,6 +165,7 @@ export async function listRepositoryGroupTree(
     INNER JOIN user_watched_repositories
       ON user_watched_repositories.repo_id = group_members.repo_id
      AND user_watched_repositories.user_id = ${userId}
+     AND user_watched_repositories.is_archived = false
     GROUP BY descendants.ancestor_id
   `);
 
@@ -209,13 +236,30 @@ export async function getAggregateRepositoryGroupView(
     repoIds.length === 0
       ? []
       : await db
-          .select({ repository: repositories })
+          .select({
+            id: repositories.id,
+            fullName: repositories.fullName,
+            name: repositories.name,
+            owner: repositories.owner,
+            description: repositories.description,
+            url: repositories.url,
+            stars: repositories.stars,
+            forks: repositories.forks,
+            openIssues: repositories.openIssues,
+            language: repositories.language,
+            license: repositories.license,
+            licenseStatus: repositories.licenseStatus,
+            lastFetchedAt: repositories.lastFetchedAt,
+            starredAt: userWatchedRepositories.starredAt,
+            note: userWatchedRepositories.notes,
+          })
           .from(repositories)
           .innerJoin(
             userWatchedRepositories,
             and(
               eq(userWatchedRepositories.repoId, repositories.id),
-              eq(userWatchedRepositories.userId, userId)
+              eq(userWatchedRepositories.userId, userId),
+              eq(userWatchedRepositories.isArchived, false),
             )
           )
           .where(inArray(repositories.id, repoIds));
@@ -244,7 +288,7 @@ export async function getAggregateRepositoryGroupView(
   }
 
   const members = visibleRepositories
-    .map(({ repository }) => ({
+    .map((repository) => ({
       repoId: repository.id,
       repository,
       memberships: membershipsByRepo.get(repository.id) ?? [],

@@ -8,9 +8,14 @@ import {
   repositoryDetailSchema,
   repositoryGroupSchema,
   repositoryGroupTreeSchema,
+  repositoryLicenseStatusSchema,
   semanticSearchRequestSchema,
   semanticSearchResponseSchema,
 } from "@devscope/shared";
+
+export { repositoryGroupSchema } from "@devscope/shared";
+export { updateGroupSchema } from "@devscope/shared";
+export type { UpdateGroupInput } from "@devscope/shared";
 import { z } from "zod";
 
 export const healthResultSchema = z.object({
@@ -32,12 +37,33 @@ export const repositorySummarySchema = z.object({
   openIssues: z.number().nullable(),
   language: z.string().nullable().optional(),
   license: z.string().nullable().optional(),
+  licenseStatus: repositoryLicenseStatusSchema,
   lastFetchedAt: z.string().nullable().optional(),
   starredAt: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
 });
 
 export type RepositorySummary = z.infer<typeof repositorySummarySchema>;
+
+export const repositoryDeleteImpactSchema = z.object({
+  repoId: z.number(),
+  groupMemberships: z.number(),
+  chunks: z.number(),
+  releases: z.number(),
+  hackernewsItems: z.number(),
+  relationships: z.number(),
+  technologyStacks: z.number(),
+  otherWatchers: z.number(),
+});
+export type RepositoryDeleteImpact = z.infer<typeof repositoryDeleteImpactSchema>;
+
+export const repositoryLifecycleResultSchema = z.object({
+  success: z.literal(true),
+  repoId: z.number(),
+  isArchived: z.boolean(),
+  repositoryDeleted: z.boolean(),
+});
+export type RepositoryLifecycleResult = z.infer<typeof repositoryLifecycleResultSchema>;
 
 export const repositoryListInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(50),
@@ -181,7 +207,7 @@ export const groupWithMembersSchema = z.object({
     repoId: z.number(),
     orderIndex: z.number(),
     createdAt: z.string(),
-    repository: z.unknown().nullable(),
+    repository: repositorySummarySchema.nullable(),
   })),
 });
 

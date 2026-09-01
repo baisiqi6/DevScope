@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-08-29",
+  "updated_at": "2026-09-01",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -604,17 +604,119 @@
       "owner": null,
       "selected_in_session": null,
       "updated_at": "2026-08-24",
-      "dependencies": ["data-quality-5-postgres-integration-gates"],
+      "dependencies": [
+        "data-quality-5-postgres-integration-gates"
+      ],
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "现有分组无损迁移为根级；数据库拒绝跨用户父级、循环和删除含子组；父级聚合仓库去重并保留真实 membership 来源；同级排序事务化；旧 repoCount/扁平接口兼容；Web/API/Client/CLI/MCP 契约一致；PostgreSQL 迁移与并发测试及完整门禁通过",
       "verification": "docs/project-harness/tasks/issue-54/verification.md；PR #55/CI、生产 deploy run 32704273873、0011 迁移、15 分组/86 membership 不变量、目标/rollback revision、API/MCP/访问控制均已验证。",
       "handoff": "Issue #54 已完成并部署生产；当前无后续发布动作。公网域名仍被阿里云 ICP 拦截，生产使用 SSH tunnel；真实 dogfood 反馈继续写入 dogfood-observations.md。",
       "plan_path": "docs/project-harness/tasks/issue-54/plan.md",
-      "workflow": {"status": "closed", "updated_at": "2026-08-24", "branch": "codex/issue-54-tree-groups"},
-      "artifacts": {"branch": "codex/issue-54-tree-groups", "review_packet": "docs/project-harness/current/review-packet.md", "closeout_packet": "docs/project-harness/current/closeout-packet.md"},
-      "review": {"decision": "approved", "reviewer": "kimi-k3-01a0328f", "phase": "closeout_requested", "updated_at": "2026-08-24", "summary": "Closeout 终审 APPROVE；无 P0-P3，全部发现闭环，门禁证据已记录。"},
-      "lease": {"owner": "codex", "session": "codex-20260823-issue54", "acquired_at": "2026-08-24T06:23:30Z", "expires_at": "2026-08-24T08:23:30Z", "ttl_minutes": 120, "released_at": "2026-08-24T07:44:18Z"}
+      "workflow": {
+        "status": "closed",
+        "updated_at": "2026-08-24",
+        "branch": "codex/issue-54-tree-groups"
+      },
+      "artifacts": {
+        "branch": "codex/issue-54-tree-groups",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "kimi-k3-01a0328f",
+        "phase": "closeout_requested",
+        "updated_at": "2026-08-24",
+        "summary": "Closeout 终审 APPROVE；无 P0-P3，全部发现闭环，门禁证据已记录。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260823-issue54",
+        "acquired_at": "2026-08-24T06:23:30Z",
+        "expires_at": "2026-08-24T08:23:30Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-08-24T07:44:18Z"
+      }
+    },
+    {
+      "id": "dogfood-2026-08-remediation",
+      "title": "修复 dogfood 暴露的五项产品问题",
+      "status": "done",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-09-01",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "分组成员与聚合接口只返回受控仓库摘要；Hacker News 采集请求契约正确且空结果与临时失败可区分；CLI/MCP 可安全更新和删除分组；仓库支持带影响预检的 archive/delete 生命周期；许可证可区分标准开源、source-available/custom、无许可证和未识别；全量门禁与隔离 PostgreSQL 验证通过。",
+      "verification": "最终独立 Reviewer APPROVED；pnpm lint/typecheck/test/build 全部通过；隔离 pgvector/pgvector:pg16 重放全部迁移并通过 11 integration files/62 tests；五条 observation 为 fixed_pending_verification，生产部署/迁移未授权。",
+      "handoff": "本批次只做本地实现与验证；生产部署需独立授权，完成后用 dogfood-observations.md 逐条回写证据。",
+      "plan_path": "docs/project-harness/tasks/dogfood-2026-08-remediation/plan.md",
+      "workflow": {
+        "status": "closed",
+        "updated_at": "2026-09-01",
+        "branch": "codex/dogfood-2026-08-remediation"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/dogfood-2026-08-remediation/plan.md",
+        "branch": "codex/dogfood-2026-08-remediation",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "dogfood_remediation_reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-09-01",
+        "summary": "最终独立复审批准 closeout：五项 dogfood 修复、CLI 文档、全量门禁与隔离 PostgreSQL 11 files/62 tests 均通过；无 P0-P2 阻断。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260831-dogfood-remediation",
+        "acquired_at": "2026-09-01T02:43:09Z",
+        "expires_at": "2026-09-01T04:43:09Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-09-01T03:40:03Z"
+      }
+    },
+    {
+      "id": "dogfood-2026-08-production-release",
+      "title": "发布并生产验证 dogfood 五项整改",
+      "status": "doing",
+      "priority": "p1",
+      "owner": "codex",
+      "selected_in_session": "codex-20260831-dogfood-production-release",
+      "updated_at": "2026-09-01",
+      "dependencies": [
+        "dogfood-2026-08-remediation"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "目标提交经 CI required checks 通过并 fast-forward 合入 main；部署 workflow 显式执行 0013 前完成可读 custom-format 备份；API/Web/Worker/PostgreSQL、访问控制和同机站点不变量通过；五条 observation 经真实生产复查后更新状态并记录回执。",
+      "verification": "",
+      "handoff": "高风险发布：仅允许已审查的 0013 和五项整改；不修改 Nginx/DNS/凭据，不执行技术栈 cleanup；失败按 runbook 使用备份与 rollback 镜像恢复。",
+      "plan_path": "docs/project-harness/tasks/dogfood-2026-08-production-release/plan.md",
+      "workflow": {
+        "status": "running",
+        "updated_at": "2026-09-01",
+        "branch": "codex/dogfood-2026-08-production-release"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/dogfood-2026-08-production-release/plan.md",
+        "branch": "codex/dogfood-2026-08-production-release"
+      },
+      "review": {
+        "decision": null
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260831-dogfood-production-release",
+        "acquired_at": "2026-09-01T05:45:01Z",
+        "expires_at": "2026-09-01T07:45:01Z",
+        "ttl_minutes": 120
+      }
     }
   ]
 }

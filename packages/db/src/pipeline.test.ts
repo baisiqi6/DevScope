@@ -519,6 +519,18 @@ describe("DataCollectionPipeline", () => {
       const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
       expect(fetchCalls.length).toBeGreaterThan(0);
       expect(fetchCalls[0][0]).toContain("hn.algolia.com/api/v1/search");
+      expect(fetchCalls[0][0]).toContain("hitsPerPage=3");
+      expect(fetchCalls[0][0]).not.toContain("hits_per_page");
+    });
+
+    it.each([-3, 0, 1.5, 101])("将非法或超限的 limit 规范化为 Algolia 可接受值 (%p)", async (hnLimit) => {
+      const boundedPipeline = new DataCollectionPipeline(mockDb as any, {
+        includeSbom: false,
+        hnLimit,
+      });
+      await boundedPipeline.run({ repo: "test/repo" });
+      const requestUrl = String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]);
+      expect(requestUrl).toContain(`hitsPerPage=${hnLimit === 1.5 || hnLimit <= 0 ? 20 : 100}`);
     });
 
     it("应该正确解析 Hacker News 响应", async () => {
@@ -568,6 +580,25 @@ describe("DataCollectionPipeline", () => {
       expect(result.status).toBe("completed");
       expect(result.hnItemsCollected).toBe(0);
 
+      vi.unstubAllGlobals();
+    });
+
+    it.each([
+      [400, "parameter_error"],
+      [429, "transient_failure"],
+      [503, "transient_failure"],
+      [404, "unknown"],
+    ] as const)("为 HTTP %p 返回结构化错误类型", async (status, errorKind) => {
+      const isolatedPipeline = new DataCollectionPipeline(mockDb as any, {
+        includeSbom: false,
+        includeHackernews: true,
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status }));
+
+      await isolatedPipeline.run({ repo: "test/repo" });
+
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews)
+        .toMatchObject({ status: "failure", errorKind });
       vi.unstubAllGlobals();
     });
 

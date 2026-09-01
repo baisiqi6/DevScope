@@ -1,14 +1,12 @@
 # 当前审查
 
-## Issue #54：支持单父级树状分组与后代仓库汇总
+## Dogfood 五项问题整改
 
-- Reviewer：Kimi K3，`thinking=max`，只读独立审查；native session `01a0328f-de2f-7452-b66a-2c56146bf4a1`。
-- 最终结论：`APPROVE`；无 P0–P3，全部 review 发现已闭环。
-- 最终复核重点：有直接 membership、但全部成员对当前用户不可见的子组必须得到
-  `directRepoCount = 1`、`aggregateRepoCount = 0`；真实 PostgreSQL 回归断言已能阻止
-  fallback 被改回未过滤的直接计数。
-- Reviewer 未修改文件、未执行提交、push、部署或生产迁移；门禁由 Operator 执行。
-- 完整证据见 [Issue #54 验证记录](../tasks/issue-54/verification.md)。
+- Checklist item：`dogfood-2026-08-remediation`
+- Reviewer：`dogfood_remediation_reviewer`，独立只读复核。
+- 最终结论：`APPROVED`；无 P0–P2 阻断。
+- 审查范围：分组成员摘要与 active watched 计数、许可证 fail-closed 分类、仓库归档/删除与并发安全、HN 请求与失败语义、CLI/MCP 契约及文档一致性。
+- Reviewer 未修改文件、未提交、未 push、未部署或执行生产迁移；全量门禁与隔离 PostgreSQL 验证由 Operator 执行。
+- 完整实现与验证证据见 [verification](../tasks/dogfood-2026-08-remediation/verification.md)。
 
-本文件记录发布前 implementation review。其后 PR #55、CI、生产 `0011` 迁移部署和运行复核均已
-完成，最终状态与回执见 [Issue #54 验证记录](../tasks/issue-54/verification.md)。
+本结论只批准当前本地实现。五条 observation 保持 `fixed_pending_verification`，必须在获得独立生产授权并完成迁移、部署和真实 dogfood 复查后，才能改为 `closed`。

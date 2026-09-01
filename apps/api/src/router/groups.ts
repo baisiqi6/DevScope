@@ -64,6 +64,7 @@ async function requireOwnedRepositories(
     .where(and(
       eq(userWatchedRepositories.userId, userId),
       inArray(userWatchedRepositories.repoId, uniqueRepoIds),
+      eq(userWatchedRepositories.isArchived, false),
     ));
 
   if (rows.length !== uniqueRepoIds.length) {
@@ -154,21 +155,57 @@ export const groupsRouter = router({
       const repos =
         repoIds.length > 0
           ? await db
-              .select()
+              .select({
+                id: repositories.id,
+                fullName: repositories.fullName,
+                name: repositories.name,
+                owner: repositories.owner,
+                description: repositories.description,
+                url: repositories.url,
+                stars: repositories.stars,
+                forks: repositories.forks,
+                openIssues: repositories.openIssues,
+                language: repositories.language,
+                license: repositories.license,
+                licenseStatus: repositories.licenseStatus,
+                lastFetchedAt: repositories.lastFetchedAt,
+                starredAt: userWatchedRepositories.starredAt,
+                note: userWatchedRepositories.notes,
+              })
               .from(repositories)
+              .innerJoin(
+                userWatchedRepositories,
+                and(
+                  eq(userWatchedRepositories.repoId, repositories.id),
+                  eq(userWatchedRepositories.userId, userId),
+                  eq(userWatchedRepositories.isArchived, false),
+                ),
+              )
               .where(inArray(repositories.id, repoIds))
           : [];
 
+      const reposById = new Map(repos.map((repo) => [repo.id, repo]));
+
       // 组合数据
-      const membersWithRepos = members.map((member) => ({
+      const activeMembers = members.filter((member) => reposById.has(member.repoId));
+      const membersWithRepos = activeMembers.map((member) => ({
         ...member,
-        repository: repos.find((r) => r.id === member.repoId),
+        repository: reposById.has(member.repoId)
+          ? (() => {
+              const repo = reposById.get(member.repoId)!;
+              return {
+                ...repo,
+                lastFetchedAt: repo.lastFetchedAt?.toISOString() ?? null,
+                starredAt: repo.starredAt?.toISOString() ?? null,
+              };
+            })()
+          : null,
       }));
 
       return {
         ...group,
         members: membersWithRepos,
-        repoCount: new Set(members.map((member) => member.repoId)).size,
+        repoCount: new Set(activeMembers.map((member) => member.repoId)).size,
       };
     }),
 
@@ -246,7 +283,7 @@ export const groupsRouter = router({
    * 删除分组（级联删除成员）
    */
   delete: publicProcedure
-    .input(z.object({ groupId: z.number() }))
+    .input(z.object({ groupId: z.number().int().positive(), confirm: z.literal(true) }))
     .mutation(async ({ ctx, input }) => {
       const db = ctx.db;
       const userId = await getOrCreateCurrentUserId(db);
@@ -514,6 +551,14 @@ export const groupsQueryRouter = router({
       const members = await db
         .select({ groupId: groupMembers.groupId })
         .from(groupMembers)
+        .innerJoin(
+          userWatchedRepositories,
+          and(
+            eq(userWatchedRepositories.repoId, groupMembers.repoId),
+            eq(userWatchedRepositories.userId, userId),
+            eq(userWatchedRepositories.isArchived, false),
+          ),
+        )
         .where(eq(groupMembers.repoId, input.repoId));
 
       if (members.length === 0) {
@@ -557,6 +602,7 @@ export const groupsQueryRouter = router({
         openIssues: repositories.openIssues,
         language: repositories.language,
         license: repositories.license,
+        licenseStatus: repositories.licenseStatus,
         lastFetchedAt: repositories.lastFetchedAt,
         starredAt: userWatchedRepositories.starredAt,
         note: userWatchedRepositories.notes,
@@ -567,6 +613,7 @@ export const groupsQueryRouter = router({
         and(
           eq(userWatchedRepositories.repoId, repositories.id),
           eq(userWatchedRepositories.userId, userId),
+          eq(userWatchedRepositories.isArchived, false),
         ),
       )
       .where(and(

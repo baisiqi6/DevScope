@@ -136,6 +136,49 @@ export const updateExternalResourceInputSchema = z.object({
 });
 export type UpdateExternalResourceInput = z.infer<typeof updateExternalResourceInputSchema>;
 
+/** 仓库许可证语义分类；unknown 表示信息不足，禁止当作标准开源。 */
+export const repositoryLicenseStatusSchema = z.enum([
+  "standard_open_source",
+  "source_available",
+  "no_license",
+  "unknown",
+]);
+export type RepositoryLicenseStatus = z.infer<typeof repositoryLicenseStatusSchema>;
+
+// SPDX 标识不是任意字符串都能视为开源许可。这里只允许常见的 SPDX
+// License List/OSI 标准标识；LicenseRef-*、FOO、OTHER 等保守归为 unknown。
+const STANDARD_OPEN_SOURCE_SPDX_IDS = new Set([
+  "0BSD", "AFL-2.1", "AFL-3.0", "AGPL-3.0", "AGPL-3.0-ONLY", "AGPL-3.0-OR-LATER",
+  "APACHE-1.1", "APACHE-2.0", "ARTISTIC-2.0", "BSD-1-CLAUSE", "BSD-2-CLAUSE", "BSD-2-CLAUSE-PATENT",
+  "BSD-3-CLAUSE", "BSD-3-CLAUSE-CLEAR", "BSD-4-CLAUSE",
+  "CC0-1.0", "CDDL-1.0", "CERN-OHL-P-2.0", "CERN-OHL-S-2.0", "CPL-1.0", "ECL-2.0", "EFL-2.0",
+  "EPL-1.0", "EPL-2.0", "EUPL-1.2", "GPL-2.0", "GPL-2.0-ONLY", "GPL-2.0-OR-LATER", "GPL-3.0",
+  "GPL-3.0-ONLY", "GPL-3.0-OR-LATER", "ISC", "LGPL-2.0", "LGPL-2.0-ONLY", "LGPL-2.0-OR-LATER",
+  "LGPL-2.1", "LGPL-2.1-ONLY", "LGPL-2.1-OR-LATER", "LGPL-3.0", "LGPL-3.0-ONLY", "LGPL-3.0-OR-LATER",
+  "MIT", "MPL-1.1", "MPL-2.0", "MS-PL", "NCSA", "OFL-1.1", "OSL-3.0", "POSTGRESQL", "PYTHON-2.0",
+  "QPL-1.0", "RPL-1.5", "WTFPL", "X11", "XNET", "ZLIB", "UNLICENSE",
+]);
+
+export function classifyRepositoryLicense(
+  spdxId: string | null | undefined,
+  licenseText?: string | null,
+): RepositoryLicenseStatus {
+  const normalizedSpdx = spdxId?.trim().toUpperCase();
+  if (normalizedSpdx && STANDARD_OPEN_SOURCE_SPDX_IDS.has(normalizedSpdx)) {
+    return "standard_open_source";
+  }
+  if (licenseText === null || licenseText === undefined || licenseText.trim() === "") {
+    return normalizedSpdx ? "unknown" : "no_license";
+  }
+  const text = licenseText.toLowerCase();
+  if (
+    /business source license|\bbsl\b|commons clause|non-production|not for production|hosted service|commercial use/.test(text)
+  ) {
+    return "source_available";
+  }
+  return "unknown";
+}
+
 export const externalResourceOutputSchema = z.object({
   id: z.number(),
   resourceType: externalResourceTypeSchema,
@@ -650,6 +693,8 @@ export const repositoryDetailSchema = z.object({
   language: z.string().nullable().optional(),
   /** 许可证 */
   license: z.string().nullable().optional(),
+  /** 许可证语义分类 */
+  licenseStatus: repositoryLicenseStatusSchema,
   /** README 内容（原始 markdown） */
   readme: z.string().nullable().optional(),
   /** README 的 raw URL */
@@ -1245,7 +1290,7 @@ export type CreateGroupInput = z.infer<typeof createGroupSchema>;
  */
 export const updateGroupSchema = z.object({
   /** 分组 ID */
-  groupId: z.number(),
+  groupId: z.number().int().positive(),
   /** 分组名称 */
   name: z.string().min(1).max(50).optional(),
   /** 分组颜色 */

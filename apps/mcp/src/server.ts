@@ -84,6 +84,65 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
   );
 
   server.registerTool(
+    "devscope_get_repository_delete_impact",
+    {
+      title: "预览仓库删除影响",
+      description: "只读：统计仓库的分组、分块、Release、HN、关系、技术栈关系和其他关注者数量。",
+      inputSchema: z.object({ repoId: z.number().int().positive() }),
+      annotations: readOnlyAnnotations,
+    },
+    ({ repoId }) => runTool(() => client.getRepositoryDeleteImpact(repoId)),
+  );
+
+  server.registerTool(
+    "devscope_archive_repository",
+    {
+      title: "归档仓库",
+      description: "写入：从当前仓库列表隐藏该仓库，但保留数据以便恢复。",
+      inputSchema: z.object({ repoId: z.number().int().positive() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ repoId }) => runTool(() => client.archiveRepository(repoId)),
+  );
+
+  server.registerTool(
+    "devscope_unarchive_repository",
+    {
+      title: "恢复归档仓库",
+      description: "写入：恢复仓库在当前用户列表中的可见性。",
+      inputSchema: z.object({ repoId: z.number().int().positive() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ repoId }) => runTool(() => client.unarchiveRepository(repoId)),
+  );
+
+  server.registerTool(
+    "devscope_delete_repository",
+    {
+      title: "删除仓库",
+      description: "破坏性写入：删除当前用户的仓库收藏；仅无其他关注者时删除共享仓库数据。",
+      inputSchema: z.object({ repoId: z.number().int().positive(), confirm: z.literal(true) }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ repoId, confirm }) => runTool(() => client.deleteRepository(repoId, confirm)),
+  );
+
+  server.registerTool(
     "devscope_collect_repository",
     {
       title: "采集 GitHub 仓库",
@@ -239,6 +298,47 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
       },
     },
     ({ groupId, parentId }) => runTool(() => client.moveGroup(groupId, parentId)),
+  );
+
+  server.registerTool(
+    "devscope_update_group",
+    {
+      title: "更新仓库分组",
+      description: "写入：更新分组名称、颜色、图标或说明。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+        name: z.string().trim().min(1).max(50).optional(),
+        color: z.enum(["blue", "green", "purple", "orange", "red", "pink"]).optional(),
+        icon: z.string().trim().min(1).max(100).optional(),
+        description: z.string().max(2000).optional(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (input) => runTool(() => client.updateGroup(input)),
+  );
+
+  server.registerTool(
+    "devscope_delete_group",
+    {
+      title: "删除仓库分组",
+      description: "破坏性写入：删除空的仓库分组；含子分组的目标会被拒绝。",
+      inputSchema: z.object({
+        groupId: z.number().int().positive(),
+        confirm: z.literal(true),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ groupId, confirm }) => runTool(() => client.deleteGroup(groupId, confirm)),
   );
 
   server.registerTool(
