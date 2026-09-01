@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `dogfood-2026-08-remediation`
+- Checklist item: `dogfood-2026-08-production-release`
 - Reviewer: `dogfood_remediation_reviewer`
 - Updated at: `2026-09-01`
-- Canonical plan path: `docs/project-harness/tasks/dogfood-2026-08-remediation/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/dogfood-2026-08-production-release/plan.md`
 
 ## Item Snapshot
 
-- Title: 修复 dogfood 暴露的五项产品问题
-- Status: doing
-- Workflow status: review_requested
+- Title: 发布并生产验证 dogfood 五项整改
+- Status: done
+- Workflow status: closed
 - Priority: p1
 - Owner: codex
-- Session: codex-20260831-dogfood-remediation
-- Dependencies: None
+- Session: codex-20260831-dogfood-production-release
+- Dependencies: dogfood-2026-08-remediation
 
 ## Acceptance
 
-分组成员与聚合接口只返回受控仓库摘要；Hacker News 采集请求契约正确且空结果与临时失败可区分；CLI/MCP 可安全更新和删除分组；仓库支持带影响预检的 archive/delete 生命周期；许可证可区分标准开源、source-available/custom、无许可证和未识别；全量门禁与隔离 PostgreSQL 验证通过。
+目标提交经 CI required checks 通过并 fast-forward 合入 main；部署 workflow 显式执行 0013 前完成可读 custom-format 备份；API/Web/Worker/PostgreSQL、访问控制和同机站点不变量通过；五条 observation 经真实生产复查后更新状态并记录回执。
 
 ## Verification
 
-pnpm test; pnpm lint (0 errors, 18 existing warnings); pnpm typecheck; pnpm build; isolated pgvector/pgvector:pg16 PostgreSQL migration replay and 11 integration files/62 tests passed; focused reviewer checks and CLI/MCP docs synchronized.
+PR #59 / merge `05aa9e192a5ca95cb49ffc628617afc0e36af83d`; deploy run `33475333993` success；migration `0013` 与 journal hash 一致；备份可读且 mode 600；生产 API/Web/Worker/数据库、401/认证 health、MCP 35 tools 与 `technologyStacks` impact 复核通过。
 
 ## Handoff
 
-本批次只做本地实现与验证；生产部署需独立授权，完成后用 dogfood-observations.md 逐条回写证据。
+高风险发布：仅允许已审查的 0013 和五项整改；不修改 Nginx/DNS/凭据，不执行技术栈 cleanup；失败按 runbook 使用备份与 rollback 镜像恢复。
 
 ## Review Inputs
 
@@ -40,37 +40,47 @@ pnpm test; pnpm lint (0 errors, 18 existing warnings); pnpm typecheck; pnpm buil
 ## Canonical Plan Content
 
 ```md
-# Dogfood 五项问题整改
+# Dogfood 五项整改生产发布
 
 ## Item
 
-- Checklist item：`dogfood-2026-08-remediation`
-- 风险模式：`high-risk`（涉及 API 契约、仓库生命周期、schema/migration 与外部请求）
-- 当前阶段：本地实现与验证；生产部署不在本轮默认授权内
+- Checklist item：`dogfood-2026-08-production-release`
+- 风险模式：`high-risk`（commit、push、PR/merge、生产 migration 与 deploy）
+- 依赖：`dogfood-2026-08-remediation`
 
 ## 目标
 
-处理 `dogfood-observations.md` 中尚未关闭的五条观察：成员输出过大、Hacker News 400、Agent 分组操作面不完整、仓库缺少归档/删除、许可证语义不足。
+将已通过独立 Reviewer `APPROVED` 的五项 dogfood 整改，以可审计、可回滚的方式合入 `main` 并部署到 DevScope 生产；显式应用 migration `0013`，完成真实 API/CLI/MCP、数据库与运行环境复查。
 
-## 实施阶段
+## 发布边界
 
-1. 收紧 `groups.getWithMembers` 与聚合成员输出为稳定仓库摘要，补 API/Client/MCP 回归测试。
-2. 修正 Hacker News 请求参数与 URL 编码/limit 边界，区分成功空结果、上游临时失败和参数错误，补 fixture 测试。
-3. 沿用现有 groups router，在 Client/CLI/MCP 增加 update/delete 分组能力；删除前保留所有权校验和明确 destructive 标记。
-4. 为 repositories 增加可恢复 `isArchived` 生命周期；提供 archive/unarchive 和带影响预检的 delete API，级联清理现有关联数据，补迁移与集成测试。
-5. 增加许可证语义枚举/派生字段，保留原始 SPDX/NOASSERTION；对标准 SPDX、source-available/custom、无许可证、未识别给出可复算分类与 API/CLI/MCP 输出。
-6. 跑 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 和隔离 PostgreSQL 集成；独立 review 后更新 dogfood observation Timeline。
+- 只发布当前 `codex/dogfood-2026-08-remediation` 中已批准的代码、migration、测试与权威文档。
+- 不修改 DNS、域名、证书、Basic Auth、Nginx server-local 片段、生产凭据或同机其他站点。
+- `technology_stack_legacy_cleanup=false`；只允许 `apply_database_migration=true` 应用已审查的 `0013`。
+- 生产永久删除只验证门禁/只读影响预检，不删除真实仓库数据。
 
-## 边界
+## 流程
 
-- 不抓取文章正文，不启动公开多用户，不改变 HTTPS/域名配置。
-- 不执行生产迁移、部署或删除；生产动作另行取得授权。
-- 不复制第二套数据模型；新增字段必须服务现有 repositories 与 API 边界。
+1. 核对本地 diff、分支、门禁、迁移/回滚文件及生产只读基线。
+2. 精确暂存本任务路径，Conventional Commit 后 push 任务分支；创建 PR，等待 `quality`、`integration` required checks。
+3. 独立 Reviewer 核对 PR diff、CI 与 migration/deploy 输入；通过后合并到 `main`。
+4. 手动触发 `Build and Deploy`，设置 `apply_database_migration=true`、`technology_stack_legacy_cleanup=false`；等待 workflow 完成。
+5. 核对目标 SHA、备份可读性、migration journal、schema 列/枚举/索引、容器 revision/健康、Nginx 语法/访问控制和同机站点不变量。
+6. 通过生产 CLI/MCP 验证只读与可恢复能力；将五条 observation 更新为 `closed` 或保留失败证据，独立 Reviewer 最终验收后 Harness closeout。
 
-## 验收
+## 回滚
 
-- 五条 observation 均有明确 `closed`、`fixed_pending_verification` 或保留理由，不以单元测试代替生产复查。
-- 输出体积、HN 失败语义、生命周期破坏性操作和许可证分类均有可重复测试。
+- workflow 失败且未完成 migration：保持旧生产容器，不手工绕过 checksum/fast-forward 门禁。
+- migration 已应用后发布失败：停止 Worker，恢复本次部署前 custom-format 备份与上一 verified rollback 镜像，再复查内部/公网入口。
+- 不通过临时 down migration、`db:push`、服务器 `git pull` 或 `docker pull latest` 修复。
+
+## 验收证据
+
+- PR、required checks、merge SHA、deploy run ID。
+- 生产备份路径/权限/`pg_restore --list` 可读结果（不记录数据内容或凭据）。
+- migration journal 与新增 schema 对象检查。
+- 容器 revision、API/Web/Worker/PostgreSQL、401/认证 health、Nginx 与同机站点检查。
+- 五条 observation 的生产 Timeline 与最终 Reviewer verdict。
 ```
 
 ## Review Focus
@@ -80,4 +90,3 @@ pnpm test; pnpm lint (0 errors, 18 existing warnings); pnpm typecheck; pnpm buil
 3. 是否越过 architecture 模块边界
 4. 是否偷偷吸收了未来 checklist item 的工作
 5. 当前验证方式是否足以支持结束本轮
-

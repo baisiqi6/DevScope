@@ -1,15 +1,15 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-09-01
-> 生产运行基线：`67fc629`；`main` 已通过 PR #57 合并并完成本 item 生产部署
+> 生产运行基线：`05aa9e1`（完整 SHA 见发布回执）；`main` 已通过 PR #59 合并并完成本 item 生产部署
 > 部署形态：Standalone
-> 当前状态：dogfood 五项整改已完成本地实现与独立审查；生产仍停留在 `67fc629`，尚未部署本批次 migration/code
+> 当前状态：dogfood 五项整改已完成本地实现、独立审查、生产迁移、部署与只读复核；五条 observation 保持 `fixed_pending_verification` 以等待真实写入/采集样本
 
 ## 当前状态
 
 - [Harness checklist](harness-checklist.json)：dogfood 五项整改已完成 `done` closeout，最终独立审查为 `APPROVED`；
 - [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
-- 生产 API、Web、Worker 当前运行 revision `67fc629`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- 生产 API、Web、Worker 当前运行 revision `05aa9e192a5ca95cb49ffc628617afc0e36af83d`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
 - 生产部署 run `33241430155` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
   `0012`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
@@ -46,7 +46,7 @@
 | 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
 | 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
-| Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已完成本地修复；待生产验证 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
+| Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已部署并完成只读复核；等待真实写入/采集样本 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
 
 ## 当前生产基线
 
@@ -68,7 +68,7 @@
 ## 当前 handoff
 
 - Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
-  `fixed_pending_verification`，尚未授权 commit、push、生产迁移或部署；
+  `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
 - 外部资源工作区已完成 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
