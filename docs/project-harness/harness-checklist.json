@@ -684,10 +684,10 @@
     {
       "id": "dogfood-2026-08-production-release",
       "title": "发布并生产验证 dogfood 五项整改",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260831-dogfood-production-release",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-09-01",
       "dependencies": [
         "dogfood-2026-08-remediation"
@@ -695,27 +695,34 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "目标提交经 CI required checks 通过并 fast-forward 合入 main；部署 workflow 显式执行 0013 前完成可读 custom-format 备份；API/Web/Worker/PostgreSQL、访问控制和同机站点不变量通过；五条 observation 经真实生产复查后更新状态并记录回执。",
-      "verification": "",
+      "verification": "生产部署与只读复查完成：run 33475333993 success，目标 SHA 05aa9e192a5ca95cb49ffc628617afc0e36af83d，0013/journal/backup/schema/containers/health/401/MCP 全部核验；未执行真实仓库删除。",
       "handoff": "高风险发布：仅允许已审查的 0013 和五项整改；不修改 Nginx/DNS/凭据，不执行技术栈 cleanup；失败按 runbook 使用备份与 rollback 镜像恢复。",
       "plan_path": "docs/project-harness/tasks/dogfood-2026-08-production-release/plan.md",
       "workflow": {
-        "status": "running",
+        "status": "closed",
         "updated_at": "2026-09-01",
         "branch": "codex/dogfood-2026-08-production-release"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/dogfood-2026-08-production-release/plan.md",
-        "branch": "codex/dogfood-2026-08-production-release"
+        "branch": "codex/dogfood-2026-08-production-release",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
-        "decision": null
+        "decision": "approved",
+        "reviewer": "dogfood_remediation_reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-09-01",
+        "summary": "部署后独立只读验收 APPROVED：workflow、目标 SHA、migration/journal、备份、容器、HTTP/访问控制和 MCP 业务入口均通过；未执行真实 archive/delete。"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260831-dogfood-production-release",
         "acquired_at": "2026-09-01T05:45:01Z",
         "expires_at": "2026-09-01T07:45:01Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-09-01T06:09:23Z"
       }
     }
   ]

@@ -1,17 +1,17 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-09-01
-> 生产运行基线：`67fc629`；`main` 已通过 PR #57 合并并完成本 item 生产部署
+> 生产运行基线：`05aa9e1`（完整 SHA 见发布回执）；`main` 已通过 PR #59 合并并完成本 item 生产部署
 > 部署形态：Standalone
-> 当前状态：dogfood 五项整改已完成本地实现与独立审查；生产仍停留在 `67fc629`，尚未部署本批次 migration/code
+> 当前状态：dogfood 五项整改已完成本地实现、独立审查、生产迁移、部署与只读复核；五条 observation 保持 `fixed_pending_verification` 以等待真实写入/采集样本
 
 ## 当前状态
 
 - [Harness checklist](harness-checklist.json)：dogfood 五项整改已完成 `done` closeout，最终独立审查为 `APPROVED`；
 - [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
-- 生产 API、Web、Worker 当前运行 revision `67fc629`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
-- 生产部署 run `33241430155` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
-  `0012`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
+- 生产 API、Web、Worker 当前运行 revision `05aa9e192a5ca95cb49ffc628617afc0e36af83d`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- 本批次生产部署 run `33475333993` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
+  migration `0013`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
 ### Issue #54 生产 closeout
 
@@ -46,32 +46,28 @@
 | 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
 | 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
-| Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已完成本地修复；待生产验证 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
+| Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已部署并完成只读复核；等待真实写入/采集样本 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
 
 ## 当前生产基线
 
-2026-08-29 UTC 07:50 后完成部署回读：
+2026-09-01（deploy run `33475333993`）完成 dogfood 五项整改的生产部署与只读回读：
 
-- DevScope MCP health 为 `ok`，SSH tunnel 未认证返回 `401`；公网域名因未完成 ICP 备案由阿里云
-  拦截并返回 `403`，当前不作为可用入口；
-- API、Web、Worker 均运行 `67fc629`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
-- migration `0012` 已成功应用（保留分组树 `0011`）；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
-  根级，86 条 membership 不变；
-- 正式仓库 40、伪仓库 0、伪收藏 0；`is_reference` 列已删除；
-- 图谱为 40 个 repository + 9 个 language + 13 个 technology stack 节点，共 249 条边；
-- 新表保存 13 个技术栈和 79 条 repository-to-stack 关系；cleanup receipt 与 baseline receipt 均在位；
-- `package_repo_mappings` 中 9 条历史 `error` 行均对应当前 SBOM 已不再使用的旧 package version，不是活跃解析失败；
-- GitHub Ruleset `main-required-checks` 已要求 `quality` 与 `integration`，最新 `main` 两项均通过。
+- 目标为 PR #59 合并提交 `05aa9e192a5ca95cb49ffc628617afc0e36af83d`；`technology_stack_legacy_cleanup=false`，仅显式应用 migration `0013`，workflow 成功；
+- migration `0013` 文件 SHA-256 为 `fe17db6ecf5eebdc06c77756c93b1173efb4973a90f5fac2a0ba8f8d795574ed`，与生产 journal 一致；迁移前 custom-format 备份权限为 mode `600`，`pg_restore --list` 可读；
+- API、Web、Worker 均运行目标 revision，服务器工作树 clean；PostgreSQL 16 + pgvector healthy；
+- SSH tunnel 未认证请求返回 `401`，Keychain 注入认证后的 health/home 只读请求返回 `200`；MCP 工具清单为 35 项，`technologyStacks` 删除影响预检可读；
+- 本次未执行真实仓库 `archive`/`delete` mutation，也未重新采集仓库，因此五条 dogfood observation 继续保持 `fixed_pending_verification`；
+- 未修改 DNS、证书、Nginx、凭据或同机其他站点。
 
-这些是日期化运行证据，不替代 [architecture.md](architecture.md)、[domain-model.md](domain-model.md) 或各 task verification 的稳定事实。
+历史快照（不作为当前运行基线）：2026-08-29 的 `67fc629` + migration `0012` 记录了外部资源工作区部署；更早的分组树/技术栈数据不变量仍见对应 task verification。以上均为日期化运行证据，不替代 [architecture.md](architecture.md)、[domain-model.md](domain-model.md) 或各 task verification 的稳定事实。
 
 ## 当前 handoff
 
 - Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
-  `fixed_pending_verification`，尚未授权 commit、push、生产迁移或部署；
+  `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
-- 外部资源工作区已完成 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
+- 外部资源工作区的 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署属于历史快照；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
