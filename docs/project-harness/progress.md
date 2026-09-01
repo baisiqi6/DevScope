@@ -50,20 +50,16 @@
 
 ## 当前生产基线
 
-2026-08-29 UTC 07:50 后完成部署回读：
+2026-09-01（deploy run `33475333993`）完成 dogfood 五项整改的生产部署与只读回读：
 
-- DevScope MCP health 为 `ok`，SSH tunnel 未认证返回 `401`；公网域名因未完成 ICP 备案由阿里云
-  拦截并返回 `403`，当前不作为可用入口；
-- API、Web、Worker 均运行 `67fc629`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
-- migration `0012` 已成功应用（保留分组树 `0011`）；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
-  根级，86 条 membership 不变；
-- 正式仓库 40、伪仓库 0、伪收藏 0；`is_reference` 列已删除；
-- 图谱为 40 个 repository + 9 个 language + 13 个 technology stack 节点，共 249 条边；
-- 新表保存 13 个技术栈和 79 条 repository-to-stack 关系；cleanup receipt 与 baseline receipt 均在位；
-- `package_repo_mappings` 中 9 条历史 `error` 行均对应当前 SBOM 已不再使用的旧 package version，不是活跃解析失败；
-- GitHub Ruleset `main-required-checks` 已要求 `quality` 与 `integration`，最新 `main` 两项均通过。
+- 目标为 PR #59 合并提交 `05aa9e192a5ca95cb49ffc628617afc0e36af83d`；`technology_stack_legacy_cleanup=false`，仅显式应用 migration `0013`，workflow 成功；
+- migration `0013` 文件 SHA-256 为 `fe17db6ecf5eebdc06c77756c93b1173efb4973a90f5fac2a0ba8f8d795574ed`，与生产 journal 一致；迁移前 custom-format 备份权限为 mode `600`，`pg_restore --list` 可读；
+- API、Web、Worker 均运行目标 revision，服务器工作树 clean；PostgreSQL 16 + pgvector healthy；
+- SSH tunnel 未认证请求返回 `401`，Keychain 注入认证后的 health/home 只读请求返回 `200`；MCP 工具清单为 35 项，`technologyStacks` 删除影响预检可读；
+- 本次未执行真实仓库 `archive`/`delete` mutation，也未重新采集仓库，因此五条 dogfood observation 继续保持 `fixed_pending_verification`；
+- 未修改 DNS、证书、Nginx、凭据或同机其他站点。
 
-这些是日期化运行证据，不替代 [architecture.md](architecture.md)、[domain-model.md](domain-model.md) 或各 task verification 的稳定事实。
+历史快照（不作为当前运行基线）：2026-08-29 的 `67fc629` + migration `0012` 记录了外部资源工作区部署；更早的分组树/技术栈数据不变量仍见对应 task verification。以上均为日期化运行证据，不替代 [architecture.md](architecture.md)、[domain-model.md](domain-model.md) 或各 task verification 的稳定事实。
 
 ## 当前 handoff
 
