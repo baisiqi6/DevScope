@@ -15,11 +15,12 @@ import {
   normalizeGitHubReleaseId,
   updateEmbeddingProgressForVersion,
   type EmbeddingApplyResult,
+  type SourceErrorKind,
   type SourceSnapshot,
 } from "./index";
 import { GitHubCollector, parseRepoFullName } from "./github";
 import { TextChunker, BGEEmbeddingProvider } from "@devscope/ai";
-import { GitHubClient } from "@devscope/shared";
+import { classifyRepositoryLicense, GitHubClient, type RepositoryLicenseStatus } from "@devscope/shared";
 import { parseSbomPackages, type SbomPackage } from "./repo-graph";
 import type { Db } from "./index";
 import { z } from "zod";
@@ -402,11 +403,29 @@ export class DataCollectionPipeline {
   ): Promise<SourceSnapshot<PreparedHackerNewsItem>> {
     if (!enabled) return { status: "skipped" };
     try {
-      const response = await fetch(
-        `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hits_per_page=${limit}`,
-      );
+      // Algolia rejects zero, negative, fractional and oversized page sizes with 400.
+      // Normalize caller/config values at the integration boundary so a malformed
+      // optional source cannot turn the whole collection into a hard failure.
+      const normalizedLimit = Number.isSafeInteger(limit) && limit > 0
+        ? Math.min(limit, 100)
+        : 20;
+      const params = new URLSearchParams({
+        query,
+        tags: "story",
+        hitsPerPage: String(normalizedLimit),
+      });
+      const response = await fetch(`https://hn.algolia.com/api/v1/search?${params.toString()}`);
       if (!response.ok) {
-        throw new Error(`Hacker News API error: ${response.status}`);
+        const errorKind: SourceErrorKind = response.status === 400
+          ? "parameter_error"
+          : response.status === 408 || response.status === 429 || response.status >= 500
+            ? "transient_failure"
+            : "unknown";
+        return {
+          status: "failure",
+          error: `Hacker News API error: ${response.status}`,
+          errorKind,
+        };
       }
       const data = hackerNewsResponseSchema.parse(await response.json());
       return {
@@ -423,7 +442,29 @@ export class DataCollectionPipeline {
         })),
       };
     } catch (err) {
-      return { status: "failure", error: err instanceof Error ? err.message : String(err) };
+      return {
+        status: "failure",
+        error: err instanceof Error ? err.message : String(err),
+        errorKind: err instanceof TypeError ? "transient_failure" : "unknown",
+      };
+    }
+  }
+
+  private async resolveLicenseStatus(
+    owner: string,
+    repo: string,
+    license: string | null,
+  ): Promise<RepositoryLicenseStatus> {
+    const basicStatus = classifyRepositoryLicense(license);
+    if (basicStatus === "standard_open_source") return basicStatus;
+    const getLicenseText = (this.github as unknown as {
+      getLicenseText?: (owner: string, repo: string) => Promise<string | null>;
+    }).getLicenseText;
+    if (!getLicenseText) return basicStatus;
+    try {
+      return classifyRepositoryLicense(license, await getLicenseText.call(this.github, owner, repo));
+    } catch {
+      return "unknown";
     }
   }
 
@@ -569,7 +610,7 @@ export class DataCollectionPipeline {
         }));
 
       // 3. 在事务外准备可选来源，并保留 success([]) / failure / skipped。
-      const [hackernews, releases, sbom] = await Promise.all([
+      const [hackernews, releases, sbom, licenseStatus] = await Promise.all([
         this.prepareHackerNewsSnapshot(repo, effectiveConfig.hnLimit, effectiveConfig.includeHackernews),
         this.prepareReleaseSnapshot(owner, repo),
         this.prepareSbomSnapshot(
@@ -577,6 +618,7 @@ export class DataCollectionPipeline {
           effectiveConfig.includeSbom,
           effectiveConfig.githubToken,
         ),
+        this.resolveLicenseStatus(owner, repo, githubData.repository.license),
       ]);
       hnItemsCollected = hackernews.status === "success" ? hackernews.items.length : 0;
       sbomPackages = sbom.status === "success" ? sbom.packages : undefined;
@@ -602,6 +644,7 @@ export class DataCollectionPipeline {
           openIssues: githubData.repository.openIssues,
           language: githubData.repository.language,
           license: githubData.repository.license,
+          licenseStatus,
           readme: githubData.readme,
           readmeUrl: githubData.readmeUrl,
           lastFetchedAt: new Date(),

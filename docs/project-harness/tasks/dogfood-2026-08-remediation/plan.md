@@ -1,45 +1,3 @@
-# Review Packet
-
-## Subject
-
-- Checklist item: `dogfood-2026-08-remediation`
-- Reviewer: `dogfood_remediation_reviewer`
-- Updated at: `2026-09-01`
-- Canonical plan path: `docs/project-harness/tasks/dogfood-2026-08-remediation/plan.md`
-
-## Item Snapshot
-
-- Title: 修复 dogfood 暴露的五项产品问题
-- Status: doing
-- Workflow status: review_requested
-- Priority: p1
-- Owner: codex
-- Session: codex-20260831-dogfood-remediation
-- Dependencies: None
-
-## Acceptance
-
-分组成员与聚合接口只返回受控仓库摘要；Hacker News 采集请求契约正确且空结果与临时失败可区分；CLI/MCP 可安全更新和删除分组；仓库支持带影响预检的 archive/delete 生命周期；许可证可区分标准开源、source-available/custom、无许可证和未识别；全量门禁与隔离 PostgreSQL 验证通过。
-
-## Verification
-
-pnpm test; pnpm lint (0 errors, 18 existing warnings); pnpm typecheck; pnpm build; isolated pgvector/pgvector:pg16 PostgreSQL migration replay and 11 integration files/62 tests passed; focused reviewer checks and CLI/MCP docs synchronized.
-
-## Handoff
-
-本批次只做本地实现与验证；生产部署需独立授权，完成后用 dogfood-observations.md 逐条回写证据。
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-```md
 # Dogfood 五项问题整改
 
 ## Item
@@ -71,13 +29,3 @@ pnpm test; pnpm lint (0 errors, 18 existing warnings); pnpm typecheck; pnpm buil
 
 - 五条 observation 均有明确 `closed`、`fixed_pending_verification` 或保留理由，不以单元测试代替生产复查。
 - 输出体积、HN 失败语义、生命周期破坏性操作和许可证分类均有可重复测试。
-```
-
-## Review Focus
-
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮
-

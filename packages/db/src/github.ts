@@ -15,7 +15,7 @@
  */
 
 import { Octokit } from "octokit";
-import { normalizeGitHubRepositoryId } from "@devscope/shared";
+import { classifyRepositoryLicense, normalizeGitHubRepositoryId, type RepositoryLicenseStatus } from "@devscope/shared";
 
 // ============================================================================
 // 类型定义
@@ -36,6 +36,7 @@ export interface GitHubRepoInfo {
   openIssues: number;
   language: string | null;
   license: string | null;
+  licenseStatus?: RepositoryLicenseStatus;
   createdAt: Date;
   updatedAt: Date;
   pushedAt: Date;
@@ -306,10 +307,30 @@ export class GitHubCollector {
       openIssues: data.open_issues_count,
       language: data.language,
       license: data.license?.spdx_id || null,
+      licenseStatus: classifyRepositoryLicense(data.license?.spdx_id),
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),
       pushedAt: new Date(data.pushed_at),
     };
+  }
+
+  /** 获取根目录许可证文本，用于识别 GitHub 无 SPDX 的 source-available 条款。 */
+  async getLicenseText(owner: string, repo: string): Promise<string | null> {
+    for (const path of ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING", "COPYING.md", "COPYING.txt"]) {
+      try {
+        const { data } = await this.octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path,
+          mediaType: { format: "raw" },
+        });
+        if (typeof data === "string") return data;
+      } catch (error: unknown) {
+        if ((error as { status?: number }).status === 404) continue;
+        throw error;
+      }
+    }
+    return null;
   }
 
   /**

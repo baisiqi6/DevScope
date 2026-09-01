@@ -30,6 +30,9 @@ import {
   userWatchedRepositories,
   type Db,
   isRealGitHubRepository,
+  getRepositoryDeleteImpact,
+  setRepositoryArchived,
+  deleteRepositoryForUser,
 } from "@devscope/db";
 import { desc, eq, sql, and, or } from "drizzle-orm";
 import {
@@ -96,6 +99,7 @@ async function requireWatchedRepository(
     .where(and(
       eq(userWatchedRepositories.userId, userId),
       eq(userWatchedRepositories.repoId, repoId),
+      eq(userWatchedRepositories.isArchived, false),
     ))
     .limit(1);
 
@@ -116,6 +120,7 @@ async function requireWatchedRepositoryByFullName(
     .where(and(
       eq(userWatchedRepositories.userId, userId),
       eq(repositories.fullName, fullName),
+      eq(userWatchedRepositories.isArchived, false),
       isRealGitHubRepository,
     ))
     .limit(1);
@@ -208,7 +213,7 @@ export const appRouter = router({
                 })
                 .onConflictDoUpdate({
                   target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
-                  set: { starredAt, repoFullName: repo.fullName, updatedAt: new Date() },
+                  set: { starredAt, repoFullName: repo.fullName, isArchived: false, updatedAt: new Date() },
                 });
             }
           }
@@ -254,6 +259,35 @@ export const appRouter = router({
       };
     }),
 
+  /** 读取仓库删除影响，实际删除前必须由调用方明确确认。 */
+  getRepositoryDeleteImpact: publicProcedure
+    .input(z.object({ repoId: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      return getRepositoryDeleteImpact(ctx.db, userId, input.repoId);
+    }),
+
+  archiveRepository: publicProcedure
+    .input(z.object({ repoId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      return setRepositoryArchived(ctx.db, userId, input.repoId, true);
+    }),
+
+  unarchiveRepository: publicProcedure
+    .input(z.object({ repoId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      return setRepositoryArchived(ctx.db, userId, input.repoId, false);
+    }),
+
+  deleteRepository: publicProcedure
+    .input(z.object({ repoId: z.number().int().positive(), confirm: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      return deleteRepositoryForUser(ctx.db, userId, input.repoId);
+    }),
+
   /**
    * 获取仓库列表
    * @description 获取已采集的仓库列表
@@ -280,6 +314,7 @@ export const appRouter = router({
           openIssues: repositories.openIssues,
           language: repositories.language,
           license: repositories.license,
+          licenseStatus: repositories.licenseStatus,
           lastFetchedAt: repositories.lastFetchedAt,
           starredAt: userWatchedRepositories.starredAt,
           note: userWatchedRepositories.notes,
@@ -292,7 +327,7 @@ export const appRouter = router({
             eq(userWatchedRepositories.userId, userId),
           ),
         )
-        .where(isRealGitHubRepository)
+        .where(and(isRealGitHubRepository, eq(userWatchedRepositories.isArchived, false)))
         .orderBy(desc(repositories.stars))
         .limit(input.limit)
         .offset(input.offset);
@@ -330,7 +365,7 @@ export const appRouter = router({
             eq(userWatchedRepositories.userId, userId),
           ),
         )
-        .where(and(eq(repositories.id, input.id), isRealGitHubRepository))
+        .where(and(eq(repositories.id, input.id), isRealGitHubRepository, eq(userWatchedRepositories.isArchived, false)))
         .limit(1);
 
       if (repoList.length === 0) {
@@ -369,6 +404,7 @@ export const appRouter = router({
         openIssues: repo.openIssues,
         language: repo.language,
         license: repo.license,
+        licenseStatus: repo.licenseStatus,
         readme: repo.readme,
         readmeUrl: repo.readmeUrl,
         lastFetchedAt: repo.lastFetchedAt?.toISOString(),
@@ -504,7 +540,7 @@ export const appRouter = router({
           })
           .onConflictDoUpdate({
             target: [userWatchedRepositories.userId, userWatchedRepositories.repoId],
-            set: { repoFullName: result.repository.fullName, updatedAt: new Date() },
+            set: { repoFullName: result.repository.fullName, isArchived: false, updatedAt: new Date() },
           });
 
         // 如果用户没有选择跳过向量化，启动后台向量化任务
@@ -790,6 +826,7 @@ export const appRouter = router({
           and(
             eq(userWatchedRepositories.repoId, repositories.id),
             eq(userWatchedRepositories.userId, userId),
+            eq(userWatchedRepositories.isArchived, false),
           ),
         )
         .where(whereClause);

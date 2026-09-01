@@ -3,7 +3,7 @@ import {
   type DevScopeClient,
   type EmbeddingStatus,
 } from '@devscope/client';
-import { externalResourceTypeSchema } from '@devscope/shared';
+import { externalResourceTypeSchema, groupColorEnum } from '@devscope/shared';
 
 export const CLI_VERSION = '0.0.1';
 
@@ -13,6 +13,10 @@ const HELP_TEXT = `DevScope CLI
   devscope health
   devscope repo list [--limit <1-100>] [--offset <n>]
   devscope repo get <repo-id>
+  devscope repo delete-impact <repo-id>
+  devscope repo archive <repo-id>       # 归档；恢复使用 unarchive
+  devscope repo unarchive <repo-id>     # 通过 repo-id 恢复归档仓库
+  devscope repo delete <repo-id> --confirm
   devscope repo collect <owner/repo> [--skip-embeddings] [--wait]
                         [--poll-interval-ms <ms>] [--timeout-ms <ms>]
   devscope repo embedding-status <repo-id>
@@ -21,6 +25,9 @@ const HELP_TEXT = `DevScope CLI
   devscope group list
   devscope group tree
   devscope group create <name> [--description <text>] [--parent-id <group-id>]
+  devscope group update <group-id> [--name <text>] [--description <text>]
+                           [--color <color>] [--icon <icon>]
+  devscope group delete <group-id> --confirm
   devscope group members <group-id>
   devscope group aggregate-members <group-id>
   devscope group move <group-id> <parent-id|root>
@@ -218,6 +225,34 @@ async function runGroupCommand(
     });
   }
 
+  if (command === 'update') {
+    const parsed = parseOptions(
+      rest,
+      new Set(['--name', '--description', '--color', '--icon']),
+      new Set(),
+    );
+    expectPositionals(parsed.positionals, 1, 'devscope group update <group-id> [options]');
+    if (parsed.values.size === 0) {
+      throw new CliUsageError('group update 至少需要一个可更新字段');
+    }
+    return client.updateGroup({
+      groupId: parseInteger(parsed.positionals[0], 'group-id', undefined, 1),
+      name: parsed.values.get('--name'),
+      description: parsed.values.get('--description'),
+      color: parseGroupColor(parsed.values.get('--color')),
+      icon: parsed.values.get('--icon'),
+    });
+  }
+
+  if (command === 'delete') {
+    const parsed = parseOptions(rest, new Set(), new Set(['--confirm']));
+    expectPositionals(parsed.positionals, 1, 'devscope group delete <group-id> --confirm');
+    if (!parsed.flags.has('--confirm')) {
+      throw new CliUsageError('group delete 需要显式 --confirm');
+    }
+    return client.deleteGroup(parseInteger(parsed.positionals[0], 'group-id', undefined, 1), true);
+  }
+
   if (command === 'members') {
     const parsed = parseOptions(rest, new Set(), new Set());
     expectPositionals(parsed.positionals, 1, 'devscope group members <group-id>');
@@ -271,13 +306,20 @@ async function runGroupCommand(
     return client.removeRepoFromGroup(groupId, repoId);
   }
 
-  throw new CliUsageError('用法: devscope group <list|tree|create|members|aggregate-members|move|reorder|add|remove> ...');
+  throw new CliUsageError('用法: devscope group <list|tree|create|update|delete|members|aggregate-members|move|reorder|add|remove> ...');
 }
 
 function parseExternalResourceType(value: string | undefined): 'article' | 'paper' | 'website' | undefined {
   if (value === undefined) return undefined;
   const parsed = externalResourceTypeSchema.safeParse(value);
   if (!parsed.success) throw new CliUsageError('--type 必须是 article、paper 或 website');
+  return parsed.data;
+}
+
+function parseGroupColor(value: string | undefined): 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'pink' | undefined {
+  if (value === undefined) return undefined;
+  const parsed = groupColorEnum.safeParse(value);
+  if (!parsed.success) throw new CliUsageError('--color 必须是 blue、green、purple、orange、red 或 pink');
   return parsed.data;
 }
 
@@ -485,6 +527,31 @@ async function runRepoCommand(
     return client.getRepository(parseInteger(parsed.positionals[0], 'repo-id', undefined, 1));
   }
 
+  if (command === 'delete-impact') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, 'devscope repo delete-impact <repo-id>');
+    return client.getRepositoryDeleteImpact(parseInteger(parsed.positionals[0], 'repo-id', undefined, 1));
+  }
+
+  if (command === 'archive' || command === 'unarchive') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, `devscope repo ${command} <repo-id>`);
+    const repoId = parseInteger(parsed.positionals[0], 'repo-id', undefined, 1);
+    return command === 'archive'
+      ? client.archiveRepository(repoId)
+      : client.unarchiveRepository(repoId);
+  }
+
+  if (command === 'delete') {
+    const parsed = parseOptions(rest, new Set(), new Set(['--confirm']));
+    expectPositionals(parsed.positionals, 1, 'devscope repo delete <repo-id> --confirm');
+    if (!parsed.flags.has('--confirm')) throw new CliUsageError('repo delete 需要显式 --confirm');
+    return client.deleteRepository(
+      parseInteger(parsed.positionals[0], 'repo-id', undefined, 1),
+      true,
+    );
+  }
+
   if (command === 'embedding-status') {
     const parsed = parseOptions(rest, new Set(), new Set());
     expectPositionals(parsed.positionals, 1, 'devscope repo embedding-status <repo-id>');
@@ -535,7 +602,7 @@ async function runRepoCommand(
     return client.updateRepoNote(repoId, parsed.positionals[1]);
   }
 
-  throw new CliUsageError('用法: devscope repo <list|get|collect|embedding-status|note> ...');
+  throw new CliUsageError('用法: devscope repo <list|get|delete-impact|archive|unarchive|delete|collect|embedding-status|note> ...');
 }
 
 async function dispatch(

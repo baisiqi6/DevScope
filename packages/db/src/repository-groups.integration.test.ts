@@ -168,7 +168,7 @@ describeIntegration('repository group hierarchy on PostgreSQL', () => {
     const treeWithoutVisibleMembers = await listRepositoryGroupTree(db, userId);
     expect(treeWithoutVisibleMembers[0].aggregateRepoCount).toBe(0);
     expect(treeWithoutVisibleMembers[0].children[0]).toMatchObject({
-      directRepoCount: 1,
+      directRepoCount: 0,
       aggregateRepoCount: 0,
     });
     const aggregateWithoutVisibleMembers = await getAggregateRepositoryGroupView(
@@ -178,6 +178,39 @@ describeIntegration('repository group hierarchy on PostgreSQL', () => {
     );
     expect(aggregateWithoutVisibleMembers?.group.aggregateRepoCount).toBe(0);
     expect(aggregateWithoutVisibleMembers?.members).toEqual([]);
+  });
+
+  it('directRepoCount 仅统计当前用户且排除已归档仓库', async () => {
+    const group = await createRepositoryGroup(db, { userId, name: 'Visibility' });
+    const [ownRepo, otherRepo] = await db.insert(schema.repositories).values([
+      {
+        githubRepositoryId: 'group-hierarchy-own-visibility',
+        fullName: 'group-hierarchy/own-visibility',
+        name: 'own-visibility', owner: 'group-hierarchy',
+        url: 'https://github.test/group-hierarchy/own-visibility',
+      },
+      {
+        githubRepositoryId: 'group-hierarchy-other-visibility',
+        fullName: 'group-hierarchy/other-visibility',
+        name: 'other-visibility', owner: 'group-hierarchy',
+        url: 'https://github.test/group-hierarchy/other-visibility',
+      },
+    ]).returning();
+    await db.insert(schema.userWatchedRepositories).values([
+      { userId, repoId: ownRepo.id, repoFullName: ownRepo.fullName, isArchived: true },
+      { userId: otherUserId, repoId: otherRepo.id, repoFullName: otherRepo.fullName },
+    ]);
+    await db.insert(schema.groupMembers).values([
+      { groupId: group.id, repoId: ownRepo.id },
+      { groupId: group.id, repoId: otherRepo.id },
+    ]);
+
+    const tree = await listRepositoryGroupTree(db, userId);
+    expect(tree.find((node) => node.id === group.id)).toMatchObject({
+      directRepoCount: 0,
+      repoCount: 0,
+      aggregateRepoCount: 0,
+    });
   });
 
   it('组合外键拒绝跨用户 parent，trigger 拒绝自循环与后代循环', async () => {

@@ -15,6 +15,10 @@ function createStubClient(): DevScopeClient {
     health: vi.fn().mockResolvedValue({ status: "ok", timestamp: "2026-07-16T00:00:00.000Z" }),
     listRepositories: vi.fn().mockResolvedValue([]),
     getRepository: vi.fn(),
+    getRepositoryDeleteImpact: vi.fn(),
+    archiveRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: true, repositoryDeleted: false }),
+    unarchiveRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: false, repositoryDeleted: false }),
+    deleteRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: false, repositoryDeleted: true }),
     collectRepository: vi.fn(),
     getEmbeddingStatus: vi.fn(),
     semanticSearch: vi.fn(),
@@ -24,6 +28,8 @@ function createStubClient(): DevScopeClient {
     getGroupWithMembers: vi.fn(),
     getAggregateGroupWithMembers: vi.fn(),
     createGroup: vi.fn(),
+    updateGroup: vi.fn(),
+    deleteGroup: vi.fn().mockResolvedValue({ success: true }),
     moveGroup: vi.fn(),
     reorderGroupSiblings: vi.fn().mockResolvedValue({ success: true }),
     addRepoToGroup: vi.fn(),
@@ -86,6 +92,36 @@ describe("DevScope CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(client.listRepositories).toHaveBeenCalledWith({ limit: 10, offset: 20 });
+  });
+
+  it("仓库归档/恢复与删除要求显式确认", async () => {
+    const stdout = captureOutput();
+    const stderr = captureOutput();
+    const client = createStubClient();
+    vi.mocked(client.getRepositoryDeleteImpact).mockResolvedValue({
+      repoId: 5, groupMemberships: 2, chunks: 10, releases: 1,
+      hackernewsItems: 0, relationships: 3, technologyStacks: 1, otherWatchers: 0,
+    });
+
+    await expect(runCli(["repo", "delete-impact", "5"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    expect(client.getRepositoryDeleteImpact).toHaveBeenCalledWith(5);
+
+    await expect(runCli(["repo", "archive", "5"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    expect(client.archiveRepository).toHaveBeenCalledWith(5);
+
+    await expect(runCli(["repo", "delete", "5"], {
+      createClient: () => client, stderr: stderr.output,
+    })).resolves.toBe(2);
+    expect(client.deleteRepository).not.toHaveBeenCalled();
+
+    await expect(runCli(["repo", "delete", "5", "--confirm"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    expect(client.deleteRepository).toHaveBeenCalledWith(5, true);
   });
 
   it("解析外部资源列表类型", async () => {
@@ -326,6 +362,45 @@ describe("DevScope CLI", () => {
     expect(client.getAggregateGroupWithMembers).toHaveBeenCalledWith(1);
     expect(client.moveGroup).toHaveBeenCalledWith(2, 1);
     expect(client.reorderGroupSiblings).toHaveBeenCalledWith(1, [3, 2]);
+  });
+
+  it("group update 与 delete 需要显式参数/确认", async () => {
+    const stdout = captureOutput();
+    const stderr = captureOutput();
+    const client = createStubClient();
+    vi.mocked(client.updateGroup).mockResolvedValue({
+      id: 2,
+      userId: 1,
+      parentId: null,
+      name: "新名称",
+      color: "green",
+      icon: "folder",
+      description: "说明",
+      orderIndex: 0,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    await expect(runCli(["group", "update", "2", "--name", "新名称", "--color", "green"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    expect(client.updateGroup).toHaveBeenCalledWith({
+      groupId: 2,
+      name: "新名称",
+      description: undefined,
+      color: "green",
+      icon: undefined,
+    });
+
+    await expect(runCli(["group", "delete", "2"], {
+      createClient: () => client, stderr: stderr.output,
+    })).resolves.toBe(2);
+    expect(client.deleteGroup).not.toHaveBeenCalled();
+
+    await expect(runCli(["group", "delete", "2", "--confirm"], {
+      createClient: () => client, stdout: stdout.output,
+    })).resolves.toBe(0);
+    expect(client.deleteGroup).toHaveBeenCalledWith(2, true);
   });
 
   it("group members 获取分组成员", async () => {

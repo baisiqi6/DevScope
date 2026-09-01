@@ -25,6 +25,7 @@ const mockRest = {
   repos: {
     get: vi.fn(),
     getReadme: vi.fn(),
+    getContent: vi.fn(),
     listCommits: vi.fn(),
     listReleases: vi.fn(),
     listTags: vi.fn(),
@@ -133,6 +134,18 @@ describe("GitHubCollector", () => {
       const result = await collector.getReadme("owner", "repo");
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe("getLicenseText", () => {
+    it("LICENSE 不存在时回退到常见许可证文件，并保留未知文本", async () => {
+      mockRest.repos.getContent
+        .mockRejectedValueOnce({ status: 404 })
+        .mockRejectedValueOnce({ status: 404 })
+        .mockResolvedValueOnce({ data: "custom terms" });
+
+      await expect(collector.getLicenseText("owner", "repo")).resolves.toBe("custom terms");
+      expect(mockRest.repos.getContent).toHaveBeenNthCalledWith(3, expect.objectContaining({ path: "LICENSE.txt" }));
     });
   });
 

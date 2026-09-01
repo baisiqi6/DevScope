@@ -124,7 +124,7 @@ describe("group hierarchy mutation guards", () => {
     });
     const caller = groupsRouter.createCaller({ db } as never);
 
-    await expect(caller.delete({ groupId: 10 }))
+    await expect(caller.delete({ groupId: 10, confirm: true }))
       .rejects.toThrow("分组包含子分组，不能删除");
     expect(deleteGroup).not.toHaveBeenCalled();
   });
@@ -166,17 +166,15 @@ function createGroupsDb(
           })),
         };
       }
-      return {
-        from: vi.fn(() => ({
-          leftJoin: vi.fn(() => ({
-            where: vi.fn(() => ({
-              groupBy: vi.fn(() => ({
-                orderBy: vi.fn().mockResolvedValue(rows),
-              })),
-            })),
+      const terminal = {
+        where: vi.fn(() => ({
+          groupBy: vi.fn(() => ({
+            orderBy: vi.fn().mockResolvedValue(rows),
           })),
         })),
       };
+      const joined = { leftJoin: vi.fn(() => terminal) };
+      return { from: vi.fn(() => ({ leftJoin: vi.fn(() => joined) })) };
     }),
     execute: vi.fn().mockResolvedValue({ rows: aggregateRows }),
   };

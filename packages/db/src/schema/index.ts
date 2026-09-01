@@ -57,6 +57,14 @@ export const repoRelationshipTypeEnum = pgEnum("repo_relationship_type", [
   "dependency",
 ]);
 
+/** 许可证语义分类；unknown 不代表标准开源。 */
+export const repositoryLicenseStatusEnum = pgEnum("repository_license_status", [
+  "standard_open_source",
+  "source_available",
+  "no_license",
+  "unknown",
+]);
+
 /** 外部资源类型 */
 export const externalResourceTypeEnum = pgEnum("external_resource_type", [
   "article",
@@ -265,6 +273,8 @@ export const repositories = pgTable("repositories", {
   language: text("language"),
   /** 许可证 */
   license: text("license"),
+  /** 许可证语义分类，保留 raw SPDX 在 license 字段 */
+  licenseStatus: repositoryLicenseStatusEnum("license_status").default("unknown").notNull(),
   /** README 内容（原始 markdown） */
   readme: text("readme"),
   /** README 的 raw URL */
@@ -743,6 +753,8 @@ export const userWatchedRepositories = pgTable("user_watched_repositories", {
   priority: integer("priority").default(0),
   /** 备注 */
   notes: text("notes"),
+  /** 当前用户是否已归档该仓库；归档不删除共享仓库事实 */
+  isArchived: boolean("is_archived").default(false).notNull(),
   /** 当前用户在 GitHub 关注该仓库的时间 */
   starredAt: timestamp("starred_at"),
   /** 创建时间 */
@@ -752,6 +764,7 @@ export const userWatchedRepositories = pgTable("user_watched_repositories", {
 }, (table) => ({
   userIdIdx: index("user_watched_repos_user_id_idx").on(table.userId),
   repoIdIdx: index("user_watched_repos_repo_id_idx").on(table.repoId),
+  userArchivedIdx: index("user_watched_repos_user_archived_idx").on(table.userId, table.isArchived),
   uniqueUserRepo: uniqueIndex("user_watched_repos_user_repo_unique_idx").on(table.userId, table.repoId),
 }));
 

@@ -167,6 +167,7 @@ describe("DevScope Client 新增方法", () => {
           openIssues: 0,
           language: "TypeScript",
           license: "MIT",
+          licenseStatus: "standard_open_source",
           lastFetchedAt: null,
           starredAt: null,
           note: null,

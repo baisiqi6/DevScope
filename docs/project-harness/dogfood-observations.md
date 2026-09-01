@@ -17,12 +17,12 @@
 | ID                | 标题                                              | 状态       | 优先级 | 类型     | 影响                      |
 | ----------------- | ------------------------------------------------- | ---------- | ------ | -------- | ------------------------- |
 | `DF-20260818-001` | MCP 分组列表因 `repoCount` 类型不一致失败         | `closed`   | `p1`   | 产品缺陷 | blocked                   |
-| `DF-20260818-002` | MCP 分组成员接口返回完整重对象                    | `triaged`  | `p1`   | 产品缺陷 | performance               |
-| `DF-20260818-003` | 许可证字段不能区分开源、source-available 与未识别 | `open`     | `p2`   | 能力缺口 | wrong data / confusing UX |
+| `DF-20260818-002` | MCP 分组成员接口返回完整重对象                    | `fixed_pending_verification`  | `p1`   | 产品缺陷 | performance               |
+| `DF-20260818-003` | 许可证字段不能区分开源、source-available 与未识别 | `fixed_pending_verification`     | `p2`   | 能力缺口 | wrong data / confusing UX |
 | `DF-20260818-004` | 分组不支持父子层级                                | `closed`   | `p2`   | 能力缺口 | confusing UX              |
-| `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `triaged`  | `p2`   | 能力缺口 | stale data / confusing UX |
-| `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `triaged`  | `p2`   | 操作摩擦 | confusing UX              |
-| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `open`     | `p2`   | 产品缺陷 | wrong data                |
+| `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
+| `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
+| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `fixed_pending_verification`     | `p2`   | 产品缺陷 | wrong data                |
 
 ## Observations
 
@@ -65,10 +65,11 @@
 - Related issue/checklist: none
 - Timeline:
   - 2026-08-18: 在真实云端 dogfood 会话首次观察；确认数据库查询与 client schema 的直接原因，未修改代码。
+  - 2026-08-31: 本地实现摘要投影、当前用户/归档过滤及 Client schema 收紧；`groups` API、Client 和 MCP 回归测试通过，等待生产复查。
 
 ### DF-20260818-003：许可证字段不能区分开源、source-available 与未识别
 
-- Status: `open`
+- Status: `fixed_pending_verification`
 - Priority: `p2`
 - Time: 2026-08-18
 - Entry point: MCP `devscope_list_repositories` + GitHub 仓库核验
@@ -84,6 +85,7 @@
 - Related issue/checklist: none
 - Timeline:
   - 2026-08-18: 在多 Agent 生态筛选中首次观察；已确认两个真实仓库样本，尚未完成产品与数据模型归因。
+  - 2026-08-31: 增加 SPDX allow-list、source-available 文本分类和 LICENSE/COPYING 文件回退；分类与 GitHub collector 测试通过，等待生产复查。
 
 ### DF-20260818-004：分组不支持父子层级
 
@@ -110,7 +112,7 @@
 
 ### DF-20260818-005：已采集仓库没有删除或归档入口
 
-- Status: `triaged`
+- Status: `fixed_pending_verification`
 - Priority: `p2`
 - Time: 2026-08-18
 - Entry point: MCP/CLI 能力核验 + API/Web 源码核验
@@ -126,10 +128,11 @@
 - Related issue/checklist: none
 - Timeline:
   - 2026-08-18: 在清理原始多 Agent 项目集合时确认能力缺口；完成接口与源码核验，未直接操作 PostgreSQL。
+  - 2026-08-31: 增加归档、删除影响预览和显式确认删除 API/CLI/MCP/Web 入口；真实 PostgreSQL 生命周期与并发删除测试通过，等待生产复查。
 
 ### DF-20260818-006：MCP/CLI 未暴露已有分组编辑与原子移动能力
 
-- Status: `triaged`
+- Status: `fixed_pending_verification`
 - Priority: `p2`
 - Time: 2026-08-18
 - Entry point: MCP/CLI 分组操作 + API 源码核验
@@ -146,10 +149,11 @@
 - Timeline:
   - 2026-08-18: 用户询问原九个项目是否进入细分组及能否改分组；实时核对成员关系并确认 MCP/CLI 与 API 的能力差异，未修改产品实现。
   - 2026-08-24: Issue #54 已把树读取、创建子组、原子移动和同级重排贯通到 CLI/MCP；分组名称、说明的更新以及删除仍未在 Agent 操作面暴露，因此本条保持 `triaged`，范围收窄为剩余编辑/删除覆盖缺口。
+  - 2026-08-31: 增加分组更新/删除的 Client、CLI、MCP 映射；删除要求 `confirm=true`，CLI/MCP 回归测试通过，等待生产复查。
 
 ### DF-20260822-001：仓库采集的 Hacker News 补充数据稳定返回 400
 
-- Status: `open`
+- Status: `fixed_pending_verification`
 - Priority: `p2`
 - Time: 2026-08-22
 - Entry point: MCP `devscope_collect_repository`
@@ -167,6 +171,7 @@
   - 2026-08-22: Skills 与前端库云端批量采集时首次登记；16 个样本全部复现，未修改产品代码。
   - 2026-08-22: 后续采集 `beekeeper-studio/beekeeper-studio` 与 `chenhg5/cc-connect` 时 2/2 再次出现同一 HN 400 warning；两仓库主采集与 embedding 均成功，问题仍限定在 HN enrichment。
   - 2026-08-24: 采集 AnySearch Skill/MCP、QuantDinger 与 RQAlpha 时 4/4 再次出现同一 HN 400 warning；四仓库 embedding 与分组均成功，累计证据继续支持这是稳定的 HN enrichment 缺陷。
+  - 2026-08-31: 修复 Algolia `hitsPerPage` 参数并增加 limit 边界归一；SourceSnapshot 增加 `errorKind` 区分 400 参数错误、429/5xx/网络临时失败和未知错误，pipeline 回归测试通过，等待生产复查。
 
 ## 新条目模板
 

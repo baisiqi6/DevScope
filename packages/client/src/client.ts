@@ -7,6 +7,7 @@ import {
   collectRepositoryInputSchema,
   collectionResultSchema,
   createGroupInputSchema,
+  updateGroupSchema,
   createGroupResultSchema,
   externalResourceGroupMemberSchema,
   externalResourceGroupSchema,
@@ -20,6 +21,9 @@ import {
   healthResultSchema,
   removeRepoFromGroupResultSchema,
   repositoryDetailSchema,
+  repositoryDeleteImpactSchema,
+  repositoryLifecycleResultSchema,
+  repositoryGroupSchema,
   repositoryGroupListSchema,
   repositoryGroupTreeSchema,
   repositoryListInputSchema,
@@ -35,6 +39,7 @@ import {
   type CollectRepositoryInput,
   type CollectionResult,
   type CreateGroupInput,
+  type UpdateGroupInput,
   type CreateGroupResult,
   type ExternalResource,
   type ExternalResourceGroup,
@@ -48,6 +53,8 @@ import {
   type HealthResult,
   type RemoveRepoFromGroupResult,
   type RepositoryDetail,
+  type RepositoryDeleteImpact,
+  type RepositoryLifecycleResult,
   type RepositoryGroup,
   type RepositoryGroupTree,
   type RepositoryListInput,
@@ -80,6 +87,10 @@ export interface DevScopeClient {
   health(): Promise<HealthResult>;
   listRepositories(input?: RepositoryListInput): Promise<RepositorySummary[]>;
   getRepository(repoId: number): Promise<RepositoryDetail>;
+  getRepositoryDeleteImpact(repoId: number): Promise<RepositoryDeleteImpact>;
+  archiveRepository(repoId: number): Promise<RepositoryLifecycleResult>;
+  unarchiveRepository(repoId: number): Promise<RepositoryLifecycleResult>;
+  deleteRepository(repoId: number, confirm: true): Promise<RepositoryLifecycleResult>;
   collectRepository(input: CollectRepositoryInput): Promise<CollectionResult>;
   getEmbeddingStatus(repoId: number): Promise<EmbeddingStatus>;
   semanticSearch(input: SemanticSearchRequest): Promise<SemanticSearchResponse>;
@@ -89,6 +100,8 @@ export interface DevScopeClient {
   getGroupWithMembers(groupId: number): Promise<GroupWithMembers>;
   getAggregateGroupWithMembers(groupId: number): Promise<AggregateGroupView>;
   createGroup(input: CreateGroupInput): Promise<CreateGroupResult>;
+  updateGroup(input: UpdateGroupInput): Promise<RepositoryGroup>;
+  deleteGroup(groupId: number, confirm: true): Promise<GroupMutationSuccess>;
   moveGroup(groupId: number, parentId: number | null): Promise<RepositoryGroup>;
   reorderGroupSiblings(parentId: number | null, groupIds: number[]): Promise<GroupMutationSuccess>;
   addRepoToGroup(groupId: number, repoId: number): Promise<GroupMemberResult>;
@@ -138,6 +151,14 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
     },
     getRepository: (repoId) =>
       parseResult(client.query("getRepository", { id: repoId }), repositoryDetailSchema),
+    getRepositoryDeleteImpact: (repoId) =>
+      parseResult(client.query("getRepositoryDeleteImpact", { repoId }), repositoryDeleteImpactSchema),
+    archiveRepository: (repoId) =>
+      parseResult(client.mutation("archiveRepository", { repoId }), repositoryLifecycleResultSchema),
+    unarchiveRepository: (repoId) =>
+      parseResult(client.mutation("unarchiveRepository", { repoId }), repositoryLifecycleResultSchema),
+    deleteRepository: (repoId, confirm) =>
+      parseResult(client.mutation("deleteRepository", { repoId, confirm }), repositoryLifecycleResultSchema),
     collectRepository: (input) => {
       const parsedInput = collectRepositoryInputSchema.parse(input);
       return parseResult(
@@ -183,6 +204,18 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
         createGroupResultSchema,
       );
     },
+    updateGroup: (input) => {
+      const parsedInput = updateGroupSchema.parse(input);
+      return parseResult(
+        client.mutation("groups.update", parsedInput),
+        repositoryGroupSchema,
+      );
+    },
+  deleteGroup: (groupId, confirm) =>
+      parseResult(
+        client.mutation("groups.delete", { groupId, confirm }),
+        groupMutationSuccessSchema,
+      ),
     moveGroup: (groupId, parentId) =>
       parseResult(
         client.mutation("groups.move", { groupId, parentId }),

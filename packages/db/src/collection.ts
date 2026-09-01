@@ -30,9 +30,11 @@ export type CollectionTransaction = Parameters<Parameters<Db["transaction"]>[0]>
 
 export const COLLECTION_ADVISORY_LOCK_NAMESPACE = 0x4453_5643;
 
+export type SourceErrorKind = "parameter_error" | "transient_failure" | "unknown";
+
 export type SourceSnapshot<T> =
   | { status: "success"; items: T[] }
-  | { status: "failure"; error: string }
+  | { status: "failure"; error: string; errorKind?: SourceErrorKind }
   | { status: "skipped" };
 
 export type SbomSnapshot =

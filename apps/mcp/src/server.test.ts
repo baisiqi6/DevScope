@@ -10,6 +10,10 @@ function createStubClient(): DevScopeClient {
     health: vi.fn().mockResolvedValue({ status: "ok", timestamp: "2026-07-16T00:00:00.000Z" }),
     listRepositories: vi.fn().mockResolvedValue([]),
     getRepository: vi.fn(),
+    getRepositoryDeleteImpact: vi.fn(),
+    archiveRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: true, repositoryDeleted: false }),
+    unarchiveRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: false, repositoryDeleted: false }),
+    deleteRepository: vi.fn().mockResolvedValue({ success: true, repoId: 1, isArchived: false, repositoryDeleted: true }),
     collectRepository: vi.fn(),
     getEmbeddingStatus: vi.fn(),
     semanticSearch: vi.fn(),
@@ -19,6 +23,8 @@ function createStubClient(): DevScopeClient {
     getGroupWithMembers: vi.fn(),
     getAggregateGroupWithMembers: vi.fn(),
     createGroup: vi.fn(),
+    updateGroup: vi.fn(),
+    deleteGroup: vi.fn().mockResolvedValue({ success: true }),
     moveGroup: vi.fn(),
     reorderGroupSiblings: vi.fn().mockResolvedValue({ success: true }),
     addRepoToGroup: vi.fn(),
@@ -64,7 +70,7 @@ afterEach(async () => {
 });
 
 describe("DevScope MCP Server", () => {
-  it("注册全部二十九个工具", async () => {
+  it("注册全部三十五个工具", async () => {
     const client = await createConnectedPair(createStubClient());
     const result = await client.listTools();
 
@@ -72,6 +78,10 @@ describe("DevScope MCP Server", () => {
       "devscope_health",
       "devscope_list_repositories",
       "devscope_get_repository",
+      "devscope_get_repository_delete_impact",
+      "devscope_archive_repository",
+      "devscope_unarchive_repository",
+      "devscope_delete_repository",
       "devscope_collect_repository",
       "devscope_get_embedding_status",
       "devscope_semantic_search",
@@ -82,6 +92,8 @@ describe("DevScope MCP Server", () => {
       "devscope_get_aggregate_group_members",
       "devscope_create_group",
       "devscope_move_group",
+      "devscope_update_group",
+      "devscope_delete_group",
       "devscope_reorder_group_siblings",
       "devscope_add_repo_to_group",
       "devscope_remove_repo_from_group",
@@ -171,6 +183,23 @@ describe("DevScope MCP Server", () => {
     expect(result.isError).not.toBe(true);
   });
 
+  it("通过 MCP 调用仓库删除预检、归档和显式确认删除", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.getRepositoryDeleteImpact).mockResolvedValue({
+      repoId: 1, groupMemberships: 0, chunks: 2, releases: 0,
+      hackernewsItems: 0, relationships: 0, technologyStacks: 0, otherWatchers: 0,
+    });
+    const client = await createConnectedPair(devScopeClient);
+
+    await client.callTool({ name: "devscope_get_repository_delete_impact", arguments: { repoId: 1 } }, CallToolResultSchema);
+    await client.callTool({ name: "devscope_archive_repository", arguments: { repoId: 1 } }, CallToolResultSchema);
+    await client.callTool({ name: "devscope_delete_repository", arguments: { repoId: 1, confirm: true } }, CallToolResultSchema);
+
+    expect(devScopeClient.getRepositoryDeleteImpact).toHaveBeenCalledWith(1);
+    expect(devScopeClient.archiveRepository).toHaveBeenCalledWith(1);
+    expect(devScopeClient.deleteRepository).toHaveBeenCalledWith(1, true);
+  });
+
   it("转发外部资源保存字段并复用 URL/metadata 校验", async () => {
     const devScopeClient = createStubClient();
     vi.mocked(devScopeClient.saveExternalResource).mockResolvedValue({ ok: true } as never);
@@ -250,5 +279,38 @@ describe("DevScope MCP Server", () => {
     expect(devScopeClient.getAggregateGroupWithMembers).toHaveBeenCalledWith(1);
     expect(devScopeClient.moveGroup).toHaveBeenCalledWith(2, 1);
     expect(devScopeClient.reorderGroupSiblings).toHaveBeenCalledWith(1, [3, 2]);
+  });
+
+  it("通过 MCP 调用分组更新和显式确认删除", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.updateGroup).mockResolvedValue({
+      id: 2,
+      userId: 1,
+      parentId: null,
+      name: "新名称",
+      color: "green",
+      icon: "folder",
+      description: null,
+      orderIndex: 0,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+    const client = await createConnectedPair(devScopeClient);
+
+    await client.callTool({
+      name: "devscope_update_group",
+      arguments: { groupId: 2, name: "新名称", color: "green" },
+    }, CallToolResultSchema);
+    await client.callTool({
+      name: "devscope_delete_group",
+      arguments: { groupId: 2, confirm: true },
+    }, CallToolResultSchema);
+
+    expect(devScopeClient.updateGroup).toHaveBeenCalledWith({
+      groupId: 2,
+      name: "新名称",
+      color: "green",
+    });
+    expect(devScopeClient.deleteGroup).toHaveBeenCalledWith(2, true);
   });
 });

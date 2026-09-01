@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import type { Repository, RepositoryGroup } from '@devscope/shared';
-import { Check, ChevronRight, CircleDot, GitFork, Pencil, Scale, Star, X } from 'lucide-react';
+import { Archive, Check, ChevronRight, CircleDot, GitFork, Pencil, Scale, Star, Trash2, X } from 'lucide-react';
 import type { ViewMode } from './view-toggle';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -32,12 +32,37 @@ export function RepositoryCard({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [savedNote, setSavedNote] = useState(repository.note ?? '');
+  const utils = trpc.useUtils();
   const updateNoteMutation = trpc.updateRepoNote.useMutation({
     onSuccess: (_, variables) => {
       setSavedNote(variables.note);
       setIsEditing(false);
     },
   });
+  const archiveMutation = trpc.archiveRepository.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.getRepositories.invalidate(),
+        utils.groupsQuery.getUngroupedRepos.invalidate(),
+        utils.groups.getTree.invalidate(),
+        utils.groups.getAggregateWithMembers.invalidate(),
+      ]);
+    },
+  });
+  const deleteMutation = trpc.deleteRepository.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.getRepositories.invalidate(),
+        utils.groupsQuery.getUngroupedRepos.invalidate(),
+        utils.groups.getTree.invalidate(),
+        utils.groups.getAggregateWithMembers.invalidate(),
+      ]);
+    },
+  });
+  const deleteImpactQuery = trpc.getRepositoryDeleteImpact.useQuery(
+    { repoId: repository.id },
+    { enabled: false },
+  );
 
   const displayDescription = savedNote || repository.description;
 
@@ -56,6 +81,22 @@ export function RepositoryCard({
   const handleStartEdit = () => {
     setEditValue(savedNote);
     setIsEditing(true);
+  };
+
+  const handleArchive = () => {
+    if (window.confirm(`归档 ${repository.owner}/${repository.name}？归档后可通过 API/MCP 恢复。`)) {
+      archiveMutation.mutate({ repoId: repository.id });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deleteMutation.isPending || archiveMutation.isPending || deleteImpactQuery.isFetching) return;
+    const impact = await deleteImpactQuery.refetch();
+    if (impact.error || !impact.data) return;
+    const confirmed = window.confirm(
+      `永久删除 ${repository.owner}/${repository.name}？这将移除 ${impact.data.groupMemberships} 个分组成员、${impact.data.chunks} 个文本分块、${impact.data.releases} 个 Release、${impact.data.hackernewsItems} 条 HN 记录和 ${impact.data.technologyStacks} 条技术栈关系。此操作不可恢复。`,
+    );
+    if (confirmed) deleteMutation.mutate({ repoId: repository.id, confirm: true });
   };
 
   return (
@@ -185,16 +226,40 @@ export function RepositoryCard({
             </div>
           </div>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className={cn('shrink-0', viewMode === 'card' && 'mt-auto self-start')}
-            onClick={() => onViewDetails(repository.id)}
-          >
-            查看详情
-            <ChevronRight />
-          </Button>
+          <div className={cn('flex shrink-0 items-center gap-2', viewMode === 'card' && 'mt-auto self-start')}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onViewDetails(repository.id)}
+            >
+              查看详情
+              <ChevronRight />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={handleArchive}
+              disabled={archiveMutation.isPending || deleteMutation.isPending}
+              aria-label="归档仓库"
+              title="归档仓库"
+            >
+              <Archive />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => void handleDelete()}
+              disabled={archiveMutation.isPending || deleteMutation.isPending || deleteImpactQuery.isFetching}
+              aria-label="永久删除仓库"
+              title="永久删除仓库"
+            >
+              <Trash2 />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

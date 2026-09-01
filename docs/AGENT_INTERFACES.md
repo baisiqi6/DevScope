@@ -62,6 +62,10 @@ devscope --help
 devscope health
 devscope repo list --limit 20 --offset 0
 devscope repo get 1
+devscope repo delete-impact 1
+devscope repo archive 1
+devscope repo unarchive 1   # 需要从 list/delete-impact 记录 repo-id
+devscope repo delete 1 --confirm
 devscope repo collect vercel/next.js
 devscope repo collect vercel/next.js --wait --timeout-ms 300000
 devscope repo collect vercel/next.js --skip-embeddings
@@ -73,6 +77,8 @@ devscope group list
 devscope group tree
 devscope group create "前端框架" --description "前端相关仓库"
 devscope group create "Vue 生态" --parent-id 1
+devscope group update 1 --name "前端框架" --description "前端相关仓库" --color blue --icon folder
+devscope group delete 1 --confirm
 devscope group members 1
 devscope group aggregate-members 1
 devscope group move 2 1
@@ -107,6 +113,9 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 
 `analyze report --wait` 会轮询分析执行状态直到完成或失败，默认间隔 `1000ms`、超时 `300000ms`。
 
+`group delete` 是 destructive 操作，必须显式传入 `--confirm`；含子分组的目标会被 API 拒绝。
+`group update` 至少传入一个可更新字段（`--name`、`--description`、`--color` 或 `--icon`）。
+
 ## MCP Server
 
 ### 工具列表
@@ -116,6 +125,10 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 | `devscope_health`                      | 只读      | 检查 API 状态                    |
 | `devscope_list_repositories`           | 只读      | 列出已采集仓库                   |
 | `devscope_get_repository`              | 只读      | 读取仓库详情                     |
+| `devscope_get_repository_delete_impact` | 只读     | 预览删除影响（含技术栈关系）     |
+| `devscope_archive_repository`          | 写入      | 归档当前用户的仓库收藏           |
+| `devscope_unarchive_repository`        | 写入      | 按 repoId 恢复归档仓库           |
+| `devscope_delete_repository`           | 破坏性写入 | 需 `confirm=true` 的永久删除     |
 | `devscope_collect_repository`          | 写入/外部 | 采集 GitHub 数据并写入数据库     |
 | `devscope_get_embedding_status`        | 只读      | 查询向量化进度                   |
 | `devscope_semantic_search`             | 只读      | 搜索仓库内容，可生成 AI 回答     |
@@ -125,6 +138,8 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 | `devscope_get_group_members`           | 只读      | 读取分组成员及关联仓库           |
 | `devscope_get_aggregate_group_members` | 只读      | 读取分组及后代仓库与直接归属来源 |
 | `devscope_create_group`                | 写入      | 创建仓库分组                     |
+| `devscope_update_group`                | 写入      | 更新分组名称、样式和说明         |
+| `devscope_delete_group`               | 破坏性写入 | 需 `confirm=true`，仅允许叶子组   |
 | `devscope_move_group`                  | 写入      | 移动分组到父级或根级             |
 | `devscope_reorder_group_siblings`      | 写入      | 按完整 ID 排列事务化重排同级分组 |
 | `devscope_add_repo_to_group`           | 写入      | 添加仓库到分组                   |

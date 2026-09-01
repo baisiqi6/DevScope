@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `product-10-external-resources-workspace`
-- Reviewer: `external-resources-reviewer`
-- Updated at: `2026-08-29`
-- Canonical plan path: `docs/project-harness/tasks/product-10-external-resources-workspace/plan.md`
+- Checklist item: `dogfood-2026-08-remediation`
+- Reviewer: `dogfood_remediation_reviewer`
+- Updated at: `2026-09-01`
+- Canonical plan path: `docs/project-harness/tasks/dogfood-2026-08-remediation/plan.md`
 
 ## Item Snapshot
 
-- Title: 外部资源 Web 工作区与数据库打磨
+- Title: 修复 dogfood 暴露的五项产品问题
 - Status: done
 - Workflow status: closed
 - Priority: p1
 - Owner: None
 - Session: None
-- Dependencies: product-9-external-resources-preview
+- Dependencies: None
 
 ## Acceptance
 
-Web 端可管理 article/paper/website 预览卡片，支持筛选、排序、搜索、已读/置顶、备注/标签编辑、删除确认和独立资源分组；数据库约束、索引、迁移与隔离 PostgreSQL 测试通过；不进入正文抓取，不触碰生产。
+分组成员与聚合接口只返回受控仓库摘要；Hacker News 采集请求契约正确且空结果与临时失败可区分；CLI/MCP 可安全更新和删除分组；仓库支持带影响预检的 archive/delete 生命周期；许可证可区分标准开源、source-available/custom、无许可证和未识别；全量门禁与隔离 PostgreSQL 验证通过。
 
 ## Verification
 
-pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integration 10 files/60 tests; independent review approved; PR #57 quality/integration passed; production deploy run `33241430155` completed with backup, migration `0012`, service health, and Nginx checks.
+最终独立 Reviewer APPROVED；pnpm lint/typecheck/test/build 全部通过；隔离 pgvector/pgvector:pg16 重放全部迁移并通过 11 integration files/62 tests；五条 observation 为 fixed_pending_verification，生产部署/迁移未授权。
 
 ## Handoff
 
-生产部署已由 operator 按 runbook 完成；运行 revision 为 `67fc629`。后续继续观察外部资源 Web/API/MCP dogfood，不启动多用户改造。
+本批次只做本地实现与验证；生产部署需独立授权，完成后用 dogfood-observations.md 逐条回写证据。
 
 ## Review Inputs
 
@@ -40,112 +40,86 @@ pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integratio
 ## Canonical Plan Content
 
 ```md
-# 外部资源 Web 工作区与数据库打磨
+# Dogfood 五项问题整改
 
 ## Item
 
-- Checklist item：`product-10-external-resources-workspace`
-- 当前状态：`done`
-- 风险模式：`high-risk`（涉及 schema/migration 与持久化用户数据）
-- 依赖：`product-9-external-resources-preview`
+- Checklist item：`dogfood-2026-08-remediation`
+- 风险模式：`high-risk`（涉及 API 契约、仓库生命周期、schema/migration 与外部请求）
+- 当前阶段：本地实现与验证；生产部署不在本轮默认授权内
 
 ## 目标
 
-在既有 `article | paper | website`、`preview_only` API/Client/CLI/MCP 能力之上，补齐 Web 端可用的外部资源工作区，并对数据库约束、索引、删除级联和迁移验证做一次针对性打磨。文章、论文和网站仍与 GitHub 仓库分别管理；本 item 不进入正文抓取、PDF/DOI 解析、embedding 或多用户鉴权实现。
-
-## 成功标准
-
-1. Web 导航提供“外部资源”入口，页面支持列表/卡片两种密度、类型筛选、已读/未读、置顶和关键词过滤，并提供 loading/empty/error 状态。
-2. 预览卡片展示资源类型、站点/作者、标题、描述、标签、已读/置顶状态和安全的外链打开行为；支持编辑备注、标签、阅读状态、置顶和删除确认。
-3. Web 能创建/列出/查看/编辑/删除外部资源，并管理独立外部资源分组；所有交互复用现有 tRPC contract，不在 Web 直连数据库。
-4. 数据库审查外部资源表的 user 边界、复合外键、唯一键、索引、metadata 大小和删除级联；需要 schema 变化时生成显式迁移，不使用 `db:push`。
-5. 增加 Web 组件/页面测试与数据库约束测试；`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 通过，并在隔离 PostgreSQL 验证迁移。
-6. 不执行生产迁移、部署、push 或公开多用户改造；完成后交独立 reviewer 复核。
+处理 `dogfood-observations.md` 中尚未关闭的五条观察：成员输出过大、Hacker News 400、Agent 分组操作面不完整、仓库缺少归档/删除、许可证语义不足。
 
 ## 实施阶段
 
-### Phase 0：现状核对与设计冻结
+1. 收紧 `groups.getWithMembers` 与聚合成员输出为稳定仓库摘要，补 API/Client/MCP 回归测试。
+2. 修正 Hacker News 请求参数与 URL 编码/limit 边界，区分成功空结果、上游临时失败和参数错误，补 fixture 测试。
+3. 沿用现有 groups router，在 Client/CLI/MCP 增加 update/delete 分组能力；删除前保留所有权校验和明确 destructive 标记。
+4. 为 repositories 增加可恢复 `isArchived` 生命周期；提供 archive/unarchive 和带影响预检的 delete API，级联清理现有关联数据，补迁移与集成测试。
+5. 增加许可证语义枚举/派生字段，保留原始 SPDX/NOASSERTION；对标准 SPDX、source-available/custom、无许可证、未识别给出可复算分类与 API/CLI/MCP 输出。
+6. 跑 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 和隔离 PostgreSQL 集成；独立 review 后更新 dogfood observation Timeline。
 
-- 确认 API 返回字段、排序/筛选能力和当前数据库索引；如 API 不足，先补最小 contract。
-- 沿用现有 DevScope command-surface/token、字体、颜色和 Motion 微交互规范，不引入第二套 UI 框架。
-- 冻结页面信息架构：顶部标题/统计、工具栏筛选、分组侧栏或下拉、资源卡片网格/列表、编辑对话框。
+## 边界
 
-### Phase 1：Web 工作区
+- 不抓取文章正文，不启动公开多用户，不改变 HTTPS/域名配置。
+- 不执行生产迁移、部署或删除；生产动作另行取得授权。
+- 不复制第二套数据模型；新增字段必须服务现有 repositories 与 API 边界。
 
-- 新增 `/resources` 页面与导航项；实现查询、过滤、排序、刷新和分页/加载更多。
-- 添加外部资源卡片、类型徽标、站点 favicon/预览图 fallback、标签、状态按钮、备注编辑和删除确认。
-- 添加保存资源与创建/管理分组的入口；所有 mutation 成功后精确失效相关 query。
-- 处理窄屏、键盘焦点、外链 `noopener noreferrer`、图片加载失败和 reduced-motion。
+## 验收
 
-### Phase 2：数据库打磨
-
-- 审查并补齐 canonical URL 唯一约束、用户复合外键、外部资源/分组索引、metadata 字段约束和级联删除。
-- 如需新增列/索引，运行 `pnpm db:generate`，审查 SQL 顺序、锁影响和回滚步骤。
-- 在隔离 PostgreSQL 从 baseline 重放迁移，覆盖重复保存、跨用户分组成员、删除级联和查询索引。
-
-### Phase 3：验证与 review
-
-- 运行 focused Web/API/DB tests，再运行完整 lint/typecheck/test/build。
-- 对 UI 做手动或 Playwright smoke：创建、筛选、编辑、分组、删除、外链打开、空/错/加载态。
-- 交独立 reviewer；review 通过后生成 closeout，不自动生产部署。
-
-## 本轮实现与验证记录
-
-- 已完成 `/resources` Web 工作区：卡片/列表密度切换、关键词/类型/阅读状态筛选、置顶优先/最近更新排序、分组筛选、加载更多、创建/编辑/删除、已读/置顶操作、预览图与 favicon fallback、错误/空/加载状态和安全外链。
-- 已补齐共享外部资源类型别名、导航入口，以及 `metadata` 20KB 和收藏 `tags` 最多 30 项的数据库约束；迁移顺延为 `0012` 并保留分组树 `0011` 历史。
-- 已通过：`pnpm lint`（0 errors，18 warnings）、`pnpm typecheck`、`pnpm test`、`pnpm build`；Web 页面/组件 SSR smoke 与筛选测试共 21 项；共享 metadata UTF-8 字节边界测试通过；状态 mutation pending 防重复提交；隔离 `pgvector/pgvector:pg16` 重放全部迁移并通过 10 个 integration test 文件、60 项测试。
-- 独立 reviewer 已只读复核通过；随后由 operator 通过 PR #57 和生产 deploy run `33241430155` 完成发布与迁移。
-
-## 数据边界
-
-- `external_resources`、`external_resource_saves`、`external_resource_groups`、`external_resource_group_members` 继续独立于 GitHub 仓库域。
-- 资源正文仍不抓取；`ingestionMode` 固定为 `preview_only`。
-- 所有资源与分组操作继续由服务端单用户边界过滤；本 item 不把当前 `publicProcedure` 改造成多用户鉴权。
-
-## 未授权动作
-
-- 生产数据库迁移、生产部署、域名/证书/代理改动、公开多用户鉴权、正文抓取和外部资源内容索引均不在本 item 授权范围内。
+- 五条 observation 均有明确 `closed`、`fixed_pending_verification` 或保留理由，不以单元测试代替生产复查。
+- 输出体积、HN 失败语义、生命周期破坏性操作和许可证分类均有可重复测试。
 ```
 
 ## Recent Progress Context
 
 ```md
-# DevScope Harness 进展
+### Issue #54 生产 closeout
 
-> 更新时间：2026-08-29
-> 生产运行基线：`4772098`；`main` 可仅因本 item 的 closeout 文档提交而领先生产
-> 部署形态：Standalone
-> 当前状态：可靠性整改与部署链路收口均已完成；无 active item；下一产品节点为公开多用户加固，尚未启动
-
-## 当前状态
-
-- [Harness checklist](harness-checklist.json)：12 个 item `done`，1 个 item `todo`，无 `doing` / `blocked`；
-- [Current task pointer](current/task_plan.md)：已清空，没有正在执行的 canonical plan；
-- 生产当前运行 revision `4772098`，技术栈模式为 `legacy_cleaned`，分析模型为 `MiniMax-M3`；
-- 无迁移、无 cleanup 的自动部署 run `32348360956` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成；服务器无需访问 GitHub/GHCR，迁移记录和业务数据不变量保持。
+- 隔离分支 `codex/issue-54-tree-groups` 已实现单父级邻接树、组合外键、循环 trigger、按用户
+  advisory lock、直接/聚合计数与真实 membership 来源；
+- Shared、API、Client、CLI、MCP、首页和 `/groups` 已贯通树读取、聚合成员、创建子组、移动与
+  完整同级重排，并保留旧扁平读取、直接成员与 `repoCount` 语义；
+- 真实 PostgreSQL 16 + pgvector 集成门禁已连续两轮通过，每轮 9 个测试文件、57 项测试；
+- 最终版本的 `lint/typecheck/test/build` 已全部通过；静态审查发现并修复一处 API 删除预检位置
+  错误及聚合可见性 fallback，并补齐回归测试；Kimi K3 `thinking=max` 独立终审 `APPROVE`，
+  无 P0–P3。完整证据见 [verification](tasks/issue-54/verification.md)。该本地验证记录本身不表示
+  生产已具备 `0011` schema。
+- PR #55 在 `quality` 与 `integration` 成功后合并，Issue #54 已关闭；生产 migration journal
+  从 11 增至 12，15 个旧分组全部保持根级，86 条 membership 不变；组合外键、cycle trigger/function
+  均存在；
+- 发布前独立备份与 workflow 备份均验证可读；运行镜像为 `63ec7c5`，rollback 镜像为 `4772098`；
+  API/Web、树读取、聚合读取、MCP 隧道认证、Nginx 与近期错误日志复核通过；详细回执见
+  [verification](tasks/issue-54/verification.md)。
 
 ## 已完成整改
 
-| 领域 | 已完成结果 | 详细证据 |
-|---|---|---|
-| Release ID | GitHub Release ID 无损迁移为 `bigint`，生产迁移、回滚与大 ID 往返已验证 | [verification](tasks/data-correctness-1a-release-id-bigint/verification.md) |
-| 仓库身份 | 正式仓库统一使用 GitHub stable ID，rename、Radar 去重与 production cutover 已关闭 | [verification](tasks/data-correctness-1b-repository-identity/verification.md) |
-| 分组计数 | `repoCount` 已在 API 边界归一为 number，生产 MCP 复查通过 | [verification](tasks/data-correctness-1c-group-count-contract/verification.md) |
-| 采集一致性 | chunks、Releases、HN、SBOM 与 embedding 改为版本安全的原子替换 | [verification](tasks/data-correctness-2-atomic-replacement/verification.md) |
-| 技术栈 Phase A | 独立实体、新表、backfill、dual-write 与 shadow zero-diff 完成 | [verification](tasks/data-architecture-3-technology-stack-entities/verification.md) |
-| deps.dev 缓存 | `resolved/not_found/error` 恢复语义、timeout、有界并发、预算与冷暖 rebuild 完成 | [verification](tasks/data-correctness-4-deps-cache-recovery/verification.md) |
-| PostgreSQL 门禁 | 真实 PostgreSQL 16 + pgvector 的迁移、事务、锁与并发矩阵进入 CI required checks | [verification](tasks/data-quality-5-postgres-integration-gates/verification.md) |
-| 技术栈 Phase B | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成 | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md) |
-| 技术栈 Phase C | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference` | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
-| AI Provider | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成 | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md) |
+| 领域            | 已完成结果                                                                        | 详细证据                                                                                   |
+| --------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Release ID      | GitHub Release ID 无损迁移为 `bigint`，生产迁移、回滚与大 ID 往返已验证           | [verification](tasks/data-correctness-1a-release-id-bigint/verification.md)                |
+| 仓库身份        | 正式仓库统一使用 GitHub stable ID，rename、Radar 去重与 production cutover 已关闭 | [verification](tasks/data-correctness-1b-repository-identity/verification.md)              |
+| 分组计数        | `repoCount` 已在 API 边界归一为 number，生产 MCP 复查通过                         | [verification](tasks/data-correctness-1c-group-count-contract/verification.md)             |
+| 采集一致性      | chunks、Releases、HN、SBOM 与 embedding 改为版本安全的原子替换                    | [verification](tasks/data-correctness-2-atomic-replacement/verification.md)                |
+| 技术栈 Phase A  | 独立实体、新表、backfill、dual-write 与 shadow zero-diff 完成                     | [verification](tasks/data-architecture-3-technology-stack-entities/verification.md)        |
+| deps.dev 缓存   | `resolved/not_found/error` 恢复语义、timeout、有界并发、预算与冷暖 rebuild 完成   | [verification](tasks/data-correctness-4-deps-cache-recovery/verification.md)               |
+| PostgreSQL 门禁 | 真实 PostgreSQL 16 + pgvector 的迁移、事务、锁与并发矩阵进入 CI required checks   | [verification](tasks/data-quality-5-postgres-integration-gates/verification.md)            |
+| 技术栈 Phase B  | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成                          | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md)   |
+| 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
+| AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
 | 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
+| Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已完成本地修复；待生产验证 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
 
 ## 当前生产基线
 
-2026-08-20 UTC 07:03 后完成只读复核：
+2026-08-29 UTC 07:50 后完成部署回读：
 
-- DevScope MCP health 为 `ok`，未认证公网入口返回 `401`；
-- API、Web、Worker 均运行 `ce7ff16`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
+- DevScope MCP health 为 `ok`，SSH tunnel 未认证返回 `401`；公网域名因未完成 ICP 备案由阿里云
+  拦截并返回 `403`，当前不作为可用入口；
+- API、Web、Worker 均运行 `67fc629`，PostgreSQL 16 + pgvector 容器健康，服务器工作树干净；
+- migration `0012` 已成功应用（保留分组树 `0011`）；分组树组合外键、cycle trigger/function 均存在；15 个现有分组全部为
+  根级，86 条 membership 不变；
 - 正式仓库 40、伪仓库 0、伪收藏 0；`is_reference` 列已删除；
 - 图谱为 40 个 repository + 9 个 language + 13 个 technology stack 节点，共 249 条边；
 - 新表保存 13 个技术栈和 79 条 repository-to-stack 关系；cleanup receipt 与 baseline receipt 均在位；
@@ -156,8 +130,12 @@ pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integratio
 
 ## 当前 handoff
 
-- 当前没有未完成的可靠性或运维整改 item；不要继续沿用 Phase A/B/C 与部署链路的历史 handoff；
-- 下一产品节点是 `product-6-public-multi-user-hardening`，仍为 `todo`。已形成唯一 canonical plan（[plan](tasks/product-6-public-multi-user-hardening/plan.md)），启动前仍必须重新确认应用鉴权、租户隔离、HTTPS 与公开运营范围；
+- Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
+  `fixed_pending_verification`，尚未授权 commit、push、生产迁移或部署；
+- Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
+  创建、移动、聚合与排序体验；
+- 外部资源工作区已完成 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
+- `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
 
@@ -174,7 +152,16 @@ pnpm lint; pnpm typecheck; pnpm test; pnpm build; isolated PostgreSQL integratio
 ```md
 # 当前审查
 
-`data-architecture-3-technology-stack-entities` 的 Phase A expand、precision fix、versioned backfill、生产 shadow zero-diff 与 MCP/health/auth 已完成；证据见 [任务验证记录](../tasks/data-architecture-3-technology-stack-entities/verification.md)。生产 graph rebuild 虽正确成功，但 70 分 44 秒的冷缓存路径暴露外呼 timeout/budget/freshness/progress P1，唯一后续方案为 [依赖解析缓存恢复与外呼预算计划](../tasks/data-correctness-4-deps-cache-recovery/plan.md)。当前暂停在 Phase A production closeout 前；Reviewer 批准 item 4 和 Phase A closeout 前不得进入 Phase B/C 或标记整个 item 完成。
+## Dogfood 五项问题整改
+
+- Checklist item：`dogfood-2026-08-remediation`
+- Reviewer：`dogfood_remediation_reviewer`，独立只读复核。
+- 最终结论：`APPROVED`；无 P0–P2 阻断。
+- 审查范围：分组成员摘要与 active watched 计数、许可证 fail-closed 分类、仓库归档/删除与并发安全、HN 请求与失败语义、CLI/MCP 契约及文档一致性。
+- Reviewer 未修改文件、未提交、未 push、未部署或执行生产迁移；全量门禁与隔离 PostgreSQL 验证由 Operator 执行。
+- 完整实现与验证证据见 [verification](../tasks/dogfood-2026-08-remediation/verification.md)。
+
+本结论只批准当前本地实现。五条 observation 保持 `fixed_pending_verification`，必须在获得独立生产授权并完成迁移、部署和真实 dogfood 复查后，才能改为 `closed`。
 ```
 
 ## Closeout Questions
