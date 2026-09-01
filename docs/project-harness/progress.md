@@ -10,8 +10,8 @@
 - [Harness checklist](harness-checklist.json)：dogfood 五项整改已完成 `done` closeout，最终独立审查为 `APPROVED`；
 - [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
 - 生产 API、Web、Worker 当前运行 revision `05aa9e192a5ca95cb49ffc628617afc0e36af83d`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
-- 生产部署 run `33241430155` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
-  `0012`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
+- 本批次生产部署 run `33475333993` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
+  migration `0013`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
 ### Issue #54 生产 closeout
 
@@ -67,7 +67,7 @@
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
-- 外部资源工作区已完成 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
+- 外部资源工作区的 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署属于历史快照；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
