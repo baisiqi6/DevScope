@@ -92,6 +92,7 @@ devscope resource save https://example.com --type website --title "示例网站"
 devscope resource get 1
 devscope resource update 1 --read --pin
 devscope resource remove 1
+devscope resource content-enable 1
 devscope resource content-request 1
 devscope resource content-status 1
 devscope resource content-read 1
@@ -150,6 +151,7 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 | `devscope_list_external_resources`     | 只读      | 列出文章、论文和网站预览卡片     |
 | `devscope_save_external_resource`      | 写入      | 保存外部资源 URL（当前 `preview_only`） |
 | `devscope_get_external_resource`       | 只读      | 读取外部资源预览卡片             |
+| `devscope_enable_external_resource_content` | 写入 | 将已收藏资源从 `preview_only` 单向启用为 `content`；不会联网或自动入队 |
 | `devscope_update_external_resource`    | 写入      | 更新外部资源备注、标签和阅读状态 |
 | `devscope_remove_external_resource`    | 写入      | 删除外部资源                     |
 | `devscope_request_external_resource_content` | 写入/外部 | 显式异步请求采集外部资源正文 |

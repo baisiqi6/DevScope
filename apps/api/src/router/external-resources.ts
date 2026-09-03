@@ -19,6 +19,8 @@ import {
   saveExternalResourceInputSchema,
   updateExternalResourceInputSchema,
   requestExternalResourceContentInputSchema,
+  enableExternalResourceContentInputSchema,
+  enableExternalResourceContentOutputSchema,
   externalResourceContentStatusOutputSchema,
   externalResourceContentOutputSchema,
 } from "@devscope/shared";
@@ -100,6 +102,61 @@ async function requireOwnedGroup(db: Db, userId: number, groupId: number) {
 }
 
 export const externalResourcesRouter = router({
+  enableContent: publicProcedure
+    .input(enableExternalResourceContentInputSchema)
+    .output(enableExternalResourceContentOutputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const row = await requireOwnedResource(ctx.db, userId, input.resourceId);
+      if (row.resource.ingestionMode === "content" && row.resource.contentStatus === "not_requested") {
+        return {
+          resourceId: row.resource.id,
+          ingestionMode: "content" as const,
+          status: row.resource.contentStatus,
+          error: row.resource.contentError,
+          fetchedAt: row.resource.contentFetchedAt?.toISOString() ?? null,
+        };
+      }
+      if (row.resource.ingestionMode !== "preview_only" || row.resource.contentStatus !== "not_requested") {
+        throw new Error("该资源已开始正文采集，不能重复启用或回退");
+      }
+      const [updated] = await ctx.db.update(externalResources)
+        .set({ ingestionMode: "content", updatedAt: new Date() })
+        .where(and(
+          eq(externalResources.id, input.resourceId),
+          eq(externalResources.userId, userId),
+          eq(externalResources.ingestionMode, "preview_only"),
+          eq(externalResources.contentStatus, "not_requested"),
+        ))
+        .returning({
+          id: externalResources.id,
+          ingestionMode: externalResources.ingestionMode,
+          contentStatus: externalResources.contentStatus,
+          contentError: externalResources.contentError,
+          contentFetchedAt: externalResources.contentFetchedAt,
+        });
+      if (!updated) {
+        const current = await requireOwnedResource(ctx.db, userId, input.resourceId);
+        if (current.resource.ingestionMode === "content" && current.resource.contentStatus === "not_requested") {
+          return {
+            resourceId: current.resource.id,
+            ingestionMode: "content" as const,
+            status: current.resource.contentStatus,
+            error: current.resource.contentError,
+            fetchedAt: current.resource.contentFetchedAt?.toISOString() ?? null,
+          };
+        }
+        throw new Error("该资源已被其他请求启用或开始采集，请刷新后重试");
+      }
+      return {
+        resourceId: updated.id,
+        ingestionMode: "content" as const,
+        status: updated.contentStatus,
+        error: updated.contentError,
+        fetchedAt: updated.contentFetchedAt?.toISOString() ?? null,
+      };
+    }),
+
   requestContent: publicProcedure
     .input(requestExternalResourceContentInputSchema)
     .output(externalResourceContentStatusOutputSchema)

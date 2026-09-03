@@ -196,7 +196,8 @@ echo "vercel/next.js" \
 外部资源（文章、论文、网站）使用独立的 `external_resources`、
 `external_resource_saves`、`external_resource_groups`、`external_resource_group_members` 和
 `external_resource_contents` 表，不复用仓库表或仓库分组成员表。保存行为默认仍为
-`preview_only`：只保存 URL 与预览元数据，不自动触发正文抓取、分块或 embedding；显式请求通过
+`preview_only`：只保存 URL 与预览元数据，不自动触发正文抓取、分块或 embedding；用户可通过显式
+`enableContent` 将其单向切换为 `content`，随后再通过正文请求触发采集；正文请求通过
 `jobs` 由 Worker 抓取 HTML/PDF 并持久化正文状态。Web `/resources` 提供预览卡片工作区、类型/状态/关键词筛选、收藏元数据编辑、正文状态和独立分组管理；外部资源分组与 GitHub 仓库分组暂不互通。
 
 ### CLI 与 MCP
@@ -219,8 +220,8 @@ MCP 只消费同一契约，不各自复制第二套树业务逻辑。采集仍�
 保留旧扁平/直接成员语义；`groups.getTree` 和 `groups.getAggregateWithMembers` 承载树与后代
 聚合语义。这样旧调用方不会因层级功能静默改变结果，新调用面又能获得真实 membership 来源。
 
-现有 Agent 接口也包含外部资源预览收藏、正文请求/状态/读取和独立分组。保存默认仍为
-`preview_only`；正文请求只入队，不在 CLI/MCP/API 请求线程直接联网，MCP 工具不会在本地直接调用
+现有 Agent 接口也包含外部资源预览收藏、正文启用、正文请求/状态/读取和独立分组。保存默认仍为
+`preview_only`；启用和正文请求只写入状态/任务，不在 CLI/MCP/API 请求线程直接联网，MCP 工具不会在本地直接调用
 GitHub、数据库或模型服务。
 
 ## 类型与验证边界

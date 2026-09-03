@@ -38,6 +38,7 @@ function createStubClient(): DevScopeClient {
     updateExternalResource: vi.fn(),
     removeExternalResource: vi.fn().mockResolvedValue({ success: true }),
     requestExternalResourceContent: vi.fn(),
+    enableExternalResourceContent: vi.fn(),
     getExternalResourceContentStatus: vi.fn(),
     readExternalResourceContent: vi.fn(),
     listExternalResourceGroups: vi.fn().mockResolvedValue([]),
@@ -104,6 +105,7 @@ describe("DevScope MCP Server", () => {
       "devscope_save_external_resource",
       "devscope_get_external_resource",
       "devscope_request_external_resource_content",
+      "devscope_enable_external_resource_content",
       "devscope_get_external_resource_content_status",
       "devscope_read_external_resource_content",
       "devscope_update_external_resource",
@@ -148,6 +150,15 @@ describe("DevScope MCP Server", () => {
     const result = await client.callTool({ name: "devscope_request_external_resource_content", arguments: { resourceId: 9 } }, CallToolResultSchema);
 
     expect(devScopeClient.requestExternalResourceContent).toHaveBeenCalledWith(9);
+    expect(result.isError).not.toBe(true);
+  });
+
+  it("通过 MCP 显式启用外部资源正文采集", async () => {
+    const devScopeClient = createStubClient();
+    vi.mocked(devScopeClient.enableExternalResourceContent).mockResolvedValue({ resourceId: 9, ingestionMode: "content", status: "not_requested", error: null, fetchedAt: null });
+    const client = await createConnectedPair(devScopeClient);
+    const result = await client.callTool({ name: "devscope_enable_external_resource_content", arguments: { resourceId: 9 } }, CallToolResultSchema);
+    expect(devScopeClient.enableExternalResourceContent).toHaveBeenCalledWith(9);
     expect(result.isError).not.toBe(true);
   });
 

@@ -66,7 +66,7 @@ SBOM + 技术栈目录
 ```
 
 外部资源与 GitHub 仓库暂时分别管理，不把 URL 伪装成仓库，也不将现有
-`group_members` 改造成多态关系。所有外部资源保存默认使用 `preview_only`；只有显式请求才由
+`group_members` 改造成多态关系。所有外部资源保存默认使用 `preview_only`；用户须先通过显式启用将模式单向切换为 `content`，再由显式请求触发
 Worker 抓取并写入 `external_resource_contents`，不自动触发 embedding。正文表通过资源复合
 `userId` 外键和独立用户外键保持租户边界，正文大小和类型由数据库约束限制。
 

@@ -68,8 +68,11 @@ import {
   externalResourceContentOutputSchema,
   type ExternalResourceContentStatusOutput,
   type ExternalResourceContentOutput,
+  type EnableExternalResourceContentOutput,
+  enableExternalResourceContentOutputSchema,
 } from "./contracts";
 import {
+  enableExternalResourceContentInputSchema,
   saveExternalResourceInputSchema,
   updateExternalResourceInputSchema,
   type SaveExternalResourceInput,
@@ -119,6 +122,7 @@ export interface DevScopeClient {
   updateExternalResource(input: UpdateExternalResourceInput): Promise<ExternalResource>;
   removeExternalResource(resourceId: number): Promise<{ success: boolean }>;
   requestExternalResourceContent(resourceId: number): Promise<ExternalResourceContentStatusOutput>;
+  enableExternalResourceContent(resourceId: number): Promise<EnableExternalResourceContentOutput>;
   getExternalResourceContentStatus(resourceId: number): Promise<ExternalResourceContentStatusOutput>;
   readExternalResourceContent(resourceId: number): Promise<ExternalResourceContentOutput>;
   listExternalResourceGroups(): Promise<ExternalResourceGroup[]>;
@@ -290,6 +294,10 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
         z.object({ success: z.boolean() }),
       ),
     requestExternalResourceContent: (resourceId) => parseResult(client.mutation("externalResources.requestContent", { resourceId }), externalResourceContentStatusOutputSchema),
+    enableExternalResourceContent: (resourceId) => {
+      const parsedInput = enableExternalResourceContentInputSchema.parse({ resourceId });
+      return parseResult(client.mutation("externalResources.enableContent", parsedInput), enableExternalResourceContentOutputSchema);
+    },
     getExternalResourceContentStatus: (resourceId) => parseResult(client.query("externalResources.getContentStatus", { resourceId }), externalResourceContentStatusOutputSchema),
     readExternalResourceContent: (resourceId) => parseResult(client.query("externalResources.readContent", { resourceId }), externalResourceContentOutputSchema),
     listExternalResourceGroups: () =>

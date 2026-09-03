@@ -67,10 +67,65 @@ describe("external resource content routes", () => {
     await expect(caller.requestContent({ resourceId: 9 })).rejects.toThrow("未启用正文采集");
     expect(enqueueExternalResourceContentJob).not.toHaveBeenCalled();
   });
+
+  it("显式启用只允许 preview_only 单向切换", async () => {
+    const db = createContentRouteDb({ id: 9, userId: 7, ingestionMode: "preview_only", contentStatus: "not_requested" });
+    const caller = externalResourcesRouter.createCaller({ db } as never);
+    await expect(caller.enableContent({ resourceId: 9 })).resolves.toEqual({
+      resourceId: 9, ingestionMode: "content", status: "not_requested", error: null, fetchedAt: null,
+    });
+    expect(enqueueExternalResourceContentJob).not.toHaveBeenCalled();
+  });
+
+  it("已启用但尚未请求的资源重复调用保持幂等", async () => {
+    const db = createContentRouteDb({ id: 9, userId: 7, ingestionMode: "content", contentStatus: "not_requested" });
+    const caller = externalResourcesRouter.createCaller({ db } as never);
+    await expect(caller.enableContent({ resourceId: 9 })).resolves.toMatchObject({ ingestionMode: "content", status: "not_requested" });
+  });
+
+  it.each(["failed", "processing"] as const)("preview_only + %s 异常组合 fail-closed", async (status) => {
+    const db = createContentRouteDb({ id: 9, userId: 7, ingestionMode: "preview_only", contentStatus: status });
+    const caller = externalResourcesRouter.createCaller({ db } as never);
+    await expect(caller.enableContent({ resourceId: 9 })).rejects.toThrow("已开始正文采集");
+  });
+
+  it("content + 已开始采集状态不能重复启用", async () => {
+    const db = createContentRouteDb({ id: 9, userId: 7, ingestionMode: "content", contentStatus: "failed" });
+    const caller = externalResourcesRouter.createCaller({ db } as never);
+    await expect(caller.enableContent({ resourceId: 9 })).rejects.toThrow("已开始正文采集");
+  });
+
+  it("并发启用在条件更新落空后复用已完成的单向转换", async () => {
+    const db = createContentRouteDb({ id: 9, userId: 7, ingestionMode: "preview_only", contentStatus: "not_requested" }, { simulateRace: true });
+    const caller = externalResourcesRouter.createCaller({ db } as never);
+    await expect(caller.enableContent({ resourceId: 9 })).resolves.toMatchObject({ ingestionMode: "content", status: "not_requested" });
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
 });
 
-function createContentRouteDb(resource: Record<string, unknown>) {
+function createContentRouteDb(resource: Record<string, unknown>, options: { simulateRace?: boolean } = {}) {
+  const currentResource = { ...resource };
   return {
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(() => ({
+          returning: vi.fn().mockImplementation(async () => {
+            if (currentResource.ingestionMode === "preview_only" && currentResource.contentStatus === "not_requested") {
+              if (options.simulateRace) {
+                currentResource.ingestionMode = "content";
+                return [];
+              }
+              currentResource.ingestionMode = "content";
+              return [{
+                id: currentResource.id, ingestionMode: "content", contentStatus: currentResource.contentStatus,
+                contentError: null, contentFetchedAt: null,
+              }];
+            }
+            return [];
+          }),
+        })),
+      })),
+    })),
     select: vi.fn(() => ({
       from: vi.fn((table: unknown) => {
         if (table === users) return { limit: vi.fn().mockResolvedValue([{ id: 7 }]) };
@@ -78,7 +133,7 @@ function createContentRouteDb(resource: Record<string, unknown>) {
           innerJoin: vi.fn(() => ({
             where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{
               resource: {
-                ...resource,
+                ...currentResource,
                 url: "https://example.com/article",
                 canonicalUrl: "https://example.com/article",
                 title: "Article",

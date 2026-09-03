@@ -1,45 +1,3 @@
-# Review Packet
-
-## Subject
-
-- Checklist item: `product-11a-external-resource-content-enable`
-- Reviewer: `reviewer`
-- Updated at: `2026-09-03`
-- Canonical plan path: `docs/project-harness/tasks/product-11a-external-resource-content-enable/plan.md`
-
-## Item Snapshot
-
-- Title: 外部资源正文采集显式启用入口
-- Status: doing
-- Workflow status: review_requested
-- Priority: p1
-- Owner: codex
-- Session: codex-20260903-external-resource-content-enable
-- Dependencies: product-11-external-resource-content-ingestion
-
-## Acceptance
-
-已保存的 preview_only 外部资源可通过显式且单向的 enable-content 入口切换为 content，再请求正文采集；API/Client/CLI/MCP/Web 契约一致；已开始或完成采集的资源不得降级；用户隔离、幂等、回归与生产只读验证通过。
-
-## Verification
-
-
-
-## Handoff
-
-修复 DF-20260902-001；默认不自动抓取，生产变更需独立授权。
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-```md
 # 外部资源正文采集显式启用入口
 
 ## Item
@@ -48,7 +6,7 @@
 - 关联 dogfood observation：`DF-20260902-001`
 - 风险模式：`high-risk`（持久数据状态、用户可见性、API/CLI/MCP/Web 写入口与生产部署）
 - 依赖：`product-11-external-resource-content-ingestion`
-- 当前阶段：Phase 2 验证与独立 review
+- 当前阶段：本地实现与独立 review 已完成，等待生产受控验证
 
 ## 目标
 
@@ -70,9 +28,10 @@
 2. **Phase 1：实现入口**（complete）
    - 增加 `enableContent` API/Client/CLI/MCP/Web；所有输出经 Zod 校验。
    - 用条件更新保证 owner/save 隔离与不可回退；保持 request-content 异步。
-3. **Phase 2：验证与 review**（in progress）
+3. **Phase 2：验证与 review**（complete，独立 Reviewer `APPROVED`）
    - 补 API/Client/CLI/MCP/Web focused tests、生产资源只读与受控启用测试。
-   - 全仓库门禁与独立 Reviewer 通过后，才执行生产发布。
+   - API 12、Client 14、CLI 23、MCP 11、Web 3 focused tests 与相关 typecheck 通过；启用入口不入队、不联网。
+   - 全仓库门禁与独立 Reviewer 通过；生产受控验证尚未执行。
 
 ## 实现记录
 
@@ -93,12 +52,14 @@
 
 - 未通过独立 review 前不提交、部署或修改生产。
 - 未经单独确认不触发真实正文抓取样本。
-```
 
-## Review Focus
+## 当前 Handoff
 
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮
+- 下一步需在获得生产授权后，通过隧道对资源 ID `2` 执行 `content-enable`，复查 `content` + `not_requested`；再决定是否显式 `content-request`。不绕过 API 修改数据库。
+
+## Verification
+
+- 独立 Reviewer `product11a_external_resource_reviewer` 已 `APPROVED`：启用条件、幂等、用户隔离和 Web/CLI/MCP/API 契约均通过审查。
+- 本地 focused：API 12、Client 14、CLI 23、MCP 11、Web 3；相关 typecheck 通过。
+- 全仓库 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过，仅有既有 lint/build warning。
+- 生产资源 ID `2` 尚未执行 mutation；需获得单独授权后再做受控生产验证，并据此关闭 `DF-20260902-001`。

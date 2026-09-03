@@ -88,8 +88,17 @@ export const externalResourceContentStatusSchema = z.enum([
 export type ExternalResourceContentStatus = z.infer<typeof externalResourceContentStatusSchema>;
 
 export const requestExternalResourceContentInputSchema = z.object({ resourceId: z.number().int().positive() });
+/** 显式开启正文采集；该动作只允许 preview_only -> content。 */
+export const enableExternalResourceContentInputSchema = z.object({ resourceId: z.number().int().positive() });
 export const externalResourceContentStatusOutputSchema = z.object({
   resourceId: z.number().int().positive(),
+  status: externalResourceContentStatusSchema,
+  error: z.string().max(500).nullable(),
+  fetchedAt: z.string().datetime().nullable(),
+});
+export const enableExternalResourceContentOutputSchema = z.object({
+  resourceId: z.number().int().positive(),
+  ingestionMode: z.literal("content"),
   status: externalResourceContentStatusSchema,
   error: z.string().max(500).nullable(),
   fetchedAt: z.string().datetime().nullable(),
