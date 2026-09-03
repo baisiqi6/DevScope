@@ -79,6 +79,7 @@ describeIntegration("migration matrix on PostgreSQL", () => {
       "repo_relationships",
       "releases",
       "radar_candidates",
+      "external_resource_contents",
     ]) {
       expect(names).toContain(expected);
     }

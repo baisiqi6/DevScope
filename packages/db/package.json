@@ -30,6 +30,7 @@
     "@devscope/ai": "workspace:*",
     "@devscope/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "ipaddr.js": "2.2.0",
     "octokit": "^5.0.5",
     "openai": "^4.77.0",
     "pg": "^8.13.1",

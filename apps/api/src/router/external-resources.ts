@@ -7,6 +7,8 @@ import {
   externalResourceGroupMembers,
   externalResourceSaves,
   externalResources,
+  externalResourceContents,
+  enqueueExternalResourceContentJob,
   type Db,
 } from "@devscope/db";
 import {
@@ -16,6 +18,9 @@ import {
   externalResourceTypeSchema,
   saveExternalResourceInputSchema,
   updateExternalResourceInputSchema,
+  requestExternalResourceContentInputSchema,
+  externalResourceContentStatusOutputSchema,
+  externalResourceContentOutputSchema,
 } from "@devscope/shared";
 
 export function canonicalizeExternalResourceUrl(value: string): string {
@@ -95,6 +100,38 @@ async function requireOwnedGroup(db: Db, userId: number, groupId: number) {
 }
 
 export const externalResourcesRouter = router({
+  requestContent: publicProcedure
+    .input(requestExternalResourceContentInputSchema)
+    .output(externalResourceContentStatusOutputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const row = await requireOwnedResource(ctx.db, userId, input.resourceId);
+      if (row.resource.ingestionMode !== "content") throw new Error("该资源未启用正文采集");
+      await enqueueExternalResourceContentJob(ctx.db, { userId, resourceId: input.resourceId });
+      return { resourceId: input.resourceId, status: "pending" as const, error: null, fetchedAt: null };
+    }),
+
+  getContentStatus: publicProcedure
+    .input(requestExternalResourceContentInputSchema)
+    .output(externalResourceContentStatusOutputSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const { resource } = await requireOwnedResource(ctx.db, userId, input.resourceId);
+      return { resourceId: resource.id, status: resource.contentStatus, error: resource.contentError, fetchedAt: resource.contentFetchedAt?.toISOString() ?? null };
+    }),
+
+  readContent: publicProcedure
+    .input(requestExternalResourceContentInputSchema)
+    .output(externalResourceContentOutputSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = await getOrCreateCurrentUserId(ctx.db);
+      const { resource } = await requireOwnedResource(ctx.db, userId, input.resourceId);
+      const [content] = await ctx.db.select().from(externalResourceContents)
+        .where(and(eq(externalResourceContents.resourceId, resource.id), eq(externalResourceContents.userId, userId))).limit(1);
+      if (!content) throw new Error("正文尚未采集");
+      return { resourceId: resource.id, status: resource.contentStatus, error: resource.contentError, fetchedAt: resource.contentFetchedAt?.toISOString() ?? null, contentType: content.contentType as "html" | "pdf", text: content.contentText, finalUrl: content.finalUrl };
+    }),
+
   list: publicProcedure
     .input(z.object({
       limit: z.number().int().min(1).max(100).default(50),

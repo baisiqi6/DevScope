@@ -15,6 +15,7 @@ export const GRAPH_REBUILD_JOB = "graph.rebuild";
 export const GITHUB_DISCOVERY_JOB = "radar.discover.github";
 export const GITHUB_TRENDING_SYNC_JOB = "trending.sync.github";
 export const REPOSITORY_IDENTITY_BACKFILL_JOB = "repository.identity.backfill";
+export const EXTERNAL_RESOURCE_CONTENT_JOB = "external-resource.content";
 
 export const healthAnalysisJobPayloadSchema = z.object({
   executionId: z.string().uuid(),
@@ -80,6 +81,32 @@ export const repositoryIdentityBackfillJobPayloadSchema = z.object({
   requestedAt: z.string().datetime(),
   version: z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9._-]+$/),
 });
+
+export const externalResourceContentJobPayloadSchema = z.object({
+  resourceId: z.number().int().positive(),
+});
+
+export function externalResourceContentJobKey(resourceId: number): string {
+  return `external-resource:content:${resourceId}`;
+}
+
+export async function enqueueExternalResourceContentJob(
+  db: JobStore,
+  input: { userId: number; resourceId: number; requestedAt?: Date },
+): Promise<EnqueueRestartableJobResult> {
+  // Owner/save/ingestionMode=content 校验在 Worker 领取任务时执行；JobStore
+  // 只负责最小 payload 与幂等入队，避免把资源表查询耦合进通用队列 helper。
+  const requestedAt = input.requestedAt ?? new Date();
+  const payload = externalResourceContentJobPayloadSchema.parse({ resourceId: input.resourceId });
+  return enqueueRestartableJob(db, {
+    userId: input.userId,
+    type: EXTERNAL_RESOURCE_CONTENT_JOB,
+    idempotencyKey: externalResourceContentJobKey(input.resourceId),
+    payload,
+    maxAttempts: 3,
+    availableAt: requestedAt,
+  });
+}
 
 export const repositoryIdentityBackfillJobResultSchema = z.object({
   outcome: z.enum(["applied", "blocked"]),

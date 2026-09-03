@@ -89,6 +89,7 @@ export type Db = ReturnType<typeof createDb>;
 export * from "./collection";
 
 export * from "./repository-lifecycle";
+export * from "./external-resource-ingestion";
 
 /**
  * GitHub 数据采集

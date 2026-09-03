@@ -454,6 +454,27 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
     ({ resourceId }) => runTool(() => client.getExternalResource(resourceId)),
   );
 
+  server.registerTool("devscope_request_external_resource_content", {
+    title: "请求采集外部资源正文",
+    description: "显式触发异步正文采集；不会在 MCP 请求中直接联网。",
+    inputSchema: z.object({ resourceId: z.number().int().positive() }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  }, ({ resourceId }) => runTool(() => client.requestExternalResourceContent(resourceId)));
+
+  server.registerTool("devscope_get_external_resource_content_status", {
+    title: "查询正文采集状态",
+    description: "只读：返回脱敏的正文采集状态与错误。",
+    inputSchema: z.object({ resourceId: z.number().int().positive() }),
+    annotations: readOnlyAnnotations,
+  }, ({ resourceId }) => runTool(() => client.getExternalResourceContentStatus(resourceId)));
+
+  server.registerTool("devscope_read_external_resource_content", {
+    title: "读取外部资源正文",
+    description: "只读：读取已完成正文，服务端有长度上限。",
+    inputSchema: z.object({ resourceId: z.number().int().positive() }),
+    annotations: readOnlyAnnotations,
+  }, ({ resourceId }) => runTool(() => client.readExternalResourceContent(resourceId)));
+
   server.registerTool(
     "devscope_update_external_resource",
     {

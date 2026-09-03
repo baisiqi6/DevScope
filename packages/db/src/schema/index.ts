@@ -433,6 +433,8 @@ export const externalResources = pgTable("external_resources", {
     .notNull(),
   contentFetchedAt: timestamp("content_fetched_at"),
   contentError: text("content_error"),
+  contentProcessingJobId: integer("content_processing_job_id"),
+  contentProcessingStartedAt: timestamp("content_processing_started_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -446,6 +448,30 @@ export const externalResources = pgTable("external_resources", {
     "external_resources_metadata_size_check",
     sql`${table.metadata} IS NULL OR octet_length(${table.metadata}::text) <= 20000`,
   ),
+}));
+
+/** 外部资源已提取正文；与预览元数据一对一分离，避免 metadata 膨胀。 */
+export const externalResourceContents = pgTable("external_resource_contents", {
+  resourceId: integer("resource_id")
+    .primaryKey()
+    .references(() => externalResources.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  contentType: text("content_type").notNull(),
+  contentText: text("content_text").notNull(),
+  byteLength: integer("byte_length").notNull(),
+  contentHash: text("content_hash").notNull(),
+  finalUrl: text("final_url").notNull(),
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  parserVersion: text("parser_version").notNull(),
+}, (table) => ({
+  contentTypeCheck: check("external_resource_contents_content_type_check", sql`${table.contentType} IN ('html', 'pdf')`),
+  byteLengthCheck: check("external_resource_contents_byte_length_check", sql`${table.byteLength} >= 0 AND ${table.byteLength} <= 1000000`),
+  resourceUserFk: foreignKey({
+    columns: [table.resourceId, table.userId],
+    foreignColumns: [externalResources.id, externalResources.userId],
+    name: "external_resource_contents_resource_user_fk",
+  }),
+  userIdIdx: index("external_resource_contents_user_id_idx").on(table.userId),
 }));
 
 /** 用户与外部资源的收藏状态 */
@@ -1149,6 +1175,8 @@ export type PackageRepoMapping = typeof packageRepoMappings.$inferSelect;
 export type NewPackageRepoMapping = typeof packageRepoMappings.$inferInsert;
 export type ExternalResource = typeof externalResources.$inferSelect;
 export type NewExternalResource = typeof externalResources.$inferInsert;
+export type ExternalResourceContent = typeof externalResourceContents.$inferSelect;
+export type NewExternalResourceContent = typeof externalResourceContents.$inferInsert;
 export type ExternalResourceSave = typeof externalResourceSaves.$inferSelect;
 export type NewExternalResourceSave = typeof externalResourceSaves.$inferInsert;
 export type ExternalResourceGroup = typeof externalResourceGroups.$inferSelect;

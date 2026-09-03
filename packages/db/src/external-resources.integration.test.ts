@@ -26,6 +26,7 @@ describeIntegration("external resources tenant constraints on PostgreSQL", () =>
 
   async function cleanResources() {
     await db.delete(schema.externalResourceGroupMembers);
+    await db.delete(schema.externalResourceContents);
     await db.delete(schema.externalResourceSaves);
     await db.delete(schema.externalResources);
     await db.delete(schema.externalResourceGroups);
@@ -67,10 +68,21 @@ describeIntegration("external resources tenant constraints on PostgreSQL", () =>
     const [group] = await db.insert(schema.externalResourceGroups).values({ userId: userA, name: "Articles" }).returning();
     await db.insert(schema.externalResourceSaves).values({ userId: userA, resourceId: resource.id });
     await db.insert(schema.externalResourceGroupMembers).values({ userId: userA, groupId: group.id, resourceId: resource.id });
+    await db.insert(schema.externalResourceContents).values({
+      resourceId: resource.id,
+      userId: userA,
+      contentType: "html",
+      contentText: "article body",
+      byteLength: 12,
+      contentHash: "hash",
+      finalUrl: resource.url,
+      parserVersion: "test",
+    });
 
     await db.delete(schema.externalResources).where(eq(schema.externalResources.id, resource.id));
     expect(await db.select().from(schema.externalResourceSaves).where(eq(schema.externalResourceSaves.resourceId, resource.id))).toHaveLength(0);
     expect(await db.select().from(schema.externalResourceGroupMembers).where(eq(schema.externalResourceGroupMembers.resourceId, resource.id))).toHaveLength(0);
+    expect(await db.select().from(schema.externalResourceContents).where(eq(schema.externalResourceContents.resourceId, resource.id))).toHaveLength(0);
   });
 
   it("enforces bounded preview metadata and tag shapes at the database boundary", async () => {

@@ -87,6 +87,19 @@ export const externalResourceContentStatusSchema = z.enum([
 ]);
 export type ExternalResourceContentStatus = z.infer<typeof externalResourceContentStatusSchema>;
 
+export const requestExternalResourceContentInputSchema = z.object({ resourceId: z.number().int().positive() });
+export const externalResourceContentStatusOutputSchema = z.object({
+  resourceId: z.number().int().positive(),
+  status: externalResourceContentStatusSchema,
+  error: z.string().max(500).nullable(),
+  fetchedAt: z.string().datetime().nullable(),
+});
+export const externalResourceContentOutputSchema = externalResourceContentStatusOutputSchema.extend({
+  contentType: z.enum(["html", "pdf"]),
+  text: z.string().max(1_000_000),
+  finalUrl: z.string().url().optional(),
+});
+
 export const externalResourceUrlSchema = z.string().trim().url().superRefine((value, context) => {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {

@@ -330,6 +330,9 @@ importers:
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@types/pg@8.18.0)(gel@2.2.0)(pg@8.20.0)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -420,6 +423,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.18.0)(gel@2.2.0)(pg@8.20.0)
+      ipaddr.js:
+        specifier: 2.2.0
+        version: 2.2.0
       octokit:
         specifier: ^5.0.5
         version: 5.0.5
@@ -3628,6 +3634,10 @@ packages:
   ipaddr.js@1.9.1:
     resolution: {integrity: sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==}
     engines: {node: '>= 0.10'}
+
+  ipaddr.js@2.2.0:
+    resolution: {integrity: sha512-Ag3wB2o37wslZS19hZqorUnrnzSkpOVy+IiiDEiTqNubEYpYuHWIf6K4psgN2ZWKExS4xhVCrRVfb/wfW8fWJA==}
+    engines: {node: '>= 10'}
 
   ipaddr.js@2.3.0:
     resolution: {integrity: sha512-Zv/pA+ciVFbCSBBjGfaKUya/CcGmUHzTydLMaTwrUUEM2DIEO3iZvueGxmacvmN50fGpGVKeTXpb2LcYQxeVdg==}
@@ -8473,6 +8483,8 @@ snapshots:
   ip-address@10.2.0: {}
 
   ipaddr.js@1.9.1: {}
+
+  ipaddr.js@2.2.0: {}
 
   ipaddr.js@2.3.0: {}
 
