@@ -54,10 +54,11 @@ SBOM + 技术栈目录
 仓库之间的关系
   → repo_relationships（相似度和真实仓库依赖）
 
-外部资源（第一阶段）
+外部资源
   → external_resources（文章、论文和网站的预览元数据）
   → external_resource_saves（用户备注、标签、已读与置顶）
   → external_resource_groups / external_resource_group_members（独立资源分组）
+  → external_resource_contents（显式抓取后的 HTML/PDF 正文，一对一）
 
 用户仓库整理
   → repository_groups（单父级邻接树）
@@ -65,8 +66,9 @@ SBOM + 技术栈目录
 ```
 
 外部资源与 GitHub 仓库暂时分别管理，不把 URL 伪装成仓库，也不将现有
-`group_members` 改造成多态关系。第一阶段所有外部资源保存都使用 `preview_only`，
-`content` 模式仅作为未来正文采集的状态预留，不得在本阶段触发网络抓取或 embedding。
+`group_members` 改造成多态关系。所有外部资源保存默认使用 `preview_only`；只有显式请求才由
+Worker 抓取并写入 `external_resource_contents`，不自动触发 embedding。正文表通过资源复合
+`userId` 外键和独立用户外键保持租户边界，正文大小和类型由数据库约束限制。
 
 语言节点继续由查询时合成，不新增语言表。不建立通用多态 `graph_nodes` 表；当前只有真实仓库和技术栈两种持久化实体，分表更直接。
 

@@ -1,0 +1,3 @@
+ALTER TABLE "external_resource_contents" ADD CONSTRAINT "external_resource_contents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "external_resource_contents" ADD CONSTRAINT "external_resource_contents_content_type_check" CHECK ("external_resource_contents"."content_type" IN ('html', 'pdf'));--> statement-breakpoint
+ALTER TABLE "external_resource_contents" ADD CONSTRAINT "external_resource_contents_byte_length_check" CHECK ("external_resource_contents"."byte_length" >= 0 AND "external_resource_contents"."byte_length" <= 1000000);

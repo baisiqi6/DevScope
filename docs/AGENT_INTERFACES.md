@@ -92,6 +92,9 @@ devscope resource save https://example.com --type website --title "示例网站"
 devscope resource get 1
 devscope resource update 1 --read --pin
 devscope resource remove 1
+devscope resource content-request 1
+devscope resource content-status 1
+devscope resource content-read 1
 devscope resource-group list
 devscope resource-group create "UI 素材"
 devscope resource-group members 1
@@ -149,6 +152,9 @@ devscope analyze report <execution-id> --wait --timeout-ms 300000
 | `devscope_get_external_resource`       | 只读      | 读取外部资源预览卡片             |
 | `devscope_update_external_resource`    | 写入      | 更新外部资源备注、标签和阅读状态 |
 | `devscope_remove_external_resource`    | 写入      | 删除外部资源                     |
+| `devscope_request_external_resource_content` | 写入/外部 | 显式异步请求采集外部资源正文 |
+| `devscope_get_external_resource_content_status` | 只读 | 查询正文采集状态与脱敏错误 |
+| `devscope_read_external_resource_content` | 只读 | 读取已完成的 HTML/PDF 正文 |
 | `devscope_list_external_resource_groups` | 只读    | 列出外部资源专用分组             |
 | `devscope_create_external_resource_group` | 写入    | 创建外部资源专用分组             |
 | `devscope_get_external_resource_group_members` | 只读 | 读取外部资源分组成员      |

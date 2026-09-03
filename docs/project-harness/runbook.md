@@ -151,7 +151,7 @@ schema，不能安装本迁移的循环检测 function/trigger，因此不具备
 本地 `pnpm dev` 会同时启动 API、Web 和 Worker。scheduler 仅在
 `ENABLE_SCHEDULER=true` 时创建每日 GitHub Search 与 GitHub Trending 任务；Worker 可以独立运行
 并消费 `jobs`。Worker 当前处理 `analysis.health`、`graph.rebuild`、`radar.discover.github`、
-`trending.sync.github` 和手动触发的 `repository.identity.backfill`，
+`trending.sync.github`、`external-resource.content` 和手动触发的 `repository.identity.backfill`，
 运行中会续租，异常中断后的过期任务会被恢复。健康分析需要 AI 配置，图谱依赖回填和 Radar
 发现需要 `GITHUB_TOKEN`。Trending 默认每天 `06:15`（`SCHEDULER_TIMEZONE`）抓取三个周期，
 也可以从“发现”页面手动启动；Radar 默认每天 `06:00` 创建搜索任务，也可以从对应页签手动
@@ -360,7 +360,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 生产 API 容器默认使用 `SCHEDULER_TIMEZONE=Asia/Shanghai` 解释 cron 时间，不依赖容器自身的 UTC 时区。
 
-首次上线 Worker 前必须应用 `packages/db/drizzle` 中已审查的迁移。手动部署工作流的
+首次上线 Worker 前必须应用 `packages/db/drizzle` 中已审查的迁移。外部资源正文功能还需要
+`0014`–`0016`（正文表、约束与 processing claim）按 journal 顺序应用。手动部署工作流的
 `apply_database_migration` 默认为 `false`；只有在确认迁移内容、备份空间和回滚窗口后才设为
 `true`。工作流会先把 PostgreSQL custom-format 备份写入
 `/home/devscope/backups/devscope/`，再显式执行 `db:migrate`。未应用迁移时，Worker schema

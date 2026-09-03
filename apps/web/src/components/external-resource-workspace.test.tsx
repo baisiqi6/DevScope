@@ -51,4 +51,25 @@ describe("ExternalResourceWorkspace card", () => {
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain("E");
   });
+
+  it("为显式正文资源显示采集和查看入口", () => {
+    const html = renderToStaticMarkup(
+      <ResourceCard
+        resource={{ ...resource, ingestionMode: "content", contentStatus: "failed", contentError: "transient_failure" }}
+        groups={[]}
+        density="grid"
+        pending={false}
+        onAddToGroup={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleRead={vi.fn()}
+        onTogglePinned={vi.fn()}
+        onRequestContent={vi.fn()}
+        onReadContent={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("重试正文");
+    expect(html).toContain("正文：failed");
+  });
 });

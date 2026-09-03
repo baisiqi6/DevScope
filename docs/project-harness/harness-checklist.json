@@ -727,6 +727,50 @@
         "ttl_minutes": 120,
         "released_at": "2026-09-01T06:09:23Z"
       }
+    },
+    {
+      "id": "product-11-external-resource-content-ingestion",
+      "title": "外部资源正文采集模块",
+      "status": "done",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-09-03",
+      "dependencies": [
+        "product-10-external-resources-workspace"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "article/paper/website 在显式触发下可安全抓取并持久化正文状态；preview_only 默认行为不变；SSRF、超时、响应大小、内容类型、重定向、解析失败与重试语义有测试；API/Client/CLI/MCP/Web 状态入口、迁移和真实 PostgreSQL 集成门禁通过；未授权前不执行生产迁移或部署。",
+      "verification": "Closeout independent Reviewer APPROVED；全仓库 lint/typecheck/test/build、隔离 PostgreSQL、跨包 focused tests均通过；生产迁移、部署、真实抓取未执行。",
+      "handoff": "高风险外部网络抓取：必须显式触发、默认 preview_only、拒绝私网/metadata/凭据 URL；生产部署需独立授权与备份回滚。",
+      "plan_path": "docs/project-harness/tasks/product-11-external-resource-content-ingestion/plan.md",
+      "workflow": {
+        "status": "closed",
+        "updated_at": "2026-09-03",
+        "branch": "codex/product-11-external-resource-content-ingestion"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/product-11-external-resource-content-ingestion/plan.md",
+        "branch": "codex/product-11-external-resource-content-ingestion",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "product11_external_resource_reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-09-03",
+        "summary": "Closeout APPROVED：Verification与checklist一致；全仓库四门禁、隔离PG 0000..latest、DB62/Worker1、API111/Client20/CLI23/MCP10/Web24通过；生产未授权。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260902-external-resource-content-ingestion",
+        "acquired_at": "2026-09-03T03:28:37Z",
+        "expires_at": "2026-09-03T05:28:37Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-09-03T04:29:36Z"
+      }
     }
   ]
 }

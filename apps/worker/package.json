@@ -13,6 +13,7 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "@devscope/shared": "workspace:*",
     "cheerio": "1.0.0",
     "dotenv": "^16.6.1",
+    "drizzle-orm": "0.45.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {

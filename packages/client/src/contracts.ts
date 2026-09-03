@@ -5,6 +5,8 @@ import {
   externalResourceMetadataSchema,
   externalResourceTypeSchema,
   externalResourceUrlSchema,
+  externalResourceContentStatusOutputSchema,
+  externalResourceContentOutputSchema,
   repositoryDetailSchema,
   repositoryGroupSchema,
   repositoryGroupTreeSchema,
@@ -16,6 +18,9 @@ import {
 export { repositoryGroupSchema } from "@devscope/shared";
 export { updateGroupSchema } from "@devscope/shared";
 export type { UpdateGroupInput } from "@devscope/shared";
+export { externalResourceContentStatusOutputSchema, externalResourceContentOutputSchema } from "@devscope/shared";
+export type ExternalResourceContentStatusOutput = z.infer<typeof externalResourceContentStatusOutputSchema>;
+export type ExternalResourceContentOutput = z.infer<typeof externalResourceContentOutputSchema>;
 import { z } from "zod";
 
 export const healthResultSchema = z.object({

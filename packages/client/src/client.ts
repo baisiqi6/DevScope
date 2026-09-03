@@ -64,6 +64,10 @@ import {
   type StartHealthAnalysisResult,
   type SaveExternalResourceResult,
   type UpdateRepoNoteResult,
+  externalResourceContentStatusOutputSchema,
+  externalResourceContentOutputSchema,
+  type ExternalResourceContentStatusOutput,
+  type ExternalResourceContentOutput,
 } from "./contracts";
 import {
   saveExternalResourceInputSchema,
@@ -114,6 +118,9 @@ export interface DevScopeClient {
   saveExternalResource(input: SaveExternalResourceInput): Promise<SaveExternalResourceResult>;
   updateExternalResource(input: UpdateExternalResourceInput): Promise<ExternalResource>;
   removeExternalResource(resourceId: number): Promise<{ success: boolean }>;
+  requestExternalResourceContent(resourceId: number): Promise<ExternalResourceContentStatusOutput>;
+  getExternalResourceContentStatus(resourceId: number): Promise<ExternalResourceContentStatusOutput>;
+  readExternalResourceContent(resourceId: number): Promise<ExternalResourceContentOutput>;
   listExternalResourceGroups(): Promise<ExternalResourceGroup[]>;
   createExternalResourceGroup(input: { name: string; description?: string }): Promise<ExternalResourceGroup>;
   getExternalResourceGroupMembers(groupId: number): Promise<ExternalResourceGroupMember[]>;
@@ -282,6 +289,9 @@ export function createDevScopeClient(options: DevScopeClientOptions): DevScopeCl
         client.mutation("externalResources.remove", { resourceId }),
         z.object({ success: z.boolean() }),
       ),
+    requestExternalResourceContent: (resourceId) => parseResult(client.mutation("externalResources.requestContent", { resourceId }), externalResourceContentStatusOutputSchema),
+    getExternalResourceContentStatus: (resourceId) => parseResult(client.query("externalResources.getContentStatus", { resourceId }), externalResourceContentStatusOutputSchema),
+    readExternalResourceContent: (resourceId) => parseResult(client.query("externalResources.readContent", { resourceId }), externalResourceContentOutputSchema),
     listExternalResourceGroups: () =>
       parseResult(
         client.query("externalResourceGroups.list"),

@@ -4,12 +4,23 @@ import {
   enqueueJob,
   enqueueRestartableJob,
   enqueueRepositoryIdentityBackfillJob,
+  enqueueExternalResourceContentJob,
+  EXTERNAL_RESOURCE_CONTENT_JOB,
   failJob,
   recoverExpiredJobs,
   renewJobLease,
 } from "./jobs";
 
 describe("持久任务队列", () => {
+  it("正文任务使用最小 payload 与稳定幂等键", async () => {
+    const created = createJob({ type: EXTERNAL_RESOURCE_CONTENT_JOB, idempotencyKey: "external-resource:content:9", payload: { resourceId: 9 } });
+    const returning = vi.fn().mockResolvedValue([created]);
+    const db = {
+      insert: vi.fn(() => ({ values: vi.fn(() => ({ onConflictDoNothing: vi.fn(() => ({ returning })) })) })),
+    };
+    await expect(enqueueExternalResourceContentJob(db as any, { userId: 7, resourceId: 9 })).resolves.toMatchObject({ enqueued: true, job: created });
+    expect(db.insert).toHaveBeenCalled();
+  });
   it("首次入队返回新任务", async () => {
     const created = createJob({ id: 11 });
     const returning = vi.fn().mockResolvedValue([created]);

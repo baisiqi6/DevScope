@@ -7,6 +7,7 @@ const {
   mockRenewJobLease,
   mockRebuildRepoGraph,
   mockCompleteJob,
+  mockAssertJobLease,
 } = vi.hoisted(() => ({
   mockClaimNextJob: vi.fn(),
   mockFailJob: vi.fn(),
@@ -17,6 +18,7 @@ const {
     stages: [], budget: { depsDev: { used: 0, limit: 1 }, github: { used: 0, limit: 1 } },
   }),
   mockCompleteJob: vi.fn().mockResolvedValue({ id: 0, status: "succeeded" }),
+  mockAssertJobLease: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@devscope/db", async (importOriginal) => {
@@ -29,6 +31,7 @@ vi.mock("@devscope/db", async (importOriginal) => {
     renewJobLease: mockRenewJobLease,
     rebuildRepoGraph: mockRebuildRepoGraph,
     completeJob: mockCompleteJob,
+    assertJobLease: mockAssertJobLease,
   };
 });
 
@@ -39,9 +42,75 @@ import {
   GRAPH_REBUILD_JOB,
   HEALTH_ANALYSIS_JOB,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
+  EXTERNAL_RESOURCE_CONTENT_JOB,
 } from "@devscope/db";
 
 describe("Worker 任务执行", () => {
+  it("正文任务校验 owner/save 后写入独立 content 并完成状态", async () => {
+    let selectCount = 0;
+    let txSelectCount = 0;
+    const resource = { id: 9, url: "https://example.com/a", userId: 7, ingestionMode: "content", contentStatus: "not_requested" };
+    const db = {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue(selectCount++ === 0 ? [resource] : [{ resourceId: 9 }]) })),
+        })),
+      })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 9 }]) })) })) })),
+      transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => callback({
+        select: vi.fn(() => {
+          txSelectCount += 1;
+          if (txSelectCount === 1) {
+            return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(() => ({ for: vi.fn().mockResolvedValue([resource]) })) })) })) };
+          }
+          return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ resourceId: 9 }]) })) })) };
+        }),
+        insert: vi.fn(() => ({ values: vi.fn(() => ({ onConflictDoUpdate: vi.fn().mockResolvedValue([]) })) })),
+        update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([{ id: 9 }]) })) })) })),
+      })),
+    };
+    const ingestExternalResource = vi.fn().mockResolvedValue({
+      status: "success", contentType: "html", text: "body", bytes: 4,
+      finalUrl: "https://example.com/a", title: "A",
+    });
+    await expect(executeJob(db as any, {
+      id: 1, userId: 7, type: EXTERNAL_RESOURCE_CONTENT_JOB,
+      idempotencyKey: "external-resource:content:9", payload: { resourceId: 9 },
+      status: "running", priority: 0, attempt: 1, maxAttempts: 3,
+      availableAt: new Date(), leaseOwner: "worker", leaseExpiresAt: new Date(Date.now() + 1000),
+      lastError: null, startedAt: new Date(), completedAt: null, createdAt: new Date(), updatedAt: new Date(), result: null, progress: null,
+    } as any, { ingestExternalResource, workerId: "worker-test", now: () => new Date() })).resolves.toMatchObject({ status: "completed", resourceId: 9 });
+    expect(ingestExternalResource).toHaveBeenCalledWith(resource.url);
+  });
+
+  it("已完成正文的重试不会再次抓取或覆盖旧内容", async () => {
+    let selectCount = 0;
+    const ingestExternalResource = vi.fn();
+    let txSelectCount = 0;
+    const db = {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue(selectCount++ === 0
+            ? [{ id: 9, url: "https://example.com/a", userId: 7, ingestionMode: "content", contentStatus: "completed" }]
+            : [{ resourceId: 9 }]) })),
+        })),
+      })),
+      transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => callback({
+        select: vi.fn(() => {
+          txSelectCount += 1;
+          if (txSelectCount === 1) {
+            return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(() => ({ for: vi.fn().mockResolvedValue([{ id: 9, url: "https://example.com/a", userId: 7, ingestionMode: "content", contentStatus: "completed" }]) })) })) })) };
+          }
+          return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ resourceId: 9 }]) })) })) };
+        }),
+      })),
+    };
+    await expect(executeJob(db as any, {
+      id: 2, userId: 7, type: EXTERNAL_RESOURCE_CONTENT_JOB,
+      payload: { resourceId: 9 },
+    } as any, { ingestExternalResource, workerId: "worker-test" })).resolves.toMatchObject({ status: "already_completed" });
+    expect(ingestExternalResource).not.toHaveBeenCalled();
+  });
   it("将 GitHub Search 结果写入用户候选池", async () => {
     const searchRepositories = vi.fn().mockResolvedValue([{
       githubRepoId: "123",

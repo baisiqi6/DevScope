@@ -40,6 +40,9 @@ const HELP_TEXT = `DevScope CLI
   devscope resource get <resource-id>
   devscope resource update <resource-id> [--title <text>] [--notes <text>]
   devscope resource remove <resource-id>
+  devscope resource content-request <resource-id>
+  devscope resource content-status <resource-id>
+  devscope resource content-read <resource-id>
   devscope resource-group list
   devscope resource-group create <name> [--description <text>]
   devscope resource-group members <group-id>
@@ -422,7 +425,16 @@ async function runResourceCommand(args: string[], client: DevScopeClient): Promi
     return client.removeExternalResource(parseInteger(parsed.positionals[0], 'resource-id', undefined, 1));
   }
 
-  throw new CliUsageError('用法: devscope resource <list|save|get|update|remove> ...');
+  if (command === 'content-request' || command === 'content-status' || command === 'content-read') {
+    const parsed = parseOptions(rest, new Set(), new Set());
+    expectPositionals(parsed.positionals, 1, `devscope resource ${command} <resource-id>`);
+    const resourceId = parseInteger(parsed.positionals[0], 'resource-id', undefined, 1);
+    if (command === 'content-request') return client.requestExternalResourceContent(resourceId);
+    if (command === 'content-status') return client.getExternalResourceContentStatus(resourceId);
+    return client.readExternalResourceContent(resourceId);
+  }
+
+  throw new CliUsageError('用法: devscope resource <list|save|get|update|remove|content-request|content-status|content-read> ...');
 }
 
 async function runResourceGroupCommand(args: string[], client: DevScopeClient): Promise<unknown> {

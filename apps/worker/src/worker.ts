@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import {
   claimNextJob,
   completeJob,
@@ -14,6 +16,12 @@ import {
   healthAnalysisJobPayloadSchema,
   recoverExpiredJobs,
   REPOSITORY_IDENTITY_BACKFILL_JOB,
+  EXTERNAL_RESOURCE_CONTENT_JOB,
+  externalResourceContentJobPayloadSchema,
+  externalResourceContents,
+  externalResources,
+  externalResourceSaves,
+  ingestExternalResource,
   repositoryIdentityBackfillJobPayloadSchema,
   executeRepositoryIdentityBackfill,
   rebuildRepoGraph,
@@ -75,6 +83,8 @@ export interface WorkerDependencies {
   workerId?: string;
   resolveRepositoryIdentity?: ResolveGitHubRepositoryIdentity;
   runRepositoryIdentityBackfill?: typeof executeRepositoryIdentityBackfill;
+  ingestExternalResource?: typeof ingestExternalResource;
+  contentProcessingStaleMs?: number;
 }
 
 /**
@@ -240,6 +250,14 @@ export async function executeJob(
     );
   }
 
+  if (job.type === EXTERNAL_RESOURCE_CONTENT_JOB) {
+    const payload = externalResourceContentJobPayloadSchema.parse(job.payload);
+    if (!dependencies.workerId) throw new Error("正文采集任务缺少 workerId");
+    const ingest = dependencies.ingestExternalResource ?? ingestExternalResource;
+    const resourceResult = await processExternalResourceContent(db, job.userId, job.id, dependencies.workerId, payload.resourceId, ingest, now, dependencies.contentProcessingStaleMs);
+    return resourceResult;
+  }
+
   if (job.type !== GITHUB_DISCOVERY_JOB) {
     throw new Error(`不支持的任务类型: ${job.type}`);
   }
@@ -300,6 +318,89 @@ export async function executeJob(
     discovered: repositories.length,
     upserted,
   };
+}
+
+export async function processExternalResourceContent(
+  db: Db,
+  userId: number,
+  jobId: number,
+  workerId: string,
+  resourceId: number,
+  ingest: typeof ingestExternalResource,
+  now: () => Date,
+  staleAfterMs = 10 * 60_000,
+): Promise<Record<string, unknown>> {
+  const claim = await db.transaction(async (tx) => {
+    await assertJobLease(tx as unknown as Db, jobId, workerId, now());
+    const [resource] = await tx.select({
+      id: externalResources.id,
+      url: externalResources.url,
+      userId: externalResources.userId,
+      ingestionMode: externalResources.ingestionMode,
+      contentStatus: externalResources.contentStatus,
+      contentProcessingJobId: externalResources.contentProcessingJobId,
+      contentProcessingStartedAt: externalResources.contentProcessingStartedAt,
+    }).from(externalResources).where(eq(externalResources.id, resourceId)).limit(1).for("update");
+    if (!resource || resource.userId !== userId) throw new Error("外部资源不存在或无权访问");
+    if (resource.ingestionMode !== "content") throw new Error("外部资源未显式启用正文采集");
+    const [saved] = await tx.select({ resourceId: externalResourceSaves.resourceId })
+      .from(externalResourceSaves)
+      .where(and(eq(externalResourceSaves.userId, userId), eq(externalResourceSaves.resourceId, resourceId))).limit(1);
+    if (!saved) throw new Error("外部资源未被当前用户收藏");
+    if (resource.contentStatus === "completed") return { status: "already_completed" as const };
+    const currentTime = now();
+    if (resource.contentStatus === "processing" && resource.contentProcessingStartedAt &&
+      currentTime.getTime() - resource.contentProcessingStartedAt.getTime() < staleAfterMs) {
+      throw new Error("外部资源正文正在由其他任务处理");
+    }
+    const [claimed] = await tx.update(externalResources)
+      .set({ contentStatus: "processing", contentProcessingJobId: jobId, contentProcessingStartedAt: currentTime, contentError: null, updatedAt: currentTime })
+      .where(eq(externalResources.id, resourceId)).returning({ id: externalResources.id });
+    if (!claimed) throw new Error("外部资源正文 claim 失败");
+    return { status: "claimed" as const, url: resource.url };
+  });
+  if (claim.status === "already_completed") return { status: "already_completed", resourceId };
+  const result = await ingest(claim.url);
+  if (result.status === "failure") {
+    await db.transaction(async (tx) => {
+      await assertJobLease(tx as unknown as Db, jobId, workerId, now());
+      const [updated] = await tx.update(externalResources).set({ contentStatus: "failed", contentError: `${result.errorKind}: ${result.error}`.slice(0, 1000), contentProcessingJobId: null, contentProcessingStartedAt: null, updatedAt: now() })
+        .where(and(eq(externalResources.id, resourceId), eq(externalResources.contentProcessingJobId, jobId), eq(externalResources.contentStatus, "processing"))).returning({ id: externalResources.id });
+      if (!updated) throw new Error("正文失败写回时 claim 已失效");
+    });
+    throw new Error(`正文采集失败（${result.errorKind}）`);
+  }
+  const contentHash = createHash("sha256").update(result.text).digest("hex");
+  await db.transaction(async (tx) => {
+    await assertJobLease(tx as unknown as Db, jobId, workerId, now());
+    await tx.insert(externalResourceContents).values({
+      resourceId,
+      userId,
+      contentType: result.contentType,
+      contentText: result.text,
+      byteLength: result.bytes,
+      contentHash,
+      finalUrl: result.finalUrl,
+      fetchedAt: now(),
+      parserVersion: "external-resource-ingestion-v1",
+    }).onConflictDoUpdate({
+      target: externalResourceContents.resourceId,
+      set: {
+        contentType: result.contentType,
+        contentText: result.text,
+        byteLength: result.bytes,
+        contentHash,
+        finalUrl: result.finalUrl,
+        fetchedAt: now(),
+        parserVersion: "external-resource-ingestion-v1",
+        userId,
+      },
+    });
+    await assertJobLease(tx as unknown as Db, jobId, workerId, now());
+    const [updated] = await tx.update(externalResources).set({ contentStatus: "completed", contentFetchedAt: now(), contentError: null, contentProcessingJobId: null, contentProcessingStartedAt: null, updatedAt: now() }).where(and(eq(externalResources.id, resourceId), eq(externalResources.contentProcessingJobId, jobId), eq(externalResources.contentStatus, "processing"))).returning({ id: externalResources.id });
+    if (!updated) throw new Error("正文成功写回时 claim 已失效");
+  });
+  return { status: "completed", resourceId, contentType: result.contentType, bytes: result.bytes };
 }
 
 function startLeaseHeartbeat(

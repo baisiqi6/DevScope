@@ -1,45 +1,3 @@
-# Review Packet
-
-## Subject
-
-- Checklist item: `product-11-external-resource-content-ingestion`
-- Reviewer: `reviewer`
-- Updated at: `2026-09-03`
-- Canonical plan path: `docs/project-harness/tasks/product-11-external-resource-content-ingestion/plan.md`
-
-## Item Snapshot
-
-- Title: 外部资源正文采集模块
-- Status: doing
-- Workflow status: review_approved
-- Priority: p1
-- Owner: codex
-- Session: codex-20260902-external-resource-content-ingestion
-- Dependencies: product-10-external-resources-workspace
-
-## Acceptance
-
-article/paper/website 在显式触发下可安全抓取并持久化正文状态；preview_only 默认行为不变；SSRF、超时、响应大小、内容类型、重定向、解析失败与重试语义有测试；API/Client/CLI/MCP/Web 状态入口、迁移和真实 PostgreSQL 集成门禁通过；未授权前不执行生产迁移或部署。
-
-## Verification
-
-
-
-## Handoff
-
-高风险外部网络抓取：必须显式触发、默认 preview_only、拒绝私网/metadata/凭据 URL；生产部署需独立授权与备份回滚。
-
-## Review Inputs
-
-- Scope: `docs/project-harness/scope.md`
-- Architecture: `docs/project-harness/architecture.md`
-- Domain model: `docs/project-harness/domain-model.md`
-- Progress: `docs/project-harness/progress.md`
-- Review output target: `docs/project-harness/current/review.md`
-
-## Canonical Plan Content
-
-```md
 # 外部资源正文采集模块
 
 ## Item
@@ -47,7 +5,7 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
 - Checklist item：`product-11-external-resource-content-ingestion`
 - 风险模式：`high-risk`（外部网络抓取、SSRF、持久化状态、Worker 任务与 schema 变更）
 - 依赖：`product-10-external-resources-workspace`
-- 当前阶段：Phase 0/1/2/3 已通过独立复审，进入 Phase 4 完整门禁与 closeout；生产迁移/部署不在默认授权内
+- 当前阶段：Phase 0/1/2/3/4 已通过独立复审，模块本地实现完成；生产迁移/部署不在默认授权内
 
 ## 目标
 
@@ -85,9 +43,21 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
    - Web 先显示状态和失败原因，避免自动触发外部抓取；所有输出经 shared Zod schema。
    - 已接入 API/Client/CLI/MCP/Web；Web 仅按钮显式触发，正文查看展示前截断至 50,000 字符；列表不携带正文。
    - API111、Client20、CLI23、MCP10、Web24 测试及相关 typecheck/build 通过；独立 Reviewer `APPROVED`。
-5. **Phase 4：门禁与 review**（in progress）
+5. **Phase 4：门禁与 review**（complete，独立 Reviewer `APPROVED`）
    - 单元/HTTP fixture/SSRF 回归、真实 PostgreSQL、全量 lint/typecheck/test/build。
    - 独立 Reviewer 只读复核；通过后才评估生产迁移和部署。
+
+## Verification
+
+- 全仓库 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过；lint/build 仅有既有 warning，无 error。
+- 隔离 `pgvector/pgvector:pg16` 重放 `0000..latest` 迁移通过；DB 集成 62 项，Worker lease-expiry/stale takeover 集成 1 项通过。
+- Phase 0/1、Phase 2、Phase 3、Phase 4 均经独立 Reviewer `product11_external_resource_reviewer` 审批。
+- 生产数据库迁移、部署、真实外部资源抓取均未执行，仍需单独授权。
+
+## Follow-up
+
+- `readContent` 当前服务端最多返回约 1MB，Web 端展示前截断至 50,000 字符；未来可按需要增加分页，不阻断本模块收口。
+- 全文检索、chunks、embedding、定时刷新和多用户鉴权不属于本模块。
 
 ## 验收标准
 
@@ -101,12 +71,3 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
 ## 未授权动作
 
 - 生产数据库迁移、生产部署、真实外部资源大规模抓取、正文全文索引、DNS/HTTPS/Nginx/凭据修改。
-```
-
-## Review Focus
-
-1. 当前计划或结果是否覆盖 acceptance
-2. 是否越过 scope non-goals
-3. 是否越过 architecture 模块边界
-4. 是否偷偷吸收了未来 checklist item 的工作
-5. 当前验证方式是否足以支持结束本轮
