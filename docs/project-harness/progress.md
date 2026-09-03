@@ -1,9 +1,9 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-09-01
-> 生产运行基线：`05aa9e1`（完整 SHA 见发布回执）；`main` 已通过 PR #59 合并并完成本 item 生产部署
+> 更新时间：2026-09-03
+> 生产运行基线：正文采集启用入口已通过 PR #64 合并并完成生产部署；运行 revision 见对应回执
 > 部署形态：Standalone
-> 当前状态：dogfood 五项整改已完成本地实现、独立审查、生产迁移、部署与只读复核；五条 observation 保持 `fixed_pending_verification` 以等待真实写入/采集样本
+> 当前状态：dogfood 整改已完成本地实现、独立审查、生产迁移、部署与只读复核；其中 `DF-20260902-001` 已完成生产受控验证并关闭，其余 observation 仍按各自证据保持 `fixed_pending_verification`
 
 ## 当前状态
 
@@ -11,11 +11,14 @@
 `15d8abf7a26257bc08d7680c7fa9cdadb9c58101`，deploy run `33722303660` 显式应用
 `0014`–`0016` migrations；备份、三服务重建、Nginx 校验均成功。生产只读复核确认
 server/images revision 一致、正文表/claim 列/约束存在、认证 health/home `200`、未认证 `401`，
-近期 API/Worker 无错误；尚未触发真实外部资源抓取。
+近期 API/Worker 无错误；正文采集尚未触发真实成功样本。
+2026-09-03：product-11a 修复已发布（PR #64，deploy run `33727039540`）；生产资源 ID `2` 成功
+通过 `content-enable`，随后显式请求进入 `pending` 并因 DNS 安全拒绝安全失败。`DF-20260902-001`
+已关闭；失败 URL 未写入正文，未绕过 SSRF 防线。
 
-- [Harness checklist](harness-checklist.json)：dogfood 五项整改已完成 `done` closeout，最终独立审查为 `APPROVED`；
+- [Harness checklist](harness-checklist.json)：product-11a 已完成 `done` closeout，独立 Reviewer `APPROVED`；
 - [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
-- 生产 API、Web、Worker 当前运行 revision `05aa9e192a5ca95cb49ffc628617afc0e36af83d`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- 生产 API、Web、Worker 当前运行 product-11a revision `ac62db42b32632002fd341eb294e152c0424e6b4`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
 - 本批次生产部署 run `33475333993` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
   migration `0013`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 

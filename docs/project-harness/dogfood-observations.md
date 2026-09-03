@@ -23,7 +23,7 @@
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
 | `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `fixed_pending_verification`     | `p2`   | 产品缺陷 | wrong data                |
-| `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `fixed_pending_verification` | `p1` | 能力缺口 | blocked |
+| `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `closed` | `p1` | 能力缺口 | blocked |
 
 ## Observations
 
@@ -181,23 +181,24 @@
 
 ### DF-20260902-001：外部资源正文采集没有启用入口
 
-- Status: `fixed_pending_verification`
+- Status: `closed`
 - Priority: `p1`
 - Time: 2026-09-02
 - Entry point: CLI/MCP/Web 外部资源工作区
 - User intent: 在正文采集模块发布后，对已收藏的文章或网站显式触发正文采集。
 - Expected: 已保存的外部资源可以明确切换到 `content` 模式，再请求正文采集并观察 `pending → processing → completed/failed` 状态。
-- Actual: 已增加显式 `enableContent` 入口；现有资源（例如 ID `2`）在生产仍保持 `preview_only / not_requested`，待受控验证。保存接口继续固定写入 `preview_only`；启用只允许 `preview_only + not_requested → content`，Web 对 preview-only 资源显示“启用正文采集”。
-- Reproduction: 生产资源 ID `2` 的只读状态仍为 `preview_only / not_requested`；本地 focused tests 已验证启用、重复幂等、异常状态拒绝与并发条件更新。本次尚未对生产资源执行 mutation。
+- Actual: 已增加显式 `enableContent` 入口；生产资源 ID `2` 已成功从 `preview_only / not_requested` 切换为 `content / not_requested`。保存接口继续固定写入 `preview_only`；启用只允许 `preview_only + not_requested → content`，Web 对 preview-only 资源显示“启用正文采集”。随后显式请求进入 `pending`，Worker 按生产 DNS 安全策略以脱敏 `security_rejected` 失败，未写入正文。
+- Reproduction: 生产资源 ID `2` 通过 `content-enable` 成功完成模式切换，`content-request` 返回 `pending`，最终状态为 `failed` 且错误为 `security_rejected: DNS 解析结果包含受限地址`；本地 focused tests 已验证启用、重复幂等、异常状态拒绝与并发条件更新。
 - Evidence: [`external-resources.ts`](../../apps/api/src/router/external-resources.ts) 的 `enableContent` 同时约束模式与状态并复用 owner/save 查询；[`index.ts`](../../packages/shared/src/index.ts) 提供 enable schema；CLI/MCP/Web 均已接入。
-- Impact: fixed_pending_verification。代码修复已通过独立 review，但生产资源 ID `2` 尚未执行受控启用与后续正文采集。
+- Impact: blocked（历史影响已解除）。生产启用入口、异步请求和安全失败语义均已验证；本次目标 URL 因生产 DNS 安全策略失败，未写入正文，但这属于受控的 URL-specific 失败而非入口缺失。
 - Frequency: reproducible
-- Workaround: 暂无生产 workaround；不能绕过 API 直接修改 PostgreSQL。等待生产受控验证。
-- Classification: 当前未支持能力；属于正文采集的产品操作面缺口。
+- Workaround: 对被安全策略拒绝的 URL 只能更换允许的公开地址；不能绕过 API 或 SSRF 防线直接修改 PostgreSQL。
+- Classification: 已修复；后续若需验证成功正文，应另选允许的公开 URL，不绕过 API 或 SSRF 防线。
 - Related issue/checklist: `product-11a-external-resource-content-enable`; no separate GitHub issue yet
 - Timeline:
   - 2026-09-02: 正文采集 PR #62 发布后，线上 `health`、资源 `content-status` 和 API 路由均可用；复查资源 ID `2` 仍为 `preview_only`，确认没有用户可用的启用入口，未触发真实抓取。
-  - 2026-09-03: product-11a 本地修复通过独立 Reviewer；新增 `content-enable` API/Client/CLI/MCP/Web 入口，相关 focused tests/typecheck 通过。生产资源 ID `2` 尚未修改，等待单独生产授权与受控验证。
+  - 2026-09-03: product-11a 本地修复通过独立 Reviewer；新增 `content-enable` API/Client/CLI/MCP/Web 入口，相关 focused tests/typecheck 通过。
+  - 2026-09-03: 生产 deploy run `33727039540` 后，资源 ID `2` 成功启用为 `content + not_requested`；显式请求返回 `pending`，Worker 最终以脱敏 `security_rejected` 失败。入口与状态链路验证通过，关闭 observation。
 
 ## 新条目模板
 
