@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-09-01",
+  "updated_at": "2026-09-03",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -483,7 +483,7 @@
       "priority": "p1",
       "owner": null,
       "selected_in_session": null,
-      "updated_at": "2026-08-20",
+      "updated_at": "2026-09-03",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": null,
@@ -493,7 +493,7 @@
       "plan_path": "docs/project-harness/tasks/operations-8-proxy-independent-deploy/plan.md",
       "workflow": {
         "status": "closed",
-        "updated_at": "2026-08-20",
+        "updated_at": "2026-09-03",
         "branch": "codex/operations-closeout"
       },
       "artifacts": {
@@ -501,8 +501,11 @@
         "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
-        "decision": null,
-        "reviewer": "ci-equivalent-gate"
+        "decision": "approved",
+        "reviewer": "dogfood_remediation_reviewer",
+        "phase": "closed",
+        "updated_at": "2026-09-03",
+        "summary": "Retrospective independent read-only review APPROVED：PR #50/#51、quality/integration、成功生产 run 32348360956、checksum/bundle/fast-forward/image revision gates、备份/回滚/health/data invariants evidence sufficient. This review supplements, and does not alter, the original CI-equivalent verification record; no production mutation performed."
       },
       "lease": {
         "owner": "root",
