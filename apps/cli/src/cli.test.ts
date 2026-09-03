@@ -43,6 +43,7 @@ function createStubClient(): DevScopeClient {
     updateExternalResource: vi.fn(),
     removeExternalResource: vi.fn().mockResolvedValue({ success: true }),
     requestExternalResourceContent: vi.fn(),
+    enableExternalResourceContent: vi.fn(),
     getExternalResourceContentStatus: vi.fn(),
     readExternalResourceContent: vi.fn(),
     listExternalResourceGroups: vi.fn().mockResolvedValue([]),
@@ -59,10 +60,13 @@ describe("DevScope CLI", () => {
     vi.mocked(client.requestExternalResourceContent).mockResolvedValue({ resourceId: 7, status: "pending", error: null, fetchedAt: null });
     vi.mocked(client.getExternalResourceContentStatus).mockResolvedValue({ resourceId: 7, status: "completed", error: null, fetchedAt: null });
     vi.mocked(client.readExternalResourceContent).mockResolvedValue({ resourceId: 7, status: "completed", error: null, fetchedAt: null, contentType: "html", text: "ok", finalUrl: "https://example.com" });
+    vi.mocked(client.enableExternalResourceContent).mockResolvedValue({ resourceId: 7, ingestionMode: "content", status: "not_requested", error: null, fetchedAt: null });
+    expect(await runCli(["resource", "content-enable", "7"], { createClient: () => client })).toBe(0);
     expect(await runCli(["resource", "content-request", "7"], { createClient: () => client })).toBe(0);
     expect(await runCli(["resource", "content-status", "7"], { createClient: () => client })).toBe(0);
     expect(await runCli(["resource", "content-read", "7"], { createClient: () => client })).toBe(0);
     expect(client.requestExternalResourceContent).toHaveBeenCalledWith(7);
+    expect(client.enableExternalResourceContent).toHaveBeenCalledWith(7);
   });
   it("help 不初始化客户端", async () => {
     const stdout = captureOutput();

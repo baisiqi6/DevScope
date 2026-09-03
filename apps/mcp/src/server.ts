@@ -461,6 +461,13 @@ export function createDevScopeMcpServer(client: DevScopeClient): McpServer {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, ({ resourceId }) => runTool(() => client.requestExternalResourceContent(resourceId)));
 
+  server.registerTool("devscope_enable_external_resource_content", {
+    title: "启用外部资源正文采集",
+    description: "写入：将当前用户已收藏资源从 preview_only 单向切换为 content；不会联网或自动入队。",
+    inputSchema: z.object({ resourceId: z.number().int().positive() }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, ({ resourceId }) => runTool(() => client.enableExternalResourceContent(resourceId)));
+
   server.registerTool("devscope_get_external_resource_content_status", {
     title: "查询正文采集状态",
     description: "只读：返回脱敏的正文采集状态与错误。",

@@ -23,6 +23,7 @@
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
 | `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `fixed_pending_verification`     | `p2`   | 产品缺陷 | wrong data                |
+| `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `fixed_pending_verification` | `p1` | 能力缺口 | blocked |
 
 ## Observations
 
@@ -177,6 +178,26 @@
   - 2026-08-24: 采集 AnySearch Skill/MCP、QuantDinger 与 RQAlpha 时 4/4 再次出现同一 HN 400 warning；四仓库 embedding 与分组均成功，累计证据继续支持这是稳定的 HN enrichment 缺陷。
   - 2026-08-31: 修复 Algolia `hitsPerPage` 参数并增加 limit 边界归一；SourceSnapshot 增加 `errorKind` 区分 400 参数错误、429/5xx/网络临时失败和未知错误，pipeline 回归测试通过，等待生产复查。
   - 2026-09-01: 发布 run `33475333993` 成功并完成生产 API/MCP 只读健康复核；本次未触发真实仓库重新采集，保留 fixed_pending_verification 以等待下一次安全采集样本。
+
+### DF-20260902-001：外部资源正文采集没有启用入口
+
+- Status: `fixed_pending_verification`
+- Priority: `p1`
+- Time: 2026-09-02
+- Entry point: CLI/MCP/Web 外部资源工作区
+- User intent: 在正文采集模块发布后，对已收藏的文章或网站显式触发正文采集。
+- Expected: 已保存的外部资源可以明确切换到 `content` 模式，再请求正文采集并观察 `pending → processing → completed/failed` 状态。
+- Actual: 已增加显式 `enableContent` 入口；现有资源（例如 ID `2`）在生产仍保持 `preview_only / not_requested`，待受控验证。保存接口继续固定写入 `preview_only`；启用只允许 `preview_only + not_requested → content`，Web 对 preview-only 资源显示“启用正文采集”。
+- Reproduction: 生产资源 ID `2` 的只读状态仍为 `preview_only / not_requested`；本地 focused tests 已验证启用、重复幂等、异常状态拒绝与并发条件更新。本次尚未对生产资源执行 mutation。
+- Evidence: [`external-resources.ts`](../../apps/api/src/router/external-resources.ts) 的 `enableContent` 同时约束模式与状态并复用 owner/save 查询；[`index.ts`](../../packages/shared/src/index.ts) 提供 enable schema；CLI/MCP/Web 均已接入。
+- Impact: fixed_pending_verification。代码修复已通过独立 review，但生产资源 ID `2` 尚未执行受控启用与后续正文采集。
+- Frequency: reproducible
+- Workaround: 暂无生产 workaround；不能绕过 API 直接修改 PostgreSQL。等待生产受控验证。
+- Classification: 当前未支持能力；属于正文采集的产品操作面缺口。
+- Related issue/checklist: `product-11a-external-resource-content-enable`; no separate GitHub issue yet
+- Timeline:
+  - 2026-09-02: 正文采集 PR #62 发布后，线上 `health`、资源 `content-status` 和 API 路由均可用；复查资源 ID `2` 仍为 `preview_only`，确认没有用户可用的启用入口，未触发真实抓取。
+  - 2026-09-03: product-11a 本地修复通过独立 Reviewer；新增 `content-enable` API/Client/CLI/MCP/Web 入口，相关 focused tests/typecheck 通过。生产资源 ID `2` 尚未修改，等待单独生产授权与受控验证。
 
 ## 新条目模板
 
