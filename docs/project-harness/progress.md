@@ -7,6 +7,12 @@
 
 ## 当前状态
 
+2026-09-03：外部资源正文采集模块已完成生产发布。PR #62 合并提交
+`15d8abf7a26257bc08d7680c7fa9cdadb9c58101`，deploy run `33722303660` 显式应用
+`0014`–`0016` migrations；备份、三服务重建、Nginx 校验均成功。生产只读复核确认
+server/images revision 一致、正文表/claim 列/约束存在、认证 health/home `200`、未认证 `401`，
+近期 API/Worker 无错误；尚未触发真实外部资源抓取。
+
 - [Harness checklist](harness-checklist.json)：dogfood 五项整改已完成 `done` closeout，最终独立审查为 `APPROVED`；
 - [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
 - 生产 API、Web、Worker 当前运行 revision `05aa9e192a5ca95cb49ffc628617afc0e36af83d`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
@@ -45,7 +51,7 @@
 | 技术栈 Phase B  | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成                          | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md)   |
 | 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
-| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
+| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与正文异步采集/状态读取已部署；全文检索、embedding 和多用户仍未进入范围 | [product-11 plan](tasks/product-11-external-resource-content-ingestion/plan.md) |
 | Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已部署并完成只读复核；等待真实写入/采集样本 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
 
 ## 当前生产基线
@@ -67,7 +73,7 @@
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
-- 外部资源工作区的 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署属于历史快照；文章、论文和网站仍与 GitHub 仓库分别管理；
+- 外部资源工作区与正文采集模块已通过 PR/CI、隔离 PostgreSQL 验证和生产 `0014`–`0016` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。

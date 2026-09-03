@@ -742,7 +742,7 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "article/paper/website 在显式触发下可安全抓取并持久化正文状态；preview_only 默认行为不变；SSRF、超时、响应大小、内容类型、重定向、解析失败与重试语义有测试；API/Client/CLI/MCP/Web 状态入口、迁移和真实 PostgreSQL 集成门禁通过；未授权前不执行生产迁移或部署。",
-      "verification": "Closeout independent Reviewer APPROVED；全仓库 lint/typecheck/test/build、隔离 PostgreSQL、跨包 focused tests均通过；生产迁移、部署、真实抓取未执行。",
+      "verification": "本地与 CI 全仓库 lint/typecheck/test/build 通过（仅既有 warning）；隔离 pgvector PostgreSQL 重放 0000..latest，DB 集成62项与 Worker lease-expiry/stale takeover 1项通过；API111/Client20/CLI23/MCP10/Web24 focused tests通过；PR #62 合并提交 15d8abf7a26257bc08d7680c7fa9cdadb9c58101；生产 deploy run 33722303660 显式 apply_database_migration=true 成功，备份、0014-0016迁移、三服务重建与Nginx校验通过；生产只读复核 server/images revision一致、正文表/claim列/约束存在、认证health/home 200、未认证401、近期API/Worker无错误；未触发真实外部资源抓取。",
       "handoff": "高风险外部网络抓取：必须显式触发、默认 preview_only、拒绝私网/metadata/凭据 URL；生产部署需独立授权与备份回滚。",
       "plan_path": "docs/project-harness/tasks/product-11-external-resource-content-ingestion/plan.md",
       "workflow": {

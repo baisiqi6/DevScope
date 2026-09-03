@@ -52,7 +52,8 @@
 - 全仓库 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过；lint/build 仅有既有 warning，无 error。
 - 隔离 `pgvector/pgvector:pg16` 重放 `0000..latest` 迁移通过；DB 集成 62 项，Worker lease-expiry/stale takeover 集成 1 项通过。
 - Phase 0/1、Phase 2、Phase 3、Phase 4 均经独立 Reviewer `product11_external_resource_reviewer` 审批。
-- 生产数据库迁移、部署、真实外部资源抓取均未执行，仍需单独授权。
+- 生产部署已执行：PR #62 合并提交 `15d8abf7a26257bc08d7680c7fa9cdadb9c58101`，部署 run `33722303660`，工作流显式启用 `apply_database_migration=true`；备份、`0014`–`0016` 迁移、三服务重建和 Nginx 校验均成功。
+- 生产只读复核：服务器 HEAD 与三服务镜像 revision 均为目标 SHA；迁移 journal 含最新三批 hash，`external_resource_contents`、processing claim 列、用户 FK/类型/大小约束存在；隧道未认证 `401`、认证 health/home `200`，API/Worker 近期日志无错误。尚未触发真实外部资源正文抓取。
 
 ## Follow-up
 
