@@ -775,10 +775,10 @@
     {
       "id": "product-11a-external-resource-content-enable",
       "title": "外部资源正文采集显式启用入口",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260903-external-resource-content-enable",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-09-03",
       "dependencies": [
         "product-11-external-resource-content-ingestion"
@@ -786,32 +786,34 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "已保存的 preview_only 外部资源可通过显式且单向的 enable-content 入口切换为 content，再请求正文采集；API/Client/CLI/MCP/Web 契约一致；已开始或完成采集的资源不得降级；用户隔离、幂等、回归与生产只读验证通过。",
-      "verification": "本地/CI全仓库 lint/typecheck/test/build 通过；API12、Client14、CLI23、MCP11、Web3 focused tests通过；独立 Reviewer product11a_external_resource_reviewer APPROVED；enableContent仅允许 preview_only+not_requested，重复调用幂等，已开始状态拒绝；生产资源ID2尚未修改，待单独生产授权。",
-      "handoff": "修复 DF-20260902-001；默认不自动抓取，生产变更需独立授权。",
+      "verification": "独立 closeout Reviewer APPROVED；PR #64 已合并；deploy run 33727039540 成功；生产资源ID2 content-enable 成功，content-request pending 后按 DNS 安全策略 failed（security_rejected），未写入正文；DF-20260902-001 已关闭。",
+      "handoff": "生产受控验证已完成；资源 ID 2 已启用并按安全策略失败。后续若要验证成功正文，应另选允许的公开 URL，不绕过 API 或 SSRF 防线。",
       "plan_path": "docs/project-harness/tasks/product-11a-external-resource-content-enable/plan.md",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-09-03",
         "branch": "codex/product-11a-external-resource-content-enable"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/product-11a-external-resource-content-enable/plan.md",
         "branch": "codex/product-11a-external-resource-content-enable",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "product11a_external_resource_reviewer",
-        "phase": "review_approved",
+        "reviewer": "reviewer",
+        "phase": "closeout_requested",
         "updated_at": "2026-09-03",
-        "summary": "本地修复通过：enableContent仅允许 preview_only+not_requested；content+not_requested重复调用幂等；已开始状态拒绝；owner/save隔离；启用不入队不联网；API/Client/CLI/MCP/Web focused tests与typecheck通过。生产资源ID2尚未执行mutation。"
+        "summary": "Closeout复审通过：本地实现与全仓库门禁通过；PR #64 已合并，deploy run 33727039540 成功。生产资源ID2 已由 preview_only/not_requested 受控切换为 content/not_requested，content-request 返回 pending，Worker 按 DNS 安全策略以脱敏 security_rejected 失败且未写入正文；DF-20260902-001 详细条目、生产证据与 canonical plan 一致。"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260903-external-resource-content-enable",
         "acquired_at": "2026-09-03T06:47:59Z",
         "expires_at": "2026-09-03T08:47:59Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-09-03T07:33:43Z"
       }
     }
   ]

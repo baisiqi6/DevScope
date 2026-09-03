@@ -31,11 +31,13 @@ function createClientWithMockFetch(responses: Record<string, unknown>): DevScope
 describe("DevScope Client 新增方法", () => {
   it("请求、查询并读取外部资源正文时校验输出", async () => {
     const client = createClientWithMockFetch({
+      "externalResources.enableContent": { resourceId: 9, ingestionMode: "content", status: "not_requested", error: null, fetchedAt: null },
       "externalResources.requestContent": { resourceId: 9, status: "pending", error: null, fetchedAt: null },
       "externalResources.getContentStatus": { resourceId: 9, status: "completed", error: null, fetchedAt: "2026-09-01T00:00:00.000Z" },
       "externalResources.readContent": { resourceId: 9, status: "completed", error: null, fetchedAt: "2026-09-01T00:00:00.000Z", contentType: "html", text: "正文", finalUrl: "https://example.com/article" },
     });
 
+    await expect(client.enableExternalResourceContent(9)).resolves.toMatchObject({ ingestionMode: "content", status: "not_requested" });
     await expect(client.requestExternalResourceContent(9)).resolves.toMatchObject({ status: "pending" });
     await expect(client.getExternalResourceContentStatus(9)).resolves.toMatchObject({ status: "completed" });
     await expect(client.readExternalResourceContent(9)).resolves.toMatchObject({ contentType: "html", text: "正文" });

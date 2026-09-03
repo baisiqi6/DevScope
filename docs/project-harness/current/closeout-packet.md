@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `product-11-external-resource-content-ingestion`
+- Checklist item: `product-11a-external-resource-content-enable`
 - Reviewer: `reviewer`
 - Updated at: `2026-09-03`
-- Canonical plan path: `docs/project-harness/tasks/product-11-external-resource-content-ingestion/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/product-11a-external-resource-content-enable/plan.md`
 
 ## Item Snapshot
 
-- Title: 外部资源正文采集模块
-- Status: doing
-- Workflow status: closeout_requested
+- Title: 外部资源正文采集显式启用入口
+- Status: done
+- Workflow status: closed
 - Priority: p1
-- Owner: codex
-- Session: codex-20260902-external-resource-content-ingestion
-- Dependencies: product-10-external-resources-workspace
+- Owner: None
+- Session: None
+- Dependencies: product-11-external-resource-content-ingestion
 
 ## Acceptance
 
-article/paper/website 在显式触发下可安全抓取并持久化正文状态；preview_only 默认行为不变；SSRF、超时、响应大小、内容类型、重定向、解析失败与重试语义有测试；API/Client/CLI/MCP/Web 状态入口、迁移和真实 PostgreSQL 集成门禁通过；未授权前不执行生产迁移或部署。
+已保存的 preview_only 外部资源可通过显式且单向的 enable-content 入口切换为 content，再请求正文采集；API/Client/CLI/MCP/Web 契约一致；已开始或完成采集的资源不得降级；用户隔离、幂等、回归与生产只读验证通过。
 
 ## Verification
 
-全仓库 corepack pnpm lint/typecheck/test/build 通过（仅既有 warning）；隔离 pgvector PostgreSQL 重放 0000..latest，DB 集成62项与 Worker lease-expiry/stale takeover 1项通过；API111、Client20、CLI23、MCP10、Web24 focused tests通过；Phase0-4独立 Reviewer product11_external_resource_reviewer APPROVED；生产迁移、部署、真实外部资源抓取未执行。
+本地/CI全仓库 lint/typecheck/test/build通过；独立 Reviewer APPROVED；PR #64 合并，deploy run 33727039540 成功；生产认证 health/home 200、未认证401。资源ID2 受控 content-enable 成功切换为 content+not_requested；content-request 入队返回 pending，Worker 最终按安全策略 failed（security_rejected: DNS解析结果包含受限地址），未写入正文；DF-20260902-001 已关闭。
 
 ## Handoff
 
-高风险外部网络抓取：必须显式触发、默认 preview_only、拒绝私网/metadata/凭据 URL；生产部署需独立授权与备份回滚。
+生产受控验证已完成；资源 ID 2 已启用并按安全策略失败。后续若要验证成功正文，应另选允许的公开 URL，不绕过 API 或 SSRF 防线。
 
 ## Review Inputs
 
@@ -40,79 +40,78 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
 ## Canonical Plan Content
 
 ```md
-# 外部资源正文采集模块
+# 外部资源正文采集显式启用入口
 
 ## Item
 
-- Checklist item：`product-11-external-resource-content-ingestion`
-- 风险模式：`high-risk`（外部网络抓取、SSRF、持久化状态、Worker 任务与 schema 变更）
-- 依赖：`product-10-external-resources-workspace`
-- 当前阶段：Phase 0/1/2/3/4 已通过独立复审，模块本地实现完成；生产迁移/部署不在默认授权内
+- Checklist item：`product-11a-external-resource-content-enable`
+- 关联 dogfood observation：`DF-20260902-001`
+- 风险模式：`high-risk`（持久数据状态、用户可见性、API/CLI/MCP/Web 写入口与生产部署）
+- 依赖：`product-11-external-resource-content-ingestion`
+- 当前阶段：生产受控验证已完成，item 可关闭
 
 ## 目标
 
-在不改变现有 `preview_only` 默认路径的前提下，为 `article`、`paper`、`website` 增加显式触发的正文采集最小闭环：安全请求、HTML/PDF 解析、持久化状态、幂等任务、失败语义和 API/Client/CLI/MCP/Web 状态入口。
+让已保存的 `preview_only` 外部资源可以通过显式、单向且可审计的入口启用正文采集，修复
+`DF-20260902-001`。启用后仍由既有异步 Worker 抓取，不能在请求线程联网。
 
-## 产品边界
+## 边界
 
-- 保存外部资源仍默认为 `preview_only`；正文抓取必须显式操作。
-- 正文资源继续独立于 GitHub 仓库，不进入仓库采集、Trending、Radar 或关系图谱管线。
-- 本阶段先完成采集与状态可观测性；全文语义搜索、跨类型混合分组、定时刷新和多用户鉴权另立范围。
-- 生产迁移、生产部署、DNS/证书/Nginx/凭据变更另行授权。
-
-## 安全要求
-
-- 只允许 `http`/`https`；拒绝 URL 用户名/密码、loopback、私网、link-local、云 metadata、IPv6 mapped private 地址。
-- DNS 解析和每次重定向都重新校验地址，拒绝解析后地址漂移；限制重定向次数。
-- 请求连接/整体超时、响应头、压缩展开、响应体字节数、HTML/PDF 页数和解析 CPU/内存均有界。
-- 仅接受明确允许的 HTML/PDF content type；不执行脚本、不上传 cookies/Authorization、不跟随页面内资源。
-- 记录脱敏错误类别和状态，不记录正文外的敏感请求头；失败必须可重试且不覆盖已有成功内容。
+- 只允许 `preview_only → content`；不允许 `content → preview_only`。
+- 已进入 `pending`、`processing`、`completed` 或 `failed` 的资源不能通过启用入口回退或重置状态。
+- 保存资源默认仍为 `preview_only`，不自动抓取。
+- 不新增第二套正文状态模型，不实现全文检索、chunks、embedding 或定时刷新。
+- 生产部署、真实正文抓取和 observation 关闭必须在独立验证后执行。
 
 ## 实施阶段
 
-1. **Phase 0：现状与威胁模型**（complete）
-   - 复用现有 `external_resources` 状态字段和 Worker 任务边界，确认依赖/锁版本。
-   - 冻结 SSRF、超时、大小、类型、重定向和许可证/robots 策略；补测试 fixture 契约。
-2. **Phase 1：抓取与解析核心**（complete，独立 Reviewer `APPROVED`）
-   - 实现 URL 安全校验、受限 HTTP client、HTML 正文提取和 PDF 解析适配器。
-   - 统一 `parameter_error`、`security_rejected`、`transient_failure`、`unsupported_type`、`parse_failure`、`unknown` 语义。
-3. **Phase 2：持久化与 Worker**（complete，独立 Reviewer `APPROVED`）
-   - 设计独立正文/分块表或等价最小模型；状态转换 `not_requested → pending → processing → completed/failed`。
-   - 已落地 `external_resource_contents`、`0014`–`0016` migrations/rollback、稳定 job key、lease-authoritative claim、stale takeover、条件写回和错误脱敏。
-   - 隔离 pgvector PostgreSQL 重放 `0000..latest`：DB 集成 62 项、Worker stale takeover 集成 1 项；DB/Worker typecheck 与 diff check 通过。
-4. **Phase 3：API/Client/CLI/MCP/Web**（complete，独立 Reviewer `APPROVED`）
-   - 增加显式 request-content、status、retry/read-only 查询；保留 preview-only save 契约。
-   - Web 先显示状态和失败原因，避免自动触发外部抓取；所有输出经 shared Zod schema。
-   - 已接入 API/Client/CLI/MCP/Web；Web 仅按钮显式触发，正文查看展示前截断至 50,000 字符；列表不携带正文。
-   - API111、Client20、CLI23、MCP10、Web24 测试及相关 typecheck/build 通过；独立 Reviewer `APPROVED`。
-5. **Phase 4：门禁与 review**（complete，独立 Reviewer `APPROVED`）
-   - 单元/HTTP fixture/SSRF 回归、真实 PostgreSQL、全量 lint/typecheck/test/build。
-   - 独立 Reviewer 只读复核；通过后才评估生产迁移和部署。
+1. **Phase 0：现状与契约**（complete）
+   - 核对 shared/API/Client/CLI/MCP/Web 现有契约与单向状态规则。
+2. **Phase 1：实现入口**（complete）
+   - 增加 `enableContent` API/Client/CLI/MCP/Web；所有输出经 Zod 校验。
+   - 用条件更新保证 owner/save 隔离与不可回退；保持 request-content 异步。
+3. **Phase 2：验证与 review**（complete，独立 Reviewer `APPROVED`）
+   - 补 API/Client/CLI/MCP/Web focused tests、生产资源只读与受控启用测试。
+   - API 12、Client 14、CLI 23、MCP 11、Web 3 focused tests 与相关 typecheck 通过；启用入口不入队、不联网。
+   - 全仓库门禁与独立 Reviewer 通过；生产受控验证已完成并记录如下。
 
-## Verification
+## 实现记录
 
-- 全仓库 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过；lint/build 仅有既有 warning，无 error。
-- 隔离 `pgvector/pgvector:pg16` 重放 `0000..latest` 迁移通过；DB 集成 62 项，Worker lease-expiry/stale takeover 集成 1 项通过。
-- Phase 0/1、Phase 2、Phase 3、Phase 4 均经独立 Reviewer `product11_external_resource_reviewer` 审批。
-- 生产数据库迁移、部署、真实外部资源抓取均未执行，仍需单独授权。
-
-## Follow-up
-
-- `readContent` 当前服务端最多返回约 1MB，Web 端展示前截断至 50,000 字符；未来可按需要增加分页，不阻断本模块收口。
-- 全文检索、chunks、embedding、定时刷新和多用户鉴权不属于本模块。
+- `enableContent` 已接入 shared/API/Client/CLI/MCP/Web；保存仍固定为 `preview_only`。
+- API 使用 `ingestionMode=preview_only AND contentStatus=not_requested` 条件更新，确保并发下只有一个请求执行转换。
+- 对已是 `content + not_requested` 的重复调用返回同一成功结果；其他已开始采集状态和异常组合均稳定拒绝。
+- 启用动作只更新模式，不入队、不联网；后续仍复用既有 `requestContent` Worker 任务。
 
 ## 验收标准
 
-- preview-only 回归不变，显式 content 请求能观察完整状态机。
-- SSRF、DNS/重定向、超时、响应大小、类型、压缩和解析边界均有可重复测试。
-- HTML/PDF fixture 能提取受限正文；空内容、乱码、损坏文件和不支持类型有明确失败语义。
-- 同一资源并发触发不会重复写入或状态倒退；重试不覆盖旧成功正文。
-- `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 和隔离 PostgreSQL 集成通过。
-- 生产未授权前不执行 migration/deploy；生产后复核包含 SSRF 拒绝、状态、日志脱敏和资源预算。
+- 资源 ID `2` 这类现有 `preview_only` 收藏可显式启用为 `content`。
+- API/Client/CLI/MCP/Web 都能调用启用入口，并明确显示当前模式/状态。
+- 非收藏、跨用户、已开始采集或已完成资源的非法转换被拒绝。
+- 启用动作本身不联网；只有后续显式 request-content 才入队抓取。
+- `DF-20260902-001` 只有在生产受控验证确认启用入口、异步状态链路和安全失败语义后才可关闭；正文抓取是否成功取决于所选 URL 的安全策略与上游可达性。
 
 ## 未授权动作
 
-- 生产数据库迁移、生产部署、真实外部资源大规模抓取、正文全文索引、DNS/HTTPS/Nginx/凭据修改。
+- 未通过独立 review 前不提交、部署或修改生产。
+- 未经单独确认不触发真实正文抓取样本。
+
+## 当前 Handoff
+
+- 生产受控验证已完成；资源 ID `2` 已启用并按安全策略失败，后续若要验证成功正文应另选允许的公开 URL，不绕过 API 或 SSRF 防线。
+
+## Verification
+
+- 独立 Reviewer `product11a_external_resource_reviewer` 已 `APPROVED`：启用条件、幂等、用户隔离和 Web/CLI/MCP/API 契约均通过审查。
+- 本地 focused：API 12、Client 14、CLI 23、MCP 11、Web 3；相关 typecheck 通过。
+- 全仓库 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过，仅有既有 lint/build warning。
+- 生产受控验证已完成：ID `2` 成功 `content-enable` 为 `content + not_requested`；显式 `content-request` 入队后安全失败并保持脱敏错误 `security_rejected: DNS 解析结果包含受限地址`，未写入正文。该 URL 的失败属于安全策略结果，不绕过 SSRF 防线。
+
+## Production Verification
+
+- Deploy run：`33727039540`；生产 revision：`ac62db42b32632002fd341eb294e152c0424e6b4`。
+- 认证 health/home 返回 `200`，未认证 health 返回 `401`。
+- CLI `resource content-enable 2` 返回 `ingestionMode=content`、`status=not_requested`；随后 `resource content-request 2` 返回 `pending`。
+- Worker 最终将资源置为 `failed`，错误为 `security_rejected: DNS 解析结果包含受限地址`；没有正文行写入。该结果验证了入口、异步任务和失败语义均可用。
 ```
 
 ## Recent Progress Context
@@ -150,7 +149,7 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
 | 技术栈 Phase B  | 图谱读取切换到新实体模型，分阶段生产切换与 closeout 完成                          | [verification](tasks/data-architecture-3b-technology-stack-read-cutover/verification.md)   |
 | 技术栈 Phase C  | 停止旧写入，清理 79 条旧栈边、13 个伪仓库、13 个伪收藏和 `is_reference`           | [verification](tasks/data-architecture-3c-technology-stack-legacy-cleanup/verification.md) |
 | AI Provider     | 默认分析模型切换为 MiniMax M3，durable/SSE canary 与 DeepSeek 回滚演练完成        | [verification](tasks/platform-ai-7-minimax-m3-default/verification.md)                     |
-| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与数据库边界约束完成；未进入正文抓取或多用户 | [closeout](current/closeout-packet.md) |
+| 外部资源工作区 | Web 外部资源工作区、独立分组、分页/密度切换与正文异步采集/状态读取已部署；全文检索、embedding 和多用户仍未进入范围 | [product-11 plan](tasks/product-11-external-resource-content-ingestion/plan.md) |
 | Dogfood 五项整改 | 分组摘要、许可证语义、仓库生命周期、Agent 分组操作面与 HN enrichment 已部署并完成只读复核；等待真实写入/采集样本 | [verification](tasks/dogfood-2026-08-remediation/verification.md) |
 
 ## 当前生产基线
@@ -172,7 +171,7 @@ article/paper/website 在显式触发下可安全抓取并持久化正文状态�
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
-- 外部资源工作区的 PR/CI、隔离 PostgreSQL 验证与生产 `0012` 迁移部署属于历史快照；文章、论文和网站仍与 GitHub 仓库分别管理；
+- 外部资源工作区与正文采集模块已通过 PR/CI、隔离 PostgreSQL 验证和生产 `0014`–`0016` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
 - 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
