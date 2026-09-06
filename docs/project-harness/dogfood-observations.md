@@ -25,6 +25,8 @@
 | `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `fixed_pending_verification`     | `p2`   | 产品缺陷 | wrong data                |
 | `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `closed` | `p1` | 能力缺口 | blocked |
 
+| `DF-20260905-001` | 3D 黑洞搜索定位未激活透镜且默认展示变化不明显 | `fixed_pending_verification` | `p2` | 产品缺陷 | confusing UX |
+
 ## Observations
 
 ### DF-20260818-001：MCP 分组列表因 `repoCount` 类型不一致失败
@@ -199,6 +201,26 @@
   - 2026-09-02: 正文采集 PR #62 发布后，线上 `health`、资源 `content-status` 和 API 路由均可用；复查资源 ID `2` 仍为 `preview_only`，确认没有用户可用的启用入口，未触发真实抓取。
   - 2026-09-03: product-11a 本地修复通过独立 Reviewer；新增 `content-enable` API/Client/CLI/MCP/Web 入口，相关 focused tests/typecheck 通过。
   - 2026-09-03: 生产 deploy run `33727039540` 后，资源 ID `2` 成功启用为 `content + not_requested`；显式请求返回 `pending`，Worker 最终以脱敏 `security_rejected` 失败。入口与状态链路验证通过，关闭 observation。
+
+### DF-20260905-001：3D 黑洞搜索定位未激活透镜且默认展示变化不明显
+
+- Status: `fixed_pending_verification`
+- Priority: `p2`
+- Time: 2026-09-05
+- Entry point: Web `/graph`
+- User intent: 发布 3D 图谱升级后直观看到黑洞扭曲与质感变化。
+- Expected: 定位语言黑洞后能明确进入对应的视觉反馈状态。
+- Actual: 无保存偏好的浏览器默认进入 2D。切到 3D 后搜索 TypeScript 只移动相机，透镜 pass 仍为 disabled；悬停黑洞后 pass 才 enabled。远景黑洞尺寸较小，变化不明显。
+- Reproduction: 通过 SSH loopback 与进程内注入的既有认证访问生产 `/graph` → 3D → 搜索 TypeScript → 定位 → 悬停目标黑洞，对比 pass 状态及画面。
+- Evidence: 生产 HEAD `35cb69d8f635675cbd735a26505816434ff09938`；真实浏览器加载 `/_next/static/chunks/3757.840b4f4977678aa9.js`，其中包含 `uChromatic`/`photonRing`；页面读取 63 仓库、405 条关系。运行时观察到 lens pass 从 disabled 切为 enabled，当前半径为 56 CSS px。源码 `apps/web/src/app/graph/page.tsx` 的 `handleSearch` 仅调用 `focusNode`；`apps/web/src/components/repo-graph-canvas-3d.tsx` 的 `focusId` 只来自 hover/selection。
+- Impact: confusing UX。容易误认为部署或缓存失效；本次新浏览器实测已排除未发布新资源，未检查用户原有标签页的缓存。
+- Frequency: reproducible
+- Workaround: 切换 3D 后定位语言节点，再悬停黑洞。不要为此重建图谱数据。
+- Classification: 产品缺陷（定位与视觉焦点状态未联动）；默认模式和远景呈现另属体验反馈。
+- Related issue/checklist: none
+- Timeline:
+  - 2026-09-05: 完成生产只读浏览器复现和运行时 shader 状态核对。
+  - 2026-09-05: 本地修复搜索选中联动，增加常态有界透镜、多视角黑洞图像及材质层次，移除全场景 Bloom。以真实生产 API 的只读数据完成本地浏览器验收；生产部署及用户视觉反馈尚待验证。默认 2D 的兼容策略保持不变。
 
 ## 新条目模板
 

@@ -7,9 +7,13 @@ import ForceGraph3D, {
   type NodeObject,
 } from "react-force-graph-3d";
 import * as THREE from "three";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import {
+  BLACK_HOLE_EXTENT, GRAPH_LENS_SHADER, createBlackHoleMaterial,
+  createRepositoryMaterial, selectGraphLenses, type ProjectedGraphLens,
+} from "@/lib/graph-black-hole";
 import type { RepoGraphEdge, RepoGraphNode } from "@devscope/shared";
 import { languageColor } from "@/lib/language-colors";
 import { loadGraphLayout, saveGraphLayout } from "@/lib/graph-layout";
@@ -39,7 +43,7 @@ interface NodeObjectEntry {
   node: GraphNodeDatum;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial | THREE.MeshBasicMaterial>;
   /** 语言节点的黑洞吸积环（仅 kind=language 存在） */
-  ring?: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial | THREE.ShaderMaterial>;
+  ring?: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   label: THREE.Sprite;
   baseColor: THREE.Color;
   baseScale: number;
@@ -51,60 +55,12 @@ const LABEL_VISIBLE_DISTANCE = 260;
 const MAX_VISIBLE_LABELS = 48;
 const MAX_RENDER_PIXEL_RATIO = 1.5;
 const STAR_COUNT = 320;
-const LENS_RADIUS_PX = 96;
-const LENS_STRENGTH = 0.035;
-const LENS_CHROMATIC_SHIFT = 0.0025;
 
 let sharedSphereGeometry: THREE.SphereGeometry | undefined;
 let sharedOctahedronGeometry: THREE.OctahedronGeometry | undefined;
 
-const LENS_SHADER = {
-  uniforms: {
-    tDiffuse: { value: null },
-    uCenter: { value: new THREE.Vector2(0.5, 0.5) },
-    uRadius: { value: 0.12 },
-    uAspect: { value: 1 },
-    uStrength: { value: LENS_STRENGTH },
-    uChromatic: { value: LENS_CHROMATIC_SHIFT },
-  },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform vec2 uCenter;
-    uniform float uRadius;
-    uniform float uAspect;
-    uniform float uStrength;
-    uniform float uChromatic;
-    varying vec2 vUv;
-
-    void main() {
-      vec2 delta = vUv - uCenter;
-      delta.x *= uAspect;
-      float distanceToLens = length(delta);
-      float inside = 1.0 - smoothstep(uRadius * 0.72, uRadius, distanceToLens);
-      float falloff = inside * (1.0 - smoothstep(0.0, uRadius, distanceToLens));
-      vec2 direction = normalize(delta + vec2(0.00001));
-      vec2 uvDirection = vec2(direction.x / uAspect, direction.y);
-      vec2 warpedUv = vUv - uvDirection * uStrength * falloff;
-      float chromatic = uChromatic * falloff;
-      vec4 base = texture2D(tDiffuse, warpedUv);
-      vec3 color;
-      color.r = texture2D(tDiffuse, warpedUv + uvDirection * chromatic).r;
-      color.g = base.g;
-      color.b = texture2D(tDiffuse, warpedUv - uvDirection * chromatic).b;
-      gl_FragColor = vec4(color, base.a);
-    }
-  `,
-};
-
 function getSharedSphereGeometry(): THREE.SphereGeometry {
-  sharedSphereGeometry ??= new THREE.SphereGeometry(1, 20, 14);
+  sharedSphereGeometry ??= new THREE.SphereGeometry(1, 32, 24);
   return sharedSphereGeometry;
 }
 
@@ -115,7 +71,7 @@ function getSharedOctahedronGeometry(): THREE.OctahedronGeometry {
 
 function nodeRadius3D(node: GraphNodeDatum, degree: number): number {
   // 语言节点没有 stars，固定一个适中尺寸作为枢纽
-  if (node.kind === "language") return 4.2;
+  if (node.kind === "language") return 6;
   // 基石节点按连接度（被多少边依赖）定尺寸，视觉上与仓库球体同量级
   if (isTechnologyStackGraphNode(node)) return 4.5 + Math.log10(degree + 1) * 4;
   return 1.6 + Math.log10((node.stars ?? 0) + 1) * 2.2;
@@ -184,7 +140,7 @@ function toThreeColor(css: string): THREE.Color {
 
 function nodeBaseColor(node: GraphNodeDatum, palette: ThemePalette): THREE.Color {
   // 按节点类型着色：仓库=语言色，技术栈=琥珀色，语言=主色。
-  // 技术栈用全饱和琥珀（无光照材质下 bloom 只加琥珀辉光，不会洗白）；语言节点略压暗避免喧宾夺主
+  // 保留语言/技术栈的语义色，材质与灯光负责体积层次。
   if (isTechnologyStackGraphNode(node)) return toThreeColor(oklch(palette.warning, 1));
   if (node.kind === "language") return toThreeColor(oklch(palette.primary, 1)).multiplyScalar(0.65);
   return toThreeColor(languageColor(node.language) ?? oklch(palette.muted, 0.9));
@@ -240,54 +196,10 @@ function disposeEntry(entry: NodeObjectEntry): void {
   entry.mesh.material.dispose();
   if (entry.ring) {
     entry.ring.geometry.dispose();
-    if (entry.ring.material instanceof THREE.MeshBasicMaterial) {
-      entry.ring.material.map?.dispose();
-    }
     entry.ring.material.dispose();
   }
   entry.label.material.map?.dispose();
   entry.label.material.dispose();
-}
-
-function createAccretionMaterial(color: THREE.Color): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: color.clone() },
-      uTime: { value: 0 },
-      uFocus: { value: 0 },
-      uOpacity: { value: 1 },
-    },
-    vertexShader: /* glsl */ `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform vec3 uColor;
-      uniform float uTime;
-      uniform float uFocus;
-      uniform float uOpacity;
-      varying vec2 vUv;
-
-      void main() {
-        vec2 p = vUv - 0.5;
-        float radial = length(p) * 2.0;
-        float angle = atan(p.y, p.x);
-        float turbulence = 0.5 + 0.5 * sin(angle * 8.0 - uTime * (1.4 + uFocus * 0.8) + sin(angle * 3.0) * 1.7);
-        float photonRing = exp(-pow((radial - 0.58) / 0.028, 2.0));
-        float diskFade = smoothstep(0.54, 0.6, radial) * (1.0 - smoothstep(0.76, 1.0, radial));
-        vec3 color = uColor * (diskFade * (0.5 + turbulence * 0.5) + photonRing * 1.35);
-        float alpha = clamp(diskFade * (0.4 + turbulence * 0.4) + photonRing * 0.9, 0.0, 1.0) * uOpacity;
-        gl_FragColor = vec4(color, alpha);
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
 }
 
 // 类型定义只声明了 cameraPosition 的 setter 重载；无参调用是运行时的 getter
@@ -322,11 +234,15 @@ export default function RepoGraphCanvas3D({
   onNodeSelect,
 }: RepoGraphRendererProps) {
   const fgRef = useRef<Graph3DMethods | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [canvasSize, setCanvasSize] = useState(() => ({
+    width: typeof window === "undefined" ? 1 : window.innerWidth,
+    height: typeof window === "undefined" ? 1 : window.innerHeight,
+  }));
   const objectsRef = useRef(new Map<string, NodeObjectEntry>());
   const starsMaterialRef = useRef<THREE.PointsMaterial | null>(null);
   const lensPassRef = useRef<ShaderPass | null>(null);
   const fittedRef = useRef(false);
-  const flownRef = useRef(false);
 
   const palette = useThemePalette();
   const paletteRef = useRef(palette);
@@ -391,7 +307,7 @@ export default function RepoGraphCanvas3D({
         // 黑洞核心不参与主题/聚焦染色，颜色变化只由吸积环承担。
         material.color.set("#000000");
       } else if (material instanceof THREE.MeshStandardMaterial) {
-        material.emissiveIntensity = isFocus ? 1.1 : dimmed ? 0.1 : 0.4;
+        material.emissiveIntensity = isFocus ? 0.12 : dimmed ? 0.01 : 0.025;
       } else {
         // 无光照材质：用颜色明暗表达聚焦/常态
         material.color.copy(entry.baseColor).multiplyScalar(isFocus ? 1.4 : 1);
@@ -399,13 +315,13 @@ export default function RepoGraphCanvas3D({
       // 黑洞核心漆黑不可提亮，状态交给吸积环表达
       if (entry.ring) {
         entry.ring.material.opacity = dimmed ? 0.12 : 1;
-        entry.ring.scale.setScalar(entry.baseScale * (isFocus ? 1.2 : 1));
+        entry.ring.scale.setScalar(entry.baseScale * BLACK_HOLE_EXTENT * 2 * (isFocus ? 1.12 : 1));
         if (entry.ring.material instanceof THREE.ShaderMaterial) {
           entry.ring.material.uniforms.uFocus.value = isFocus ? 1 : 0;
           entry.ring.material.uniforms.uOpacity.value = dimmed ? 0.12 : 1;
         }
       }
-      entry.mesh.scale.setScalar(entry.baseScale * (isFocus ? 1.28 : 1));
+      entry.mesh.scale.setScalar(entry.baseScale * (isFocus ? 1.12 : 1));
     }
   }, []);
 
@@ -421,7 +337,7 @@ export default function RepoGraphCanvas3D({
       if (entry.node.kind === "language") {
         entry.mesh.material.color.set("#000000");
       } else if (entry.mesh.material instanceof THREE.MeshStandardMaterial) {
-        entry.mesh.material.color.copy(entry.baseColor).multiplyScalar(0.35);
+        entry.mesh.material.color.copy(entry.baseColor);
         entry.mesh.material.emissive.copy(entry.baseColor);
       } else {
         entry.mesh.material.color.copy(entry.baseColor);
@@ -511,122 +427,122 @@ export default function RepoGraphCanvas3D({
 
   }, []);
 
-  // 只在用户聚焦语言节点时旋转吸积环，把持续动画变成语义反馈。
-  useEffect(() => {
-    const focusedNode = nodes.find((candidate) => candidate.id === focusId);
-    if (reducedMotion || focusId == null || focusedNode?.kind !== "language") return;
-    let frame = 0;
-    const rotateFocusedRing = (time: number) => {
-      const entry = objectsRef.current.get(focusId);
-      if (entry?.ring) {
-        entry.ring.rotation.z = time * 0.0004;
-        if (entry.ring.material instanceof THREE.ShaderMaterial) {
-          entry.ring.material.uniforms.uTime.value = time * 0.001;
-        }
-      }
-      frame = requestAnimationFrame(rotateFocusedRing);
-    };
-    frame = requestAnimationFrame(rotateFocusedRing);
-    return () => cancelAnimationFrame(frame);
-  }, [focusId, nodes, reducedMotion]);
-
-  // 单焦点引力透镜：只扭曲当前聚焦的语言节点周围画面，避免多次全屏 pass。
+  // One shared lens pass; billboard orientation follows the camera, disk plane stays fixed.
   useEffect(() => {
     const fg = fgRef.current;
     const pass = lensPassRef.current;
-    if (!fg || !pass || !lensPassReady || reducedMotion || focusId == null) {
-      if (pass) pass.enabled = false;
-      return;
-    }
-
-    const focusedNode = nodes.find((candidate) => candidate.id === focusId);
-    if (!focusedNode || focusedNode.kind !== "language") {
-      pass.enabled = false;
-      return;
-    }
-
+    if (!fg || !pass || !lensPassReady) return;
+    const position = new THREE.Vector3();
+    const projected = new THREE.Vector3();
+    const edge = new THREE.Vector3();
+    const view = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    const axis = new THREE.Vector3();
+    const normal = new THREE.Vector3(0.15, 0.9, 0.4).normalize();
     let frame = 0;
-    const updateLens = () => {
-      frame = requestAnimationFrame(updateLens);
-      const node = focusedNode;
-      if (!node || node.kind !== "language" || node.x == null || node.y == null || node.z == null) {
-        pass.enabled = false;
-        return;
+    const updateBlackHoles = (time: number) => {
+      const camera = fg.camera();
+      camera.updateMatrixWorld();
+      right.setFromMatrixColumn(camera.matrixWorld, 0);
+      up.setFromMatrixColumn(camera.matrixWorld, 1);
+      const canvas = fg.renderer().domElement;
+      const width = Math.max(1, canvas.clientWidth);
+      const height = Math.max(1, canvas.clientHeight);
+      const aspect = width / height;
+      const lenses: ProjectedGraphLens[] = [];
+      for (const [id, entry] of objectsRef.current) {
+        if (!entry.ring) continue;
+        const { node, ring } = entry;
+        if (node.x == null || node.y == null || node.z == null) continue;
+        position.set(node.x, node.y, node.z);
+        projected.copy(position).project(camera);
+        ring.quaternion.copy(camera.quaternion);
+        view.copy(camera.position).sub(position).normalize();
+        axis.crossVectors(normal, view);
+        const angle = axis.lengthSq() < 0.00001 ? 0 : Math.atan2(axis.dot(up), axis.dot(right));
+        const focused = id === focusIdRef.current;
+        const radius = entry.baseScale * (focused ? 1.12 : 1);
+        edge.copy(position).addScaledVector(right, radius).project(camera);
+        const radiusUV = Math.abs(edge.x - projected.x) * aspect / 2;
+        const radiusPx = radiusUV * height;
+        const uniforms = ring.material.uniforms;
+        uniforms.uAngle.value = angle;
+        uniforms.uInclination.value = Math.abs(normal.dot(view));
+        uniforms.uDetail.value = THREE.MathUtils.smoothstep(radiusPx, 3, 18);
+        uniforms.uTime.value = reducedMotion ? 0 : time * 0.001;
+        // Far-off, behind-camera and subpixel nodes never enter the lens loop.
+        if (projected.z < -1 || projected.z > 1 || radiusPx < 2) continue;
+        lenses.push({ id, x: (projected.x + 1) / 2, y: (projected.y + 1) / 2, radius: radiusUV, focused });
       }
-      const renderer = fg.renderer();
-      const width = renderer.domElement.clientWidth || window.innerWidth;
-      const height = renderer.domElement.clientHeight || window.innerHeight;
-      const projected = new THREE.Vector3(node.x, node.y, node.z).project(fg.camera());
-      const screen = {
-        x: (projected.x + 1) * width / 2,
-        y: -(projected.y - 1) * height / 2,
-        z: projected.z,
-      };
-      const inside = screen.z >= -1 && screen.z <= 1
-        && screen.x >= -LENS_RADIUS_PX && screen.x <= width + LENS_RADIUS_PX
-        && screen.y >= -LENS_RADIUS_PX && screen.y <= height + LENS_RADIUS_PX;
-      pass.enabled = inside;
-      if (!inside) return;
-      const radiusPx = Math.min(128, Math.max(56, nodeRadius3D(node, degreeById.get(node.id) ?? 0) * 10));
-      pass.uniforms.uCenter.value.set(screen.x / width, 1 - screen.y / height);
-      pass.uniforms.uRadius.value = radiusPx / height;
-      pass.uniforms.uAspect.value = width / height;
-      pass.uniforms.uStrength.value = LENS_STRENGTH;
-      pass.uniforms.uChromatic.value = LENS_CHROMATIC_SHIFT;
+      const visible = reducedMotion ? [] : selectGraphLenses(lenses, aspect);
+      pass.enabled = visible.length > 0;
+      pass.uniforms.uAspect.value = aspect;
+      pass.uniforms.uCount.value = visible.length;
+      visible.forEach((lens, i) => {
+        pass.uniforms.uLenses.value[i].set(lens.x, lens.y, lens.radius, lens.focused ? 1 : 0.65);
+      });
+      frame = requestAnimationFrame(updateBlackHoles);
     };
-    frame = requestAnimationFrame(updateLens);
-    return () => {
-      cancelAnimationFrame(frame);
-      pass.enabled = false;
-    };
-  }, [degreeById, focusId, lensPassReady, nodes, reducedMotion]);
+    frame = requestAnimationFrame(updateBlackHoles);
+    return () => { cancelAnimationFrame(frame); pass.enabled = false; };
+  }, [lensPassReady, reducedMotion]);
 
   // ------------------------------------------------------------------
-  // 发光（UnrealBloomPass）、星点背景、相机自动环绕
+  // 后处理、环境反射与布光
   // ------------------------------------------------------------------
 
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
     const composer = fg.postProcessingComposer();
-    // 发光强度需克制：阈值抬高避免整球过曝，节点少时尤其明显
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(1, 1),
-      0.35,
-      0.3,
-      0.35
-    );
     const outputPass = new OutputPass();
-    const lensPass = new ShaderPass(LENS_SHADER);
+    const lensPass = new ShaderPass(GRAPH_LENS_SHADER);
     lensPass.enabled = false;
-    composer.addPass(bloomPass);
     composer.addPass(outputPass);
-    // Distort the rendered graph before Bloom so the glow remains a readable halo.
+    // A single scene sample before tone mapping; glow is bounded inside the black-hole shader.
     composer.insertPass(lensPass, 1);
     lensPassRef.current = lensPass;
     setLensPassReady(true);
     const renderer = fg.renderer();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_RENDER_PIXEL_RATIO));
+    composer.setPixelRatio(renderer.getPixelRatio());
+    // Controlled studio lighting; no full-scene bloom on text or ordinary nodes.
+    const previousLights = fg.lights();
+    const hemisphere = new THREE.HemisphereLight(0xc6dcf5, 0x161a24, 0.8);
+    const key = new THREE.DirectionalLight(0xffedda, 1.6);
+    key.position.set(-150, 200, 180);
+    const fill = new THREE.DirectionalLight(0x779fcc, 0.8);
+    fill.position.set(160, -60, -120);
+    fg.lights([hemisphere, key, fill]);
+    const environment = new RoomEnvironment();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environmentTarget = pmrem.fromScene(environment, 0.04);
+    const previousEnvironment = fg.scene().environment;
+    fg.scene().environment = environmentTarget.texture;
+    environment.dispose();
+    pmrem.dispose();
     const resize = () => {
-      const width = Math.max(1, renderer.domElement.clientWidth || window.innerWidth);
-      const height = Math.max(1, renderer.domElement.clientHeight || window.innerHeight);
-      bloomPass.setSize(width, height);
+      const width = Math.max(1, containerRef.current?.clientWidth ?? 1);
+      const height = Math.max(1, containerRef.current?.clientHeight ?? 1);
+      setCanvasSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
     };
     resize();
     const resizeObserver = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(resize);
-    resizeObserver?.observe(renderer.domElement.parentElement ?? renderer.domElement);
+    if (containerRef.current) resizeObserver?.observe(containerRef.current);
     window.addEventListener("resize", resize);
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener("resize", resize);
       composer.removePass(outputPass);
-      composer.removePass(bloomPass);
       composer.removePass(lensPass);
       lensPassRef.current = null;
       setLensPassReady(false);
-      bloomPass.dispose();
+      fg.scene().environment = previousEnvironment;
+      environmentTarget.dispose();
+      fg.lights(previousLights);
       outputPass.dispose();
       lensPass.dispose();
     };
@@ -716,6 +632,7 @@ export default function RepoGraphCanvas3D({
       const maxDistSq = LABEL_VISIBLE_DISTANCE * LABEL_VISIBLE_DISTANCE;
       const candidates: Array<{ entry: NodeObjectEntry; distanceSq: number; focused: boolean }> = [];
       for (const [id, entry] of objectsRef.current) {
+        entry.label.visible = false;
         const { x, y, z } = entry.node;
         if (x == null || y == null || z == null) {
           entry.label.visible = false;
@@ -753,9 +670,11 @@ export default function RepoGraphCanvas3D({
     const node = nodes.find((n) => n.id === focusRequest.nodeId);
     if (!fg || !node || node.x == null || node.y == null || node.z == null) return;
     const target = { x: node.x, y: node.y, z: node.z };
-    const distRatio = 1 + 160 / (Math.hypot(node.x, node.y, node.z) || 1);
+    const direction = new THREE.Vector3().copy(fg.camera().position).sub(new THREE.Vector3(node.x, node.y, node.z));
+    if (direction.lengthSq() < 0.001) direction.set(0, 0, 1);
+    direction.normalize().multiplyScalar(node.kind === "language" ? 190 : 160);
     fg.cameraPosition(
-      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      { x: node.x + direction.x, y: node.y + direction.y, z: node.z + direction.z },
       target,
       reducedMotion ? 0 : 1200
     );
@@ -773,41 +692,36 @@ export default function RepoGraphCanvas3D({
     // 按节点类型选择几何体：仓库=球体，技术栈=八面体，语言=黑洞（漆黑核心+吸积环）
     let geometry: THREE.BufferGeometry;
     let material: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
-    let ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial | THREE.ShaderMaterial> | undefined;
+    let ring: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | undefined;
     let baseScale = radius;
     if (isTechnologyStackGraphNode(node)) {
       geometry = getSharedOctahedronGeometry();
-      baseScale = radius * 1.5;
-      // 基石/语言用无光照材质：默认方向光的白色高光会把小节点洗成白点
-      material = new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 1 });
+      baseScale = radius * 0.85;
+      material = new THREE.MeshStandardMaterial({
+        color: baseColor.clone(), metalness: 0.6, roughness: 0.3,
+        emissive: baseColor.clone(), emissiveIntensity: 0.025,
+        envMapIntensity: 0.75, flatShading: true, transparent: true,
+      });
     } else if (node.kind === "language") {
       geometry = getSharedSphereGeometry();
       // 黑洞核心：纯黑，吃掉一切光
       material = new THREE.MeshBasicMaterial({ color: new THREE.Color("#000000"), transparent: true, opacity: 1 });
-      // 吸积环：倾斜的青色光环，AdditiveBlending 叠加后由 bloom 拉出辉光
-      ring = new THREE.Mesh(
-        new THREE.RingGeometry(1.25, 2.3, 64),
-        createAccretionMaterial(baseColor)
-      );
-      ring.scale.setScalar(radius);
-      ring.rotation.x = -1.15;
-      ring.rotation.z = 0.35;
+      // Billboard is the observed image, not a physical disk turned toward the camera.
+      ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), createBlackHoleMaterial(baseColor));
+      ring.scale.setScalar(radius * BLACK_HOLE_EXTENT * 2);
+      ring.raycast = () => {}; // Only the compact core is pickable, not the transparent quad.
+      material.transparent = false;
+      material.depthWrite = true; // Opaque core occludes graph edges behind it.
     } else {
       geometry = getSharedSphereGeometry();
-      material = new THREE.MeshStandardMaterial({
-        color: baseColor.clone().multiplyScalar(0.35),
-        emissive: baseColor.clone(),
-        emissiveIntensity: 0.4,
-        roughness: 0.35,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 1,
-      });
+      let seed = 0;
+      for (const char of node.id) seed = (Math.imul(seed, 31) + char.charCodeAt(0)) | 0;
+      material = createRepositoryMaterial(baseColor, (seed >>> 0) % 1000);
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.scale.setScalar(baseScale);
     const label = createLabelSprite(isTechnologyStackGraphNode(node) ? node.name : node.fullName, pal);
-    label.position.y = (ring ? radius * 2.3 : radius) + LABEL_HEIGHT / 2 + 2;
+    label.position.y = (ring ? radius * 3.6 : baseScale) + LABEL_HEIGHT / 2 + 2;
     const group = new THREE.Group();
     group.add(mesh, label);
     if (ring) group.add(ring);
@@ -865,10 +779,10 @@ export default function RepoGraphCanvas3D({
   const linkWidth = useCallback(
     (link: GraphLinkDatum): number => {
       const active = linkState(link) === "active";
-      if (link.type === "written_in") return active ? 0.4 : 0.22;
-      if (link.type === "dependency") return active ? 1.2 : 0.8;
+      if (link.type === "written_in") return active ? 0.12 : 0;
+      if (link.type === "dependency") return active ? 0.28 : 0.16;
       const score = link.score ?? 0.5;
-      return (0.22 + score * 0.3) * (active ? 1.5 : 1);
+      return (0.045 + score * 0.055) * (active ? 1.5 : 1);
     },
     [linkState]
   );
@@ -939,45 +853,47 @@ export default function RepoGraphCanvas3D({
     saveGraphLayout(nodes, "3d");
     if (fittedRef.current) return;
     fittedRef.current = true;
-    fg.zoomToFit(0, 80);
-    if (!flownRef.current) {
-      flownRef.current = true;
-      pauseAutoRotate();
-      const target = { ...readCameraPosition(fg) };
-      const far = { x: target.x * 3.2, y: target.y * 3.2, z: target.z * 3.2 };
-      fg.cameraPosition(far, { x: 0, y: 0, z: 0 }, 0);
-      fg.cameraPosition(target, { x: 0, y: 0, z: 0 }, 1500);
-    }
-  }, [nodes, pauseAutoRotate]);
+    // Frame the connected cluster first; isolated satellites stay in the scene.
+    const hasCluster = nodes.filter(node => (degreeById.get(node.id) ?? 0) >= 2).length >= 3;
+    fg.zoomToFit(
+      reducedMotion ? 0 : 900,
+      80,
+      hasCluster ? node => (degreeById.get(node.id as string) ?? 0) >= 2 : undefined,
+    );
+  }, [nodes, degreeById, reducedMotion]);
 
   return (
-    <ForceGraph3D<RepoGraphNode, FG3ExtraLink>
-      ref={fgRef}
-      graphData={graphData}
-      backgroundColor="rgba(0,0,0,0)"
-      controlType="orbit"
-      showNavInfo={false}
-      nodeId="id"
-      nodeVal={(node) => nodeRadius3D(node, degreeById.get(node.id as string) ?? 0) ** 2}
-      nodeLabel={() => ""}
-      nodeThreeObject={nodeThreeObject}
-      linkOpacity={1}
-      linkColor={linkColor}
-      linkWidth={linkWidth}
-      linkDirectionalParticles={linkParticles}
-      linkDirectionalParticleSpeed={linkParticleSpeed}
-      linkDirectionalParticleWidth={linkParticleWidth}
-      linkDirectionalParticleColor={linkColor}
-      linkDirectionalArrowLength={linkArrowLength}
-      linkDirectionalArrowRelPos={1}
-      linkDirectionalArrowColor={linkColor}
-      warmupTicks={60}
-      cooldownTicks={300}
-      onEngineStop={handleEngineStop}
-      onNodeHover={handleNodeHover}
-      onNodeClick={handleNodeClick}
-      onBackgroundClick={handleBackgroundClick}
-      onNodeDragEnd={handleNodeDragEnd}
-    />
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden" onPointerLeave={() => handleNodeHover(null)}>
+      <ForceGraph3D<RepoGraphNode, FG3ExtraLink>
+        ref={fgRef}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        graphData={graphData}
+        backgroundColor="rgba(0,0,0,0)"
+        controlType="orbit"
+        showNavInfo={false}
+        nodeId="id"
+        nodeVal={(node) => nodeRadius3D(node, degreeById.get(node.id as string) ?? 0) ** 2}
+        nodeLabel={() => ""}
+        nodeThreeObject={nodeThreeObject}
+        linkOpacity={1}
+        linkColor={linkColor}
+        linkWidth={linkWidth}
+        linkDirectionalParticles={linkParticles}
+        linkDirectionalParticleSpeed={linkParticleSpeed}
+        linkDirectionalParticleWidth={linkParticleWidth}
+        linkDirectionalParticleColor={linkColor}
+        linkDirectionalArrowLength={linkArrowLength}
+        linkDirectionalArrowRelPos={1}
+        linkDirectionalArrowColor={linkColor}
+        warmupTicks={60}
+        cooldownTicks={300}
+        onEngineStop={handleEngineStop}
+        onNodeHover={handleNodeHover}
+        onNodeClick={handleNodeClick}
+        onBackgroundClick={handleBackgroundClick}
+        onNodeDragEnd={handleNodeDragEnd}
+      />
+    </div>
   );
 }

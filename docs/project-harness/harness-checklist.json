@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-09-03",
+  "updated_at": "2026-09-06T05:15:19Z",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -814,6 +814,50 @@
         "expires_at": "2026-09-03T08:47:59Z",
         "ttl_minutes": 120,
         "released_at": "2026-09-03T07:33:43Z"
+      }
+    },
+    {
+      "id": "graph-3d-release",
+      "title": "3D 图谱视觉升级生产发布",
+      "status": "doing",
+      "priority": "p2",
+      "owner": "codex",
+      "selected_in_session": "codex-graph-release-20260906",
+      "updated_at": "2026-09-06T05:15:19Z",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "独立审查与 CI 通过；明确备份及回滚；精确 SHA 部署成功并完成健康、认证、生产浏览器复核。",
+      "verification": "",
+      "handoff": "",
+      "plan_path": "docs/project-harness/tasks/graph-3d-release/plan.md",
+      "workflow": {
+        "mode": "high-risk",
+        "status": "review_approved",
+        "updated_at": "2026-09-06T05:15:19Z",
+        "branch": "codex/graph-materials-blackhole"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/graph-3d-release/plan.md",
+        "branch": "codex/graph-materials-blackhole",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "graph_release_reviewer",
+        "phase": "review_requested",
+        "updated_at": "2026-09-06T05:15:19Z",
+        "reviewed_packet_sha256": "727930d5841ddddd605dc42e44ff31da8a5559ebebd32c30aacc192c7a15fe80",
+        "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400",
+        "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
+        "summary": "APPROVE：17d743d 代码与发布计划无阻塞缺陷；独立透镜测试和精确 head CI 通过。详见 tasks/graph-3d-release/review.md；生产证据待独立 closeout 审查。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-graph-release-20260906",
+        "acquired_at": "2026-09-06T05:12:35Z",
+        "expires_at": "2026-09-06T07:12:35Z",
+        "ttl_minutes": 120
       }
     }
   ]

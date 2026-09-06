@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useReducedMotion } from "framer-motion";
 import {
   ArrowUpRight,
   Box,
@@ -211,7 +210,7 @@ export default function GraphPage() {
     }
   }, [rebuildStatus.data, rebuildPolling, utils]);
 
-  const reduceMotion = useReducedMotion() ?? false;
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [rendererPreference, setRendererPreference] = useState<GraphRendererMode>("2d");
   const [rendererCapabilities, setRendererCapabilities] =
@@ -372,6 +371,7 @@ export default function GraphPage() {
       return;
     }
     setSearchError(null);
+    setSelectedId(match.id);
     focusNode(match.id);
   };
 
