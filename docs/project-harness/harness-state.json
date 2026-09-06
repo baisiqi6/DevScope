@@ -1,22 +1,59 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-09-03T07:35:13Z",
+  "generated_at": "2026-09-06T05:13:04Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "9cef9e3e98a22c6319a90694681765df3a9b23d1f183bbd9f629f19689f05f21"
+    "checklist_sha256": "05ac978adeffbab164f53ac51f2b37167a91d2591094f8933c6ed98ce0dbac5a"
   },
   "current_status": "",
-  "current_item": null,
+  "current_item": {
+    "id": "graph-3d-release",
+    "title": "3D 图谱视觉升级生产发布",
+    "status": "doing",
+    "owner": "codex",
+    "selected_in_session": "codex-graph-release-20260906",
+    "updated_at": "2026-09-06T05:12:35Z",
+    "workflow": {
+      "mode": "high-risk",
+      "status": "review_requested",
+      "updated_at": "2026-09-06T05:12:35Z",
+      "branch": "codex/graph-materials-blackhole"
+    },
+    "lease": {
+      "owner": "codex",
+      "session": "codex-graph-release-20260906",
+      "acquired_at": "2026-09-06T05:12:35Z",
+      "expires_at": "2026-09-06T07:12:35Z",
+      "ttl_minutes": 120
+    },
+    "active_lease": {
+      "owner": "codex",
+      "session": "codex-graph-release-20260906",
+      "acquired_at": "2026-09-06T05:12:35Z",
+      "expires_at": "2026-09-06T07:12:35Z",
+      "ttl_minutes": 120
+    },
+    "artifacts": {
+      "plan": "docs/project-harness/tasks/graph-3d-release/plan.md",
+      "branch": "codex/graph-materials-blackhole",
+      "review_packet": "docs/project-harness/current/review-packet.md"
+    },
+    "review": {
+      "decision": null
+    },
+    "plan_path": "docs/project-harness/tasks/graph-3d-release/plan.md"
+  },
   "checklist_summary": {
     "todo": 1,
-    "doing": 0,
+    "doing": 1,
     "done": 18,
     "blocked": 0
   },
   "workflow_summary": {
     "closed": 18,
-    "released": 1
+    "released": 1,
+    "review_requested": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -30,9 +67,9 @@
     "current_task_plan": "docs/project-harness/current/task_plan.md"
   },
   "commands": {
-    "state": "scripts/harness/harnessctl state",
-    "session_init": "scripts/harness/harnessctl session-init",
-    "validate_checklist": "python3 scripts/harness/validate_checklist.py docs/project-harness/harness-checklist.json",
+    "state": ".planning/harness-runtime/harnessctl state",
+    "session_init": ".planning/harness-runtime/harnessctl session-init",
+    "validate_checklist": "python3 .planning/harness-runtime/validate_checklist.py docs/project-harness/harness-checklist.json",
     "lint": "pnpm lint",
     "typecheck": "pnpm typecheck",
     "test": "pnpm test",
@@ -55,90 +92,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "product11a_external_resource_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:01:59Z",
-      "id": "evt-20260903T070159Z-c8753e96",
-      "idempotency_key": "REVIEW:product-11a-external-resource-content-enable:approved:product11a_external_resource_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Phase1/2实现与复审通过：enableContent仅允许 preview_only+not_requested，content+not_requested重复调用幂等；已开始状态拒绝；owner/save隔离；启用不入队不联网；API/Client/CLI/MCP/Web契约与focused tests通过。生产仍未执行。",
-      "target": "codex",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260903T070159Z-c8753e96 task=product-11a-external-resource-content-enable actor=product11a_external_resource_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "product11a_external_resource_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:03:45Z",
-      "id": "evt-20260903T070345Z-99741c85",
-      "idempotency_key": "REVIEW:product-11a-external-resource-content-enable:approved:product11a_external_resource_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "本地修复通过：enableContent仅允许 preview_only+not_requested；content+not_requested重复调用幂等；已开始状态拒绝；owner/save隔离；启用不入队不联网；API/Client/CLI/MCP/Web focused tests与typecheck通过。生产资源ID2尚未执行mutation。",
-      "target": "codex",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260903T070345Z-99741c85 task=product-11a-external-resource-content-enable actor=product11a_external_resource_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:28:21Z",
-      "id": "evt-20260903T072821Z-2b475974",
-      "idempotency_key": "RESULT:product-11a-external-resource-content-enable:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for product-11a-external-resource-content-enable",
-      "target": "reviewer",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260903T072821Z-2b475974 task=product-11a-external-resource-content-enable actor=codex target=reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:30:07Z",
-      "id": "evt-20260903T073007Z-e1bf9fb5",
-      "idempotency_key": "RESULT:product-11a-external-resource-content-enable:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for product-11a-external-resource-content-enable",
-      "target": "reviewer",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260903T073007Z-e1bf9fb5 task=product-11a-external-resource-content-enable actor=codex target=reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -224,6 +177,98 @@
       "task": "product-11a-external-resource-content-enable",
       "type": "CLOSE",
       "visible_header": "[CLOSE] id=evt-20260903T073343Z-8ee8ba96 task=product-11a-external-resource-content-enable actor=codex status=done"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/tasks/graph-3d-release/plan.md"
+      ],
+      "branch": "codex/graph-3d-release",
+      "causation_id": null,
+      "created_at": "2026-09-06T05:12:22Z",
+      "id": "evt-20260906T051222Z-aff6aead",
+      "idempotency_key": "ACCEPT:graph-3d-release:running:codex",
+      "metadata": {
+        "force_reason": null,
+        "session": "codex-graph-release-20260906"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "codex started graph-3d-release",
+      "target": "codex",
+      "task": "graph-3d-release",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20260906T051222Z-aff6aead task=graph-3d-release actor=codex target=codex status=running branch=codex/graph-3d-release artifacts=docs/project-harness/tasks/graph-3d-release/plan.md"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:12:22Z",
+      "id": "evt-20260906T051222Z-b8c51c67",
+      "idempotency_key": "REVIEW:graph-3d-release:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for graph-3d-release",
+      "target": "graph_release_reviewer",
+      "task": "graph-3d-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260906T051222Z-b8c51c67 task=graph-3d-release actor=codex target=graph_release_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": "codex/graph-materials-blackhole",
+      "causation_id": null,
+      "created_at": "2026-09-06T05:12:35Z",
+      "id": "evt-20260906T051235Z-908a0198",
+      "idempotency_key": "ACCEPT:graph-3d-release:running:codex",
+      "metadata": {
+        "force_reason": null,
+        "session": "codex-graph-release-20260906"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "codex accepted graph-3d-release",
+      "target": "codex",
+      "task": "graph-3d-release",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20260906T051235Z-908a0198 task=graph-3d-release actor=codex target=codex status=running branch=codex/graph-materials-blackhole"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:12:35Z",
+      "id": "evt-20260906T051235Z-a5cae60b",
+      "idempotency_key": "REVIEW:graph-3d-release:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for graph-3d-release",
+      "target": "graph_release_reviewer",
+      "task": "graph-3d-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260906T051235Z-a5cae60b task=graph-3d-release actor=codex target=graph_release_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
     }
   ]
 }
