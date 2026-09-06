@@ -1,11 +1,18 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-09-03
-> 生产运行基线：正文采集启用入口已通过 PR #64 合并并完成生产部署；运行 revision 见对应回执
+> 更新时间：2026-09-06（UTC）
+> 生产运行基线：3D 图谱视觉升级 PR #67 已部署；运行 revision 见 graph-3d-release 回执
 > 部署形态：Standalone
 > 当前状态：dogfood 整改已完成本地实现、独立审查、生产迁移、部署与只读复核；其中 `DF-20260902-001` 已完成生产受控验证并关闭，其余 observation 仍按各自证据保持 `fixed_pending_verification`
 
 ## 当前状态
+
+2026-09-06（UTC）：PR #67 图谱材质与多视角黑洞升级已完成生产部署（run `34013772766`）。
+服务器和三应用镜像均为 `d2c4db162acf5ac16f562c8915610f7a1de4ed07`，无数据库迁移。
+业务库/Nginx/.env 备份可读，健康、访问控制与生产浏览器加载新版 shader 的检查通过。
+发布节点已通过独立 closeout APPROVE 并关闭；[完整回执](tasks/graph-3d-release/verification.md)。
+`DF-20260905-001` 保留待用户视觉反馈，不能用服务健康或局部 GPU 耗时代替审美/稳定 60 FPS 验收。
+
 
 2026-09-03：外部资源正文采集模块已完成生产发布。PR #62 合并提交
 `15d8abf7a26257bc08d7680c7fa9cdadb9c58101`，deploy run `33722303660` 显式应用
@@ -17,8 +24,8 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 已关闭；失败 URL 未写入正文，未绕过 SSRF 防线。
 
 - [Harness checklist](harness-checklist.json)：product-11a 已完成 `done` closeout，独立 Reviewer `APPROVED`；
-- [Current task pointer](current/task_plan.md)：已由 Harness 清空，没有正在执行的 canonical plan；
-- 生产 API、Web、Worker 当前运行 product-11a revision `ac62db42b32632002fd341eb294e152c0424e6b4`，技术栈模式仍为 `legacy_cleaned`，分析模型仍为 `MiniMax-M3`；
+- [Current task pointer](current/task_plan.md)：graph-3d-release 已关闭，Harness 已清空当前计划指针；
+- 生产 API、Web、Worker 当前运行图谱升级 revision `d2c4db162acf5ac16f562c8915610f7a1de4ed07`；此前 product-11a 是历史基线；
 - 本批次生产部署 run `33475333993` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
   migration `0013`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
@@ -59,6 +66,10 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 
 ## 当前生产基线
 
+当前为上述 2026-09-06 图谱发布；下列内容仅为历史快照。
+
+### 2026-09-01 历史快照
+
 2026-09-01（deploy run `33475333993`）完成 dogfood 五项整改的生产部署与只读回读：
 
 - 目标为 PR #59 合并提交 `05aa9e192a5ca95cb49ffc628617afc0e36af83d`；`technology_stack_legacy_cleanup=false`，仅显式应用 migration `0013`，workflow 成功；
@@ -71,6 +82,8 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 历史快照（不作为当前运行基线）：2026-08-29 的 `67fc629` + migration `0012` 记录了外部资源工作区部署；更早的分组树/技术栈数据不变量仍见对应 task verification。以上均为日期化运行证据，不替代 [architecture.md](architecture.md)、[domain-model.md](domain-model.md) 或各 task verification 的稳定事实。
 
 ## 当前 handoff
+
+- 图谱视觉升级 PR #67 已部署并完成独立发布收口；DF-20260905-001 等待用户视觉反馈。
 
 - Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
