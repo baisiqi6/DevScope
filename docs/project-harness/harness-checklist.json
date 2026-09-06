@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-09-06T05:15:19Z",
+  "updated_at": "2026-09-06T05:33:49Z",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -819,45 +819,47 @@
     {
       "id": "graph-3d-release",
       "title": "3D 图谱视觉升级生产发布",
-      "status": "doing",
+      "status": "done",
       "priority": "p2",
-      "owner": "codex",
-      "selected_in_session": "codex-graph-release-20260906",
-      "updated_at": "2026-09-06T05:15:19Z",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-09-06T05:33:49Z",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "独立审查与 CI 通过；明确备份及回滚；精确 SHA 部署成功并完成健康、认证、生产浏览器复核。",
-      "verification": "",
-      "handoff": "",
+      "verification": "PR #67 / deploy 34013772766；生产 d2c4db1，SHA/镜像/回滚/备份/认证/浏览器均通过；独立 closeout APPROVE，详见 tasks/graph-3d-release/verification.md 和 closeout-review.md。",
+      "handoff": "生产已发布，等待独立 closeout；DF-20260905-001 保留用户视觉反馈。",
       "plan_path": "docs/project-harness/tasks/graph-3d-release/plan.md",
       "workflow": {
         "mode": "high-risk",
-        "status": "review_approved",
-        "updated_at": "2026-09-06T05:15:19Z",
+        "status": "closed",
+        "updated_at": "2026-09-06T05:33:49Z",
         "branch": "codex/graph-materials-blackhole"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/graph-3d-release/plan.md",
         "branch": "codex/graph-materials-blackhole",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
         "decision": "approved",
         "reviewer": "graph_release_reviewer",
-        "phase": "review_requested",
-        "updated_at": "2026-09-06T05:15:19Z",
-        "reviewed_packet_sha256": "727930d5841ddddd605dc42e44ff31da8a5559ebebd32c30aacc192c7a15fe80",
+        "phase": "closeout_requested",
+        "updated_at": "2026-09-06T05:33:15Z",
+        "reviewed_packet_sha256": "a14df229971766058e72a0dacbfb72d1699f8a34c6b70b93808653b22e350ecf",
         "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400",
-        "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
-        "summary": "APPROVE：17d743d 代码与发布计划无阻塞缺陷；独立透镜测试和精确 head CI 通过。详见 tasks/graph-3d-release/review.md；生产证据待独立 closeout 审查。"
+        "reviewed_packet_locator": "docs/project-harness/current/closeout-packet.md",
+        "summary": "APPROVE：d2c4db1 精确部署、CI、备份回滚、生产健康认证与浏览器回执一致；独立 GitHub 核对通过。详见 tasks/graph-3d-release/closeout-review.md；DF 用户视觉反馈继续待验证。"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-graph-release-20260906",
         "acquired_at": "2026-09-06T05:12:35Z",
         "expires_at": "2026-09-06T07:12:35Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-09-06T05:33:49Z"
       }
     }
   ]

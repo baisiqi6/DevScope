@@ -1,59 +1,22 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-09-06T05:13:04Z",
+  "generated_at": "2026-09-06T05:33:49Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "05ac978adeffbab164f53ac51f2b37167a91d2591094f8933c6ed98ce0dbac5a"
+    "checklist_sha256": "38bac87111f5a6caf38f825ace8b0d5a3c1a0be154a4f4b018301832d53b6a40"
   },
   "current_status": "",
-  "current_item": {
-    "id": "graph-3d-release",
-    "title": "3D 图谱视觉升级生产发布",
-    "status": "doing",
-    "owner": "codex",
-    "selected_in_session": "codex-graph-release-20260906",
-    "updated_at": "2026-09-06T05:12:35Z",
-    "workflow": {
-      "mode": "high-risk",
-      "status": "review_requested",
-      "updated_at": "2026-09-06T05:12:35Z",
-      "branch": "codex/graph-materials-blackhole"
-    },
-    "lease": {
-      "owner": "codex",
-      "session": "codex-graph-release-20260906",
-      "acquired_at": "2026-09-06T05:12:35Z",
-      "expires_at": "2026-09-06T07:12:35Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "codex",
-      "session": "codex-graph-release-20260906",
-      "acquired_at": "2026-09-06T05:12:35Z",
-      "expires_at": "2026-09-06T07:12:35Z",
-      "ttl_minutes": 120
-    },
-    "artifacts": {
-      "plan": "docs/project-harness/tasks/graph-3d-release/plan.md",
-      "branch": "codex/graph-materials-blackhole",
-      "review_packet": "docs/project-harness/current/review-packet.md"
-    },
-    "review": {
-      "decision": null
-    },
-    "plan_path": "docs/project-harness/tasks/graph-3d-release/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 1,
-    "doing": 1,
-    "done": 18,
+    "doing": 0,
+    "done": 19,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 18,
-    "released": 1,
-    "review_requested": 1
+    "closed": 19,
+    "released": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -92,92 +55,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:32:53Z",
-      "id": "evt-20260903T073253Z-f73231d6",
-      "idempotency_key": "RESULT:product-11a-external-resource-content-enable:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for product-11a-external-resource-content-enable",
-      "target": "reviewer",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260903T073253Z-f73231d6 task=product-11a-external-resource-content-enable actor=codex target=reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:33:24Z",
-      "id": "evt-20260903T073324Z-cfbf0059",
-      "idempotency_key": "RESULT:product-11a-external-resource-content-enable:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for product-11a-external-resource-content-enable",
-      "target": "reviewer",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260903T073324Z-cfbf0059 task=product-11a-external-resource-content-enable actor=codex target=reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
-    {
-      "actor": "reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:33:37Z",
-      "id": "evt-20260903T073337Z-3004c2fa",
-      "idempotency_key": "REVIEW:product-11a-external-resource-content-enable:approved:reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Closeout复审通过：本地实现与全仓库门禁通过；PR #64 已合并，deploy run 33727039540 成功。生产资源ID2 已由 preview_only/not_requested 受控切换为 content/not_requested，content-request 返回 pending，Worker 按 DNS 安全策略以脱敏 security_rejected 失败且未写入正文；DF-20260902-001 详细条目、生产证据与 canonical plan 一致。",
-      "target": "codex",
-      "task": "product-11a-external-resource-content-enable",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260903T073337Z-3004c2fa task=product-11a-external-resource-content-enable actor=reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-03T07:33:43Z",
-      "id": "evt-20260903T073343Z-8ee8ba96",
-      "idempotency_key": "CLOSE:product-11a-external-resource-content-enable:done:codex",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "done",
-      "summary": "codex closed product-11a-external-resource-content-enable",
-      "target": null,
-      "task": "product-11a-external-resource-content-enable",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260903T073343Z-8ee8ba96 task=product-11a-external-resource-content-enable actor=codex status=done"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -269,6 +146,96 @@
       "task": "graph-3d-release",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260906T051235Z-a5cae60b task=graph-3d-release actor=codex target=graph_release_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "graph_release_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:15:19Z",
+      "id": "evt-20260906T051519Z-01572ddb",
+      "idempotency_key": "REVIEW:graph-3d-release:approved:graph_release_reviewer",
+      "metadata": {
+        "reviewed_packet_sha256": "727930d5841ddddd605dc42e44ff31da8a5559ebebd32c30aacc192c7a15fe80",
+        "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "APPROVE：17d743d 代码与发布计划无阻塞缺陷；独立透镜测试和精确 head CI 通过。详见 tasks/graph-3d-release/review.md；生产证据待独立 closeout 审查。",
+      "target": "codex",
+      "task": "graph-3d-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260906T051519Z-01572ddb task=graph-3d-release actor=graph_release_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:31:29Z",
+      "id": "evt-20260906T053129Z-adf1defa",
+      "idempotency_key": "RESULT:graph-3d-release:closeout_requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for graph-3d-release",
+      "target": "graph_release_reviewer",
+      "task": "graph-3d-release",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20260906T053129Z-adf1defa task=graph-3d-release actor=codex target=graph_release_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "graph_release_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:33:15Z",
+      "id": "evt-20260906T053315Z-ef486d04",
+      "idempotency_key": "REVIEW:graph-3d-release:approved:graph_release_reviewer",
+      "metadata": {
+        "reviewed_packet_sha256": "a14df229971766058e72a0dacbfb72d1699f8a34c6b70b93808653b22e350ecf",
+        "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "APPROVE：d2c4db1 精确部署、CI、备份回滚、生产健康认证与浏览器回执一致；独立 GitHub 核对通过。详见 tasks/graph-3d-release/closeout-review.md；DF 用户视觉反馈继续待验证。",
+      "target": "codex",
+      "task": "graph-3d-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260906T053315Z-ef486d04 task=graph-3d-release actor=graph_release_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-06T05:33:49Z",
+      "id": "evt-20260906T053349Z-a6e22300",
+      "idempotency_key": "CLOSE:graph-3d-release:done:codex",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "codex closed graph-3d-release",
+      "target": null,
+      "task": "graph-3d-release",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20260906T053349Z-a6e22300 task=graph-3d-release actor=codex status=done"
     }
   ]
 }
