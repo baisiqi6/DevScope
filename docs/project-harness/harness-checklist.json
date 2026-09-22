@@ -907,10 +907,10 @@
     {
       "id": "df-20260822-001-hn-release",
       "title": "发布 Hacker News 可选字段修复",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "codex",
-      "selected_in_session": "codex-20260922-df-hn-release",
+      "owner": null,
+      "selected_in_session": null,
       "updated_at": "2026-09-22",
       "dependencies": [
         "df-20260822-001-hn-optional-fields"
@@ -918,32 +918,34 @@
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "PR required checks 通过并合并；生产无迁移部署成功且 revision 精确；访问控制与容器健康；agency-agents 云端复采 HN 无 warning 且 hnItemsCollected>0、embedding terminal success；独立 closeout 后关闭 DF。",
-      "verification": "发布计划独立审查 APPROVED；本地修复完整门禁已通过；等待 commit/push/PR/CI/部署/生产复采。",
-      "handoff": "下一步提交并创建 PR；CI 成功合并后显式备份，锁定 merge SHA 触发无迁移部署，再复采 agency-agents。",
+      "verification": "PR #70/CI/merge 791ebab9；备份可读；deploy 35684007072 成功且三镜像精确匹配；health/auth/Nginx/logs通过；repo1289复采 HN=9 无warning，新embedding 250/250 completed且applied；DF closed；独立 closeout APPROVED。",
+      "handoff": "生产验证完成，等待独立 closeout Reviewer 核验后 mark-done；无需再次部署。",
       "plan_path": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
       "workflow": {
-        "status": "review_approved",
+        "status": "closed",
         "updated_at": "2026-09-22",
         "branch": "codex/df-20260822-001-hn-release"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
         "branch": "codex/df-20260822-001-hn-release",
-        "review_packet": "docs/project-harness/current/review-packet.md"
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
         "decision": "approved",
         "reviewer": "dogfood_remediation_reviewer",
-        "phase": "review_requested",
+        "phase": "closeout_requested",
         "updated_at": "2026-09-22",
-        "summary": "Release plan APPROVED：Operator 显式备份并验可读；dispatch/headSha 精确绑定 merge SHA；agency-agents 复采按新 startedAt 与 chunk 计数绑定；无迁移、cleanup=false。"
+        "summary": "High-risk closeout APPROVED：PR/CI、精确 SHA 部署、显式可读备份、健康/认证/Nginx 与 agency-agents HN=9、新 embedding 250/250 applied 均独立核验；无 P0-P2。首次备份复核误尝试拉取 postgres:16 后 EOF 失败，未创建容器或改变服务，可能留临时镜像缓存，未清理。"
       },
       "lease": {
         "owner": "codex",
         "session": "codex-20260922-df-hn-release",
         "acquired_at": "2026-09-22T03:27:52Z",
         "expires_at": "2026-09-22T05:27:52Z",
-        "ttl_minutes": 120
+        "ttl_minutes": 120,
+        "released_at": "2026-09-22T04:01:04Z"
       }
     }
   ]

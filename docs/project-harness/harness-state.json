@@ -1,62 +1,22 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-09-22T03:33:28Z",
+  "generated_at": "2026-09-22T04:01:52Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "69655dbd514a6cd20359de612acb3b911654832db679f323bfb0250276daf369"
+    "checklist_sha256": "7a0a0448b25c1df8b88e0279a1dc3a123241419f5f39a3a4c54d51d7df93a986"
   },
   "current_status": "",
-  "current_item": {
-    "id": "df-20260822-001-hn-release",
-    "title": "发布 Hacker News 可选字段修复",
-    "status": "doing",
-    "owner": "codex",
-    "selected_in_session": "codex-20260922-df-hn-release",
-    "updated_at": "2026-09-22",
-    "workflow": {
-      "status": "review_approved",
-      "updated_at": "2026-09-22",
-      "branch": "codex/df-20260822-001-hn-release"
-    },
-    "lease": {
-      "owner": "codex",
-      "session": "codex-20260922-df-hn-release",
-      "acquired_at": "2026-09-22T03:27:52Z",
-      "expires_at": "2026-09-22T05:27:52Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "codex",
-      "session": "codex-20260922-df-hn-release",
-      "acquired_at": "2026-09-22T03:27:52Z",
-      "expires_at": "2026-09-22T05:27:52Z",
-      "ttl_minutes": 120
-    },
-    "artifacts": {
-      "plan": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
-      "branch": "codex/df-20260822-001-hn-release",
-      "review_packet": "docs/project-harness/current/review-packet.md"
-    },
-    "review": {
-      "decision": "approved",
-      "reviewer": "dogfood_remediation_reviewer",
-      "phase": "review_requested",
-      "updated_at": "2026-09-22",
-      "summary": "Release plan APPROVED：Operator 显式备份并验可读；dispatch/headSha 精确绑定 merge SHA；agency-agents 复采按新 startedAt 与 chunk 计数绑定；无迁移、cleanup=false。"
-    },
-    "plan_path": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 1,
-    "doing": 1,
-    "done": 20,
+    "doing": 0,
+    "done": 21,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 20,
-    "released": 1,
-    "review_approved": 1
+    "closed": 21,
+    "released": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -95,73 +55,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "dogfood_remediation_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-22T03:24:07Z",
-      "id": "evt-20260922T032407Z-24cf7986",
-      "idempotency_key": "REVIEW:df-20260822-001-hn-optional-fields:approved:dogfood_remediation_reviewer",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "Closeout APPROVED：本地实现、focused 51/51、完整四项门禁、diff-check 与 Harness validate 通过；DF 保持 fixing，未 commit/push/部署/生产采集。",
-      "target": "dogfood_remediation_worker",
-      "task": "df-20260822-001-hn-optional-fields",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260922T032407Z-24cf7986 task=df-20260822-001-hn-optional-fields actor=dogfood_remediation_reviewer target=dogfood_remediation_worker status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-22T03:24:07Z",
-      "id": "evt-20260922T032407Z-c0edb54b",
-      "idempotency_key": "CLOSE:df-20260822-001-hn-optional-fields:done:codex",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "done",
-      "summary": "codex closed df-20260822-001-hn-optional-fields",
-      "target": null,
-      "task": "df-20260822-001-hn-optional-fields",
-      "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260922T032407Z-c0edb54b task=df-20260822-001-hn-optional-fields actor=codex status=done"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
-      ],
-      "branch": "codex/df-20260822-001-hn-release",
-      "causation_id": null,
-      "created_at": "2026-09-22T03:27:52Z",
-      "id": "evt-20260922T032752Z-356e077d",
-      "idempotency_key": "ACCEPT:df-20260822-001-hn-release:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-20260922-df-hn-release"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex started df-20260822-001-hn-release",
-      "target": "codex",
-      "task": "df-20260822-001-hn-release",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260922T032752Z-356e077d task=df-20260822-001-hn-release actor=codex target=codex status=running branch=codex/df-20260822-001-hn-release artifacts=docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
-    },
     {
       "actor": "codex",
       "artifacts": [
@@ -267,6 +160,70 @@
       "task": "df-20260822-001-hn-release",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20260922T033314Z-e7aa8fc2 task=df-20260822-001-hn-release actor=dogfood_remediation_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:56:21Z",
+      "id": "evt-20260922T035621Z-a4a404dd",
+      "idempotency_key": "RESULT:df-20260822-001-hn-release:closeout_requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for df-20260822-001-hn-release",
+      "target": "dogfood_remediation_reviewer",
+      "task": "df-20260822-001-hn-release",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20260922T035621Z-a4a404dd task=df-20260822-001-hn-release actor=codex target=dogfood_remediation_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "dogfood_remediation_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T04:01:04Z",
+      "id": "evt-20260922T040104Z-75f2aa08",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:approved:dogfood_remediation_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "High-risk closeout APPROVED：PR/CI、精确 SHA 部署、显式可读备份、健康/认证/Nginx 与 agency-agents HN=9、新 embedding 250/250 applied 均独立核验；无 P0-P2。首次备份复核误尝试拉取 postgres:16 后 EOF 失败，未创建容器或改变服务，可能留临时镜像缓存，未清理。",
+      "target": "codex",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T040104Z-75f2aa08 task=df-20260822-001-hn-release actor=dogfood_remediation_reviewer target=codex status=approved"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T04:01:04Z",
+      "id": "evt-20260922T040104Z-a1a28d3c",
+      "idempotency_key": "CLOSE:df-20260822-001-hn-release:done:codex",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "codex closed df-20260822-001-hn-release",
+      "target": null,
+      "task": "df-20260822-001-hn-release",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20260922T040104Z-a1a28d3c task=df-20260822-001-hn-release actor=codex status=done"
     }
   ]
 }

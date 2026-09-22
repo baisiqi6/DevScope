@@ -22,7 +22,7 @@
 | `DF-20260818-004` | 分组不支持父子层级                                | `closed`   | `p2`   | 能力缺口 | confusing UX              |
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
-| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据失败              | `fixing`   | `p2`   | 产品缺陷 | wrong data                |
+| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据失败              | `closed`   | `p2`   | 产品缺陷 | wrong data                |
 | `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `closed` | `p1` | 能力缺口 | blocked |
 
 | `DF-20260905-001` | 3D 黑洞搜索定位未激活透镜且默认展示变化不明显 | `fixed_pending_verification` | `p2` | 产品缺陷 | confusing UX |
@@ -160,20 +160,20 @@
 
 ### DF-20260822-001：仓库采集的 Hacker News 补充数据失败
 
-- Status: `fixing`
+- Status: `closed`
 - Priority: `p2`
 - Time: 2026-08-22
 - Entry point: MCP `devscope_collect_repository`
 - User intent: 将一批经过筛选的 GitHub 仓库完整采集到 DevScope 云端，供后续生态搜索和分析。
 - Expected: 仓库内容、向量和可选 Hacker News 讨论均成功采集；如果没有匹配讨论，返回空集合而不是上游请求错误。
-- Actual: 本批 16 个不同仓库的主采集均为 `completed`，embedding 后台任务也均为 `completed / 100%`，但每次响应都附带 `Hacker News: Hacker News API error: 400`，且 `hnItemsCollected` 为 `0`。
-- Reproduction: 对任一尚未采集的公开 GitHub 仓库调用 `devscope_collect_repository({ repo: "owner/repo" })`；2026-08-22 的 16/16 个样本均出现相同 warning。
+- Actual: 已修复 Algolia 参数错误及可选字段缺失兼容。生产复采 `msitarzewski/agency-agents` 返回主采集 `completed`、`hnItemsCollected=9`、无 HN warning；本次新 embedding 为 `completed / 100%`、250/250。
+- Reproduction: 历史 400 与缺失字段样本已稳定复现；修复后用同一已知失败样本 `msitarzewski/agency-agents` 生产复采不再复现。
 - Evidence: repository ids `1265`–`1280`（不连续处为并发分配顺序）；采集响应的 `warning` 字段一致，随后 `devscope_get_embedding_status` 证明所有仓库向量化完成，因此失败边界仅在 HN enrichment。
-- Impact: wrong data。主仓库与向量数据可用，但用户会误以为没有相关 HN 讨论，生态信号不完整；批量采集还会产生重复告警噪声。
+- Impact: wrong data（历史影响已解除）。HN enrichment 已恢复，主采集与 HN/embedding 结果可以分别验证。
 - Frequency: reproducible
-- Workaround: 当前只能接受 warning，并将 `hnItemsCollected: 0` 视为“采集失败或无结果，状态未知”，不能当作确认没有 HN 讨论。
-- Classification: 产品缺陷；HN enrichment 的请求参数、API 契约或错误归一化待进一步诊断。
-- Related issue/checklist: none
+- Workaround: 无需 workaround；仍应将未来出现的 HN warning 视为 enrichment 失败，而不是确认无讨论。
+- Classification: 产品缺陷，已修复并完成生产验证。
+- Related issue/checklist: `df-20260822-001-hn-optional-fields`; `df-20260822-001-hn-release`
 - Timeline:
   - 2026-08-22: Skills 与前端库云端批量采集时首次登记；16 个样本全部复现，未修改产品代码。
   - 2026-08-22: 后续采集 `beekeeper-studio/beekeeper-studio` 与 `chenhg5/cc-connect` 时 2/2 再次出现同一 HN 400 warning；两仓库主采集与 embedding 均成功，问题仍限定在 HN enrichment。
@@ -185,6 +185,7 @@
   - 2026-09-22: 云端采集 System One 组合 `mizorewww/laya-mlx`、`receptron/laya`、`typesafe-ai/skills`（repo ids `1290`–`1292`）时 3/3 复现同一 Zod `invalid_type` warning；主采集与 embedding（615/405/1017 chunks）全部成功。累计 open 状态下 5/5 样本稳定复现，可安全进入修复验证流程。
   - 2026-09-22: 本地最小修复将 Algolia 合法缺失的 `story_text`、`url` 等字段规范化为 `null`，错误类型仍 fail closed；pipeline focused tests 51/51 与 `@devscope/db` typecheck 通过，等待独立审查。生产重新采集前保持 `fixing`，不提前关闭。
   - 2026-09-22: 首轮独立审查发现并修正 `rawJson` 被 schema transform 补 key 的语义回归；最终 Reviewer `APPROVED`，全仓库 lint/typecheck/test/build 通过。当前尚未 push、部署或生产复采，状态继续为 `fixing`。
+  - 2026-09-22: PR #70 的 required `quality`/`integration` checks 通过并合并为 `791ebab9fd68f0e6866631d6450edec78134e660`；deploy run `35684007072` 以 migration/cleanup 均关闭的输入成功发布。生产复采 `msitarzewski/agency-agents`（repo ID `1289`）得到 `hnItemsCollected=9` 且无 HN warning；新 embedding `startedAt=2026-09-22T03:52:38.421Z`，250/250、`completed / 100%`，关闭 observation。
 
 ### DF-20260902-001：外部资源正文采集没有启用入口
 

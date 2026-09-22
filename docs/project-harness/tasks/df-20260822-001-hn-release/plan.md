@@ -7,6 +7,7 @@
 - 关联 observation：`DF-20260822-001`
 - 风险模式：high-risk（PR 合并、生产部署、云端仓库重新采集）
 - 分支：`codex/df-20260822-001-hn-release`
+- 当前阶段：生产部署、受控复采与独立 closeout 全部完成，item 已关闭
 
 ## 目标
 
@@ -41,10 +42,23 @@
 
 ## 当前 Handoff
 
-用户已于 2026-09-22 明确授权发布。先完成 release plan 独立审查，再提交、push、PR/CI、合并和部署；生产重新采集失败时停止关闭 observation，不扩大修复范围。
+生产发布与 `agency-agents` 受控复采已完成，所有业务验收通过；独立 Reviewer 已核验 GitHub、部署、备份、访问控制和本次复采证据并 `APPROVED`，release item 与 `DF-20260822-001` 均已关闭。
 
 ## Review 修正
 
 - 已纠正备份事实：`.env`、Nginx 与无迁移数据库备份为 Operator 显式前置，不冒充 workflow 自动能力。
 - 已将 embedding 验收绑定到本次复采：保存旧时间戳与计数，要求新 `startedAt`、请求时间和本次 `chunksCollected` 一致。
 - 已增加 dispatch head gate：`main` 与 merge SHA 不一致时停止，workflow run `headSha` 必须精确匹配。
+
+## Production Verification
+
+- PR #70：`quality` 与 `integration` 成功；merge SHA `791ebab9fd68f0e6866631d6450edec78134e660`。
+- 部署前显式备份目录：`/home/devscope/backups/devscope/pre-hn-release-20260922T033900Z-791ebab9`；目录 mode `700`，`.env`、Nginx archive 与 custom-format dump 均为 mode `600`，`pg_restore --list` 验证可读。
+- Deploy run：`35684007072`；`headSha` 精确等于 merge SHA，`technology_stack_legacy_cleanup=false`、`apply_database_migration=false`，build/deploy 成功、cleanup skipped。
+- 生产服务器 HEAD 与 API/Web/Worker 三镜像 revision 均为 `791ebab9fd68f0e6866631d6450edec78134e660`；工作树 clean，PostgreSQL healthy，内部 API/Web health、`nginx -t` 通过，近期 API/Worker 无目标错误模式。
+- SSH tunnel 未认证 health 返回 `401`，Keychain 认证 health 返回 `ok`；部署前后 `.env` 与 Nginx 配置一致。
+- 复采前 repo ID `1289` 的 embedding 为 250/250、旧 `startedAt=2026-09-21T18:30:23.830Z`。本次请求开始于 `2026-09-22T03:52:35Z`；复采仍返回 repo ID `1289`，主采集 `completed`、`chunksCollected=250`、`hnItemsCollected=9`、无 warning。
+- 本次新 embedding 为 `startedAt=2026-09-22T03:52:38.421Z`、`completedAt=2026-09-22T03:52:46.371Z`、250/250、`completed / 100%`；API 日志记录 outcome `applied`，且没有 `invalid_type`、`Hacker News:` 或 `Expected string, received undefined`。
+- `DF-20260822-001` 已依据上述生产业务证据置为 `closed`。
+- 独立 high-risk closeout Reviewer 最终 `APPROVED`，无 P0–P2；Harness item 已 `done / closed`。
+- 透明记录：Reviewer 首次复核 dump 时误尝试拉取本机缺失的 `postgres:16` 镜像，拉取因 EOF 失败，未创建容器或改变生产服务；随后使用现有 PostgreSQL 容器完成只读验证。可能存在未清理的临时 Docker 下载缓存，不影响运行服务。
