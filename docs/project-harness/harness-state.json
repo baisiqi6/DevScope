@@ -1,22 +1,62 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-09-06T05:33:49Z",
+  "generated_at": "2026-09-22T03:33:28Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "38bac87111f5a6caf38f825ace8b0d5a3c1a0be154a4f4b018301832d53b6a40"
+    "checklist_sha256": "69655dbd514a6cd20359de612acb3b911654832db679f323bfb0250276daf369"
   },
   "current_status": "",
-  "current_item": null,
+  "current_item": {
+    "id": "df-20260822-001-hn-release",
+    "title": "发布 Hacker News 可选字段修复",
+    "status": "doing",
+    "owner": "codex",
+    "selected_in_session": "codex-20260922-df-hn-release",
+    "updated_at": "2026-09-22",
+    "workflow": {
+      "status": "review_approved",
+      "updated_at": "2026-09-22",
+      "branch": "codex/df-20260822-001-hn-release"
+    },
+    "lease": {
+      "owner": "codex",
+      "session": "codex-20260922-df-hn-release",
+      "acquired_at": "2026-09-22T03:27:52Z",
+      "expires_at": "2026-09-22T05:27:52Z",
+      "ttl_minutes": 120
+    },
+    "active_lease": {
+      "owner": "codex",
+      "session": "codex-20260922-df-hn-release",
+      "acquired_at": "2026-09-22T03:27:52Z",
+      "expires_at": "2026-09-22T05:27:52Z",
+      "ttl_minutes": 120
+    },
+    "artifacts": {
+      "plan": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
+      "branch": "codex/df-20260822-001-hn-release",
+      "review_packet": "docs/project-harness/current/review-packet.md"
+    },
+    "review": {
+      "decision": "approved",
+      "reviewer": "dogfood_remediation_reviewer",
+      "phase": "review_requested",
+      "updated_at": "2026-09-22",
+      "summary": "Release plan APPROVED：Operator 显式备份并验可读；dispatch/headSha 精确绑定 merge SHA；agency-agents 复采按新 startedAt 与 chunk 计数绑定；无迁移、cleanup=false。"
+    },
+    "plan_path": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
+  },
   "checklist_summary": {
     "todo": 1,
-    "doing": 0,
-    "done": 19,
+    "doing": 1,
+    "done": 20,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 19,
-    "released": 1
+    "closed": 20,
+    "released": 1,
+    "review_approved": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -30,9 +70,9 @@
     "current_task_plan": "docs/project-harness/current/task_plan.md"
   },
   "commands": {
-    "state": ".planning/harness-runtime/harnessctl state",
-    "session_init": ".planning/harness-runtime/harnessctl session-init",
-    "validate_checklist": "python3 .planning/harness-runtime/validate_checklist.py docs/project-harness/harness-checklist.json",
+    "state": "scripts/harness/harnessctl state",
+    "session_init": "scripts/harness/harnessctl session-init",
+    "validate_checklist": "python3 scripts/harness/validate_checklist.py docs/project-harness/harness-checklist.json",
     "lint": "pnpm lint",
     "typecheck": "pnpm typecheck",
     "test": "pnpm test",
@@ -56,173 +96,33 @@
   "open_risks": [],
   "recent_events": [
     {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/tasks/graph-3d-release/plan.md"
-      ],
-      "branch": "codex/graph-3d-release",
-      "causation_id": null,
-      "created_at": "2026-09-06T05:12:22Z",
-      "id": "evt-20260906T051222Z-aff6aead",
-      "idempotency_key": "ACCEPT:graph-3d-release:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-graph-release-20260906"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex started graph-3d-release",
-      "target": "codex",
-      "task": "graph-3d-release",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260906T051222Z-aff6aead task=graph-3d-release actor=codex target=codex status=running branch=codex/graph-3d-release artifacts=docs/project-harness/tasks/graph-3d-release/plan.md"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/review-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-06T05:12:22Z",
-      "id": "evt-20260906T051222Z-b8c51c67",
-      "idempotency_key": "REVIEW:graph-3d-release:requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "requested",
-      "summary": "Review requested for graph-3d-release",
-      "target": "graph_release_reviewer",
-      "task": "graph-3d-release",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260906T051222Z-b8c51c67 task=graph-3d-release actor=codex target=graph_release_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [],
-      "branch": "codex/graph-materials-blackhole",
-      "causation_id": null,
-      "created_at": "2026-09-06T05:12:35Z",
-      "id": "evt-20260906T051235Z-908a0198",
-      "idempotency_key": "ACCEPT:graph-3d-release:running:codex",
-      "metadata": {
-        "force_reason": null,
-        "session": "codex-graph-release-20260906"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "codex accepted graph-3d-release",
-      "target": "codex",
-      "task": "graph-3d-release",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20260906T051235Z-908a0198 task=graph-3d-release actor=codex target=codex status=running branch=codex/graph-materials-blackhole"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/review-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-06T05:12:35Z",
-      "id": "evt-20260906T051235Z-a5cae60b",
-      "idempotency_key": "REVIEW:graph-3d-release:requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "requested",
-      "summary": "Review requested for graph-3d-release",
-      "target": "graph_release_reviewer",
-      "task": "graph-3d-release",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260906T051235Z-a5cae60b task=graph-3d-release actor=codex target=graph_release_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "graph_release_reviewer",
+      "actor": "dogfood_remediation_reviewer",
       "artifacts": [],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-09-06T05:15:19Z",
-      "id": "evt-20260906T051519Z-01572ddb",
-      "idempotency_key": "REVIEW:graph-3d-release:approved:graph_release_reviewer",
-      "metadata": {
-        "reviewed_packet_sha256": "727930d5841ddddd605dc42e44ff31da8a5559ebebd32c30aacc192c7a15fe80",
-        "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400"
-      },
+      "created_at": "2026-09-22T03:24:07Z",
+      "id": "evt-20260922T032407Z-24cf7986",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-optional-fields:approved:dogfood_remediation_reviewer",
+      "metadata": {},
       "parent": null,
       "pr": null,
       "publish_status": "local_only",
       "schema_version": 1,
       "status": "approved",
-      "summary": "APPROVE：17d743d 代码与发布计划无阻塞缺陷；独立透镜测试和精确 head CI 通过。详见 tasks/graph-3d-release/review.md；生产证据待独立 closeout 审查。",
-      "target": "codex",
-      "task": "graph-3d-release",
+      "summary": "Closeout APPROVED：本地实现、focused 51/51、完整四项门禁、diff-check 与 Harness validate 通过；DF 保持 fixing，未 commit/push/部署/生产采集。",
+      "target": "dogfood_remediation_worker",
+      "task": "df-20260822-001-hn-optional-fields",
       "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260906T051519Z-01572ddb task=graph-3d-release actor=graph_release_reviewer target=codex status=approved"
-    },
-    {
-      "actor": "codex",
-      "artifacts": [
-        "docs/project-harness/current/closeout-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-06T05:31:29Z",
-      "id": "evt-20260906T053129Z-adf1defa",
-      "idempotency_key": "RESULT:graph-3d-release:closeout_requested:codex",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "closeout_requested",
-      "summary": "Closeout requested for graph-3d-release",
-      "target": "graph_release_reviewer",
-      "task": "graph-3d-release",
-      "type": "RESULT",
-      "visible_header": "[RESULT] id=evt-20260906T053129Z-adf1defa task=graph-3d-release actor=codex target=graph_release_reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
-    },
-    {
-      "actor": "graph_release_reviewer",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-09-06T05:33:15Z",
-      "id": "evt-20260906T053315Z-ef486d04",
-      "idempotency_key": "REVIEW:graph-3d-release:approved:graph_release_reviewer",
-      "metadata": {
-        "reviewed_packet_sha256": "a14df229971766058e72a0dacbfb72d1699f8a34c6b70b93808653b22e350ecf",
-        "source_plan_sha256": "bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "approved",
-      "summary": "APPROVE：d2c4db1 精确部署、CI、备份回滚、生产健康认证与浏览器回执一致；独立 GitHub 核对通过。详见 tasks/graph-3d-release/closeout-review.md；DF 用户视觉反馈继续待验证。",
-      "target": "codex",
-      "task": "graph-3d-release",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20260906T053315Z-ef486d04 task=graph-3d-release actor=graph_release_reviewer target=codex status=approved"
+      "visible_header": "[REVIEW] id=evt-20260922T032407Z-24cf7986 task=df-20260822-001-hn-optional-fields actor=dogfood_remediation_reviewer target=dogfood_remediation_worker status=approved"
     },
     {
       "actor": "codex",
       "artifacts": [],
       "branch": null,
       "causation_id": null,
-      "created_at": "2026-09-06T05:33:49Z",
-      "id": "evt-20260906T053349Z-a6e22300",
-      "idempotency_key": "CLOSE:graph-3d-release:done:codex",
+      "created_at": "2026-09-22T03:24:07Z",
+      "id": "evt-20260922T032407Z-c0edb54b",
+      "idempotency_key": "CLOSE:df-20260822-001-hn-optional-fields:done:codex",
       "metadata": {
         "force_reason": null
       },
@@ -231,11 +131,142 @@
       "publish_status": "local_only",
       "schema_version": 1,
       "status": "done",
-      "summary": "codex closed graph-3d-release",
+      "summary": "codex closed df-20260822-001-hn-optional-fields",
       "target": null,
-      "task": "graph-3d-release",
+      "task": "df-20260822-001-hn-optional-fields",
       "type": "CLOSE",
-      "visible_header": "[CLOSE] id=evt-20260906T053349Z-a6e22300 task=graph-3d-release actor=codex status=done"
+      "visible_header": "[CLOSE] id=evt-20260922T032407Z-c0edb54b task=df-20260822-001-hn-optional-fields actor=codex status=done"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
+      ],
+      "branch": "codex/df-20260822-001-hn-release",
+      "causation_id": null,
+      "created_at": "2026-09-22T03:27:52Z",
+      "id": "evt-20260922T032752Z-356e077d",
+      "idempotency_key": "ACCEPT:df-20260822-001-hn-release:running:codex",
+      "metadata": {
+        "force_reason": null,
+        "session": "codex-20260922-df-hn-release"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "codex started df-20260822-001-hn-release",
+      "target": "codex",
+      "task": "df-20260822-001-hn-release",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20260922T032752Z-356e077d task=df-20260822-001-hn-release actor=codex target=codex status=running branch=codex/df-20260822-001-hn-release artifacts=docs/project-harness/tasks/df-20260822-001-hn-release/plan.md"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:27:52Z",
+      "id": "evt-20260922T032752Z-f0d3bc5f",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for df-20260822-001-hn-release",
+      "target": "dogfood_remediation_reviewer",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T032752Z-f0d3bc5f task=df-20260822-001-hn-release actor=codex target=dogfood_remediation_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:28:57Z",
+      "id": "evt-20260922T032857Z-43595065",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for df-20260822-001-hn-release",
+      "target": "dogfood_remediation_reviewer",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T032857Z-43595065 task=df-20260822-001-hn-release actor=codex target=dogfood_remediation_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "dogfood_remediation_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:31:03Z",
+      "id": "evt-20260922T033103Z-dcbf5c12",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:changes_requested:dogfood_remediation_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "changes_requested",
+      "summary": "P1：普通无迁移 workflow 不自动备份 .env/Nginx/数据库，需改为 Operator 显式备份并验证；复采 embedding 必须绑定本次采集而非历史状态；dispatch 需锁定并核对 merge SHA。",
+      "target": "codex",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T033103Z-dcbf5c12 task=df-20260822-001-hn-release actor=dogfood_remediation_reviewer target=codex status=changes_requested"
+    },
+    {
+      "actor": "codex",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:32:09Z",
+      "id": "evt-20260922T033209Z-d5012e5d",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:requested:codex",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for df-20260822-001-hn-release",
+      "target": "dogfood_remediation_reviewer",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T033209Z-d5012e5d task=df-20260822-001-hn-release actor=codex target=dogfood_remediation_reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "dogfood_remediation_reviewer",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-09-22T03:33:14Z",
+      "id": "evt-20260922T033314Z-e7aa8fc2",
+      "idempotency_key": "REVIEW:df-20260822-001-hn-release:approved:dogfood_remediation_reviewer",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Release plan APPROVED：Operator 显式备份并验可读；dispatch/headSha 精确绑定 merge SHA；agency-agents 复采按新 startedAt 与 chunk 计数绑定；无迁移、cleanup=false。",
+      "target": "codex",
+      "task": "df-20260822-001-hn-release",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20260922T033314Z-e7aa8fc2 task=df-20260822-001-hn-release actor=dogfood_remediation_reviewer target=codex status=approved"
     }
   ]
 }

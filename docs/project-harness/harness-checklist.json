@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-09-06T05:33:49Z",
+  "updated_at": "2026-09-22",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -860,6 +860,90 @@
         "expires_at": "2026-09-06T07:12:35Z",
         "ttl_minutes": 120,
         "released_at": "2026-09-06T05:33:49Z"
+      }
+    },
+    {
+      "id": "df-20260822-001-hn-optional-fields",
+      "title": "修复 Hacker News 可选字段解析失败",
+      "status": "done",
+      "priority": "p1",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-09-22",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "HN Algolia 合法缺失字段被规范化为 null，错误类型 payload 仍失败；focused tests、typecheck、全仓库门禁与独立审查通过；生产重新采集前 observation 不关闭。",
+      "verification": "本地修复与独立 closeout APPROVED；HN 可选字段缺失归一 null、rawJson 保留原始 hit、错误类型 fail closed；focused 51/51 与全仓库 lint/typecheck/test/build 通过；生产复采未执行，DF 保持 fixing。",
+      "handoff": "本地实现可收口；未 commit/push/部署/生产采集。后续取得发布授权后走 PR/CI/部署并用新生产样本复采，成功后关闭 DF-20260822-001。",
+      "plan_path": "docs/project-harness/tasks/df-20260822-001-hn-optional-fields/plan.md",
+      "workflow": {
+        "status": "closed",
+        "updated_at": "2026-09-22",
+        "branch": "codex/df-20260822-001-hn-optional-fields"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/df-20260822-001-hn-optional-fields/plan.md",
+        "branch": "codex/df-20260822-001-hn-optional-fields",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "dogfood_remediation_reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-09-22",
+        "summary": "Closeout APPROVED：本地实现、focused 51/51、完整四项门禁、diff-check 与 Harness validate 通过；DF 保持 fixing，未 commit/push/部署/生产采集。"
+      },
+      "lease": {
+        "owner": "dogfood_remediation_worker",
+        "session": "codex-20260921-df-hn",
+        "acquired_at": "2026-09-22T03:10:14Z",
+        "expires_at": "2026-09-22T05:10:14Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-09-22T03:24:07Z"
+      }
+    },
+    {
+      "id": "df-20260822-001-hn-release",
+      "title": "发布 Hacker News 可选字段修复",
+      "status": "doing",
+      "priority": "p1",
+      "owner": "codex",
+      "selected_in_session": "codex-20260922-df-hn-release",
+      "updated_at": "2026-09-22",
+      "dependencies": [
+        "df-20260822-001-hn-optional-fields"
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "PR required checks 通过并合并；生产无迁移部署成功且 revision 精确；访问控制与容器健康；agency-agents 云端复采 HN 无 warning 且 hnItemsCollected>0、embedding terminal success；独立 closeout 后关闭 DF。",
+      "verification": "发布计划独立审查 APPROVED；本地修复完整门禁已通过；等待 commit/push/PR/CI/部署/生产复采。",
+      "handoff": "下一步提交并创建 PR；CI 成功合并后显式备份，锁定 merge SHA 触发无迁移部署，再复采 agency-agents。",
+      "plan_path": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
+      "workflow": {
+        "status": "review_approved",
+        "updated_at": "2026-09-22",
+        "branch": "codex/df-20260822-001-hn-release"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/df-20260822-001-hn-release/plan.md",
+        "branch": "codex/df-20260822-001-hn-release",
+        "review_packet": "docs/project-harness/current/review-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "dogfood_remediation_reviewer",
+        "phase": "review_requested",
+        "updated_at": "2026-09-22",
+        "summary": "Release plan APPROVED：Operator 显式备份并验可读；dispatch/headSha 精确绑定 merge SHA；agency-agents 复采按新 startedAt 与 chunk 计数绑定；无迁移、cleanup=false。"
+      },
+      "lease": {
+        "owner": "codex",
+        "session": "codex-20260922-df-hn-release",
+        "acquired_at": "2026-09-22T03:27:52Z",
+        "expires_at": "2026-09-22T05:27:52Z",
+        "ttl_minutes": 120
       }
     }
   ]

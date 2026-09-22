@@ -554,6 +554,39 @@ describe("DataCollectionPipeline", () => {
       );
     });
 
+    it("将 Hacker News 合法缺失的 story_text 和 url 规范化为 null", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          hits: [{
+            objectID: "missing-optionals",
+            title: "Discussion without optional fields",
+            author: "hnuser",
+            points: 7,
+            num_comments: 2,
+          }],
+        }),
+      }));
+
+      await pipeline.run({ repo: "test/repo" });
+
+      expect(mockCommitRepositoryCollectionSnapshot.mock.calls[0][1].hackernews)
+        .toMatchObject({
+          status: "success",
+          items: [{
+            content: null,
+            url: null,
+            rawJson: {
+              objectID: "missing-optionals",
+              title: "Discussion without optional fields",
+              author: "hnuser",
+              points: 7,
+              num_comments: 2,
+            },
+          }],
+        });
+    });
+
     it("应该跳过 Hacker News 采集（当配置为 false）", async () => {
       const pipelineNoHN = new DataCollectionPipeline(mockDb as any, {
         includeHackernews: false,

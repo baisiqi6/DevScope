@@ -89,12 +89,12 @@ type PreparedHackerNewsItem = {
 
 const hackerNewsResponseSchema = z.object({
   hits: z.array(z.object({
-    title: z.string().nullable(),
-    story_text: z.string().nullable(),
-    author: z.string().nullable(),
-    points: z.number().int().nullable(),
-    num_comments: z.number().int().nonnegative().nullable(),
-    url: z.string().nullable(),
+    title: z.string().nullish().transform((value) => value ?? null),
+    story_text: z.string().nullish().transform((value) => value ?? null),
+    author: z.string().nullish().transform((value) => value ?? null),
+    points: z.number().int().nullish().transform((value) => value ?? null),
+    num_comments: z.number().int().nonnegative().nullish().transform((value) => value ?? null),
+    url: z.string().nullish().transform((value) => value ?? null),
   }).passthrough()),
 });
 
@@ -427,10 +427,12 @@ export class DataCollectionPipeline {
           errorKind,
         };
       }
-      const data = hackerNewsResponseSchema.parse(await response.json());
+      const rawData: unknown = await response.json();
+      const rawHits = z.object({ hits: z.array(z.record(z.unknown())) }).parse(rawData).hits;
+      const data = hackerNewsResponseSchema.parse(rawData);
       return {
         status: "success",
-        items: data.hits.map((hit) => ({
+        items: data.hits.map((hit, index) => ({
           type: "story",
           title: hit.title,
           content: hit.story_text,
@@ -438,7 +440,7 @@ export class DataCollectionPipeline {
           score: hit.points,
           descendants: hit.num_comments,
           url: hit.url,
-          rawJson: hit,
+          rawJson: rawHits[index],
         })),
       };
     } catch (err) {
