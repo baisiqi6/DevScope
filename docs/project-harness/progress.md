@@ -1,13 +1,15 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-09-06（UTC）
-> 生产运行基线：3D 图谱视觉升级 PR #67 已部署；运行 revision 见 graph-3d-release 回执
+> 更新时间：2026-09-22（UTC）
+> 生产运行基线：HN 可选字段修复 PR #70 已部署；运行 revision `791ebab9fd68f0e6866631d6450edec78134e660`
 > 部署形态：Standalone
 > 当前状态：dogfood 整改已完成本地实现、独立审查、生产迁移、部署与只读复核；其中 `DF-20260902-001` 已完成生产受控验证并关闭，其余 observation 仍按各自证据保持 `fixed_pending_verification`
 
 ## 当前状态
 
-2026-09-22（UTC）：`DF-20260822-001` 的 HN enrichment 根因已定位为 Algolia 合法可选字段缺失与本地 Zod `.nullable()` 契约不匹配。本地最小修复将标准列缺失值规范化为 `null`，同时保留原始 `rawJson`；focused tests、完整四项门禁和独立 Reviewer 均通过。当前未 push、未部署、未触发生产重新采集，observation 保持 `fixing`。
+2026-09-22（UTC）：PR #70 已通过 required checks 并完成无迁移生产部署（run `35684007072`）。服务器 HEAD 与 API/Web/Worker revision 均为 `791ebab9fd68f0e6866631d6450edec78134e660`；显式 `.env`/Nginx/custom dump 备份可用，健康、认证与配置不变量通过。生产复采 `msitarzewski/agency-agents` 得到 9 条 HN、无 warning，本次新 embedding 250/250、`completed / 100%`；独立 release closeout `APPROVED`，`DF-20260822-001` 与 release item 均已关闭。
+
+2026-09-22（UTC，发布前阶段）：`DF-20260822-001` 的 HN enrichment 根因定位为 Algolia 合法可选字段缺失与本地 Zod `.nullable()` 契约不匹配。本地最小修复将标准列缺失值规范化为 `null`，同时保留原始 `rawJson`；focused tests、完整四项门禁和独立 Reviewer 均通过。该阶段尚未 push、部署或生产复采，随后由同日上述生产发布完成闭环。
 
 2026-09-06（UTC）：PR #67 图谱材质与多视角黑洞升级已完成生产部署（run `34013772766`）。
 服务器和三应用镜像均为 `d2c4db162acf5ac16f562c8915610f7a1de4ed07`，无数据库迁移。

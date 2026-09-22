@@ -2,32 +2,32 @@
 
 ## Subject
 
-- Checklist item: `df-20260822-001-hn-optional-fields`
+- Checklist item: `df-20260822-001-hn-release`
 - Reviewer: `dogfood_remediation_reviewer`
 - Updated at: `2026-09-22`
-- Canonical plan path: `docs/project-harness/tasks/df-20260822-001-hn-optional-fields/plan.md`
+- Canonical plan path: `docs/project-harness/tasks/df-20260822-001-hn-release/plan.md`
 
 ## Item Snapshot
 
-- Title: 修复 Hacker News 可选字段解析失败
+- Title: 发布 Hacker News 可选字段修复
 - Status: doing
 - Workflow status: closeout_requested
 - Priority: p1
-- Owner: dogfood_remediation_worker
-- Session: codex-20260921-df-hn
-- Dependencies: None
+- Owner: codex
+- Session: codex-20260922-df-hn-release
+- Dependencies: df-20260822-001-hn-optional-fields
 
 ## Acceptance
 
-HN Algolia 合法缺失字段被规范化为 null，错误类型 payload 仍失败；focused tests、typecheck、全仓库门禁与独立审查通过；生产重新采集前 observation 不关闭。
+PR required checks 通过并合并；生产无迁移部署成功且 revision 精确；访问控制与容器健康；agency-agents 云端复采 HN 无 warning 且 hnItemsCollected>0、embedding terminal success；独立 closeout 后关闭 DF。
 
 ## Verification
 
-最终本地修复：HN 合法缺失字段规范化为 null，rawJson 保留原始 hit，错误类型仍 fail closed；focused 51/51、全仓库 lint/typecheck/test/build、diff-check 通过；独立 Reviewer APPROVED，无 P0-P2；生产复采未执行，DF 保持 fixing。
+PR #70 required checks 通过并合并为 791ebab9；显式备份可读；deploy 35684007072 无迁移/cleanup 成功；服务器与三镜像 revision 精确一致，健康/认证/Nginx/日志通过；agency-agents repo 1289 复采 HN=9 无 warning，新 embedding 250/250 completed/100% 且 outcome applied；DF 已关闭。
 
 ## Handoff
 
-本地实现可收口；未 commit/push/部署/生产采集。后续取得发布授权后走 PR/CI/部署并用新生产样本复采，成功后关闭 DF-20260822-001。
+生产验证完成，等待独立 closeout Reviewer 核验后 mark-done；无需再次部署。
 
 ## Review Inputs
 
@@ -40,59 +40,68 @@ HN Algolia 合法缺失字段被规范化为 null，错误类型 payload 仍失�
 ## Canonical Plan Content
 
 ```md
-# DF-20260822-001：Hacker News 可选字段兼容
+# DF-20260822-001：Hacker News 可选字段修复发布
 
 ## Item
 
-- Checklist item：`df-20260822-001-hn-optional-fields`
+- Checklist item：`df-20260822-001-hn-release`
+- 依赖：`df-20260822-001-hn-optional-fields`
 - 关联 observation：`DF-20260822-001`
-- 风险模式：本地代码修复为 ordinary；发布与生产重新采集另需显式授权并升级为 high-risk
-- 分支：`codex/df-20260822-001-hn-optional-fields`
-- 当前阶段：本地实现、独立复审与完整门禁通过，等待发布授权与生产复采
+- 风险模式：high-risk（PR 合并、生产部署、云端仓库重新采集）
+- 分支：`codex/df-20260822-001-hn-release`
+- 当前阶段：生产部署与受控复采完成，等待独立 closeout
 
 ## 目标
 
-修复 HN Algolia 合法响应因 `story_text`、`url` 等可选字段缺失而被 Zod 判为非法的问题，使缺失值规范化为 `null`，同时保留对错误类型 payload 的失败语义。
+将已独立审查通过的 HN Algolia 可选字段兼容修复通过 PR/CI 发布到生产，并用一个已知复现样本完成云端重新采集，确认 HN enrichment 恢复后关闭 `DF-20260822-001`。
 
-## 范围
+## 发布范围
 
-- 调整 `packages/db/src/pipeline.ts` 的 HN 响应边界 schema。
-- 增加缺失可选字段的最小回归测试。
-- 更新 `DF-20260822-001` 的修复进度，但在生产重新采集成功前不关闭 observation。
+- 提交并 push 当前已审查的代码、测试与 Harness 记录。
+- 创建 PR，等待 required `quality` 与 `integration` checks，通过后合并。
+- 合并后立即核对 GitHub `main` head 与 PR merge SHA 完全一致；只在未漂移时对 `main` 手动触发 `Build and Deploy`，固定 `technology_stack_legacy_cleanup=false`、`apply_database_migration=false`，并要求 run `headSha` 等于该 merge SHA。若 `main` 已漂移则停止并重新审查目标。
+- 部署后验证精确 revision、容器健康、未认证 `401`、认证 health/home `200`、近期 API/Worker 日志。
+- 通过生产 DevScope CLI/MCP 重新采集 `msitarzewski/agency-agents`：采集前记录现有 embedding `startedAt`/`completedAt`/总数，记录请求起始时间；采集后要求本次返回的 repository ID 仍为既有目标、`hnItemsCollected > 0` 且无 HN warning，并要求 `--wait` 返回的新 embedding 状态为 `completed / 100%`、`startedAt` 不早于本次请求且不同于旧值、`completedChunks = totalChunks = collection.chunksCollected`。
 
-## 非目标
+## 安全与回滚
 
-- 不改变 HN 查询策略、limit、错误分类、存储表或原子提交语义。
-- 不放宽 `points`、`num_comments` 等字段出现错误类型时的校验。
-- 本 item 不自行 push、合并、部署或触发生产仓库采集。
-
-## 已确认根因
-
-- 2026-09-21 对 HN Algolia 查询 `agency-agents` 的实时只读样本包含 9 条结果，其中 6 条缺少 `story_text`，1 条缺少 `url`。
-- 当前 schema 使用 `.nullable()`，只接受显式 `null`，不接受字段缺失产生的 `undefined`。
-- 生产 dogfood 已在 `DietrichGebert/ponytail`、`msitarzewski/agency-agents` 与 System One 三个仓库样本中稳定复现。
+- 本次无 schema 或迁移文件变化，不执行 `db:push` 或数据库 migration。
+- 普通无迁移 workflow 不自动备份 `.env`、Nginx 或数据库。部署前由 Operator 在生产主机创建本次独立备份目录（mode `700`），显式复制 `.env` 与 DevScope Nginx/server-local 配置并设为 mode `600`；同时创建 PostgreSQL custom-format dump、设为 mode `600` 并用 `pg_restore --list` 验证可读。只记录脱敏路径、权限与可读性，不输出内容。
+- 生产工作树必须 clean，只允许 fast-forward；部署 run 必须绑定并回读精确 merge SHA。
+- 只重建 DevScope API/Web/Worker，不修改 DNS、证书、凭据或同机其他站点配置。
+- 部署失败恢复 workflow 保留的上一组 `rollback` 镜像；业务复采失败不绕过 HN/Zod/事务边界，保留 observation 并回滚或继续诊断。
+- 如部署或复采需要整体数据回退，使用本次 Operator 创建并验证过的 custom-format dump；不得用删表、手工补行或重新抓取代替恢复。
+- 重新采集走公开 CLI/MCP 边界，不直接修改 PostgreSQL。
 
 ## 验收标准
 
-- 合法缺失的 HN 字段被规范化为 `null`，采集快照为 `success`。
-- 错误类型 payload 仍返回 `failure` 并保留旧来源。
-- `packages/db` focused test 与 typecheck 通过；完整门禁在交付前执行。
-- 独立 Reviewer 确认改动未扩大到其他采集边界。
-- 只有发布并用新的生产采集样本验证 HN enrichment 后，才可将 `DF-20260822-001` 标为 `closed`。
+- PR 的 `quality` 与 `integration` required checks 成功，合并提交 SHA 明确。
+- deploy workflow 成功，生产 API/Web/Worker revision 与合并 SHA 一致。
+- 生产访问控制、容器健康、Nginx 及同机站点未退化。
+- `msitarzewski/agency-agents` 主采集完成，repository ID 与目标一致，HN enrichment 不再返回 `invalid_type` warning，`hnItemsCollected > 0`；本次新 embedding 通过请求时间、变化后的 `startedAt` 与 chunk 计数绑定，并到达 `completed / 100%`。
+- 生产验证证据写入本计划、`progress.md` 与 `dogfood-observations.md`；只有上述业务验收通过后将 `DF-20260822-001` 置为 `closed`。
+- 独立 closeout Reviewer 核验 GitHub、部署与生产业务证据后方可关闭本 item。
 
 ## 当前 Handoff
 
-Worker 已完成 schema 与回归测试的最小修复；首轮 Reviewer 指出并推动修正 `rawJson` 原始语义问题，最终独立复审 `APPROVED`。本地实现可收口；生产发布与重新采集不在当前授权内。
+生产发布与 `agency-agents` 受控复采已完成，所有业务验收通过；等待独立 Reviewer 核验 GitHub、部署、备份、访问控制和本次复采证据后关闭 release item。
 
-## 本地验证
+## Review 修正
 
-- HN 边界 schema 对六个可空字段接受缺失值并规范化为 `null`，仍拒绝错误类型。
-- 首轮 Reviewer 指出 `rawJson` 不应包含 schema transform 人为补出的 key；现已改为标准列读取 normalized hit，`rawJson` 保留上游原始 hit。
-- `corepack pnpm --filter @devscope/db test -- src/pipeline.test.ts`：51/51 通过。
-- `corepack pnpm --filter @devscope/db typecheck`：通过。
-- 最终 diff 的全仓库 `corepack pnpm lint`、`typecheck`、`test`、`build` 全部通过；lint/build 仅保留既有 18 条 Web warning 与 browserslist 提示。
-- `git diff --check`：通过。
-- 独立 Reviewer 最终 `APPROVED`，无 P0–P2；生产复采尚未执行，因此 observation 继续保持 `fixing`。
+- 已纠正备份事实：`.env`、Nginx 与无迁移数据库备份为 Operator 显式前置，不冒充 workflow 自动能力。
+- 已将 embedding 验收绑定到本次复采：保存旧时间戳与计数，要求新 `startedAt`、请求时间和本次 `chunksCollected` 一致。
+- 已增加 dispatch head gate：`main` 与 merge SHA 不一致时停止，workflow run `headSha` 必须精确匹配。
+
+## Production Verification
+
+- PR #70：`quality` 与 `integration` 成功；merge SHA `791ebab9fd68f0e6866631d6450edec78134e660`。
+- 部署前显式备份目录：`/home/devscope/backups/devscope/pre-hn-release-20260922T033900Z-791ebab9`；目录 mode `700`，`.env`、Nginx archive 与 custom-format dump 均为 mode `600`，`pg_restore --list` 验证可读。
+- Deploy run：`35684007072`；`headSha` 精确等于 merge SHA，`technology_stack_legacy_cleanup=false`、`apply_database_migration=false`，build/deploy 成功、cleanup skipped。
+- 生产服务器 HEAD 与 API/Web/Worker 三镜像 revision 均为 `791ebab9fd68f0e6866631d6450edec78134e660`；工作树 clean，PostgreSQL healthy，内部 API/Web health、`nginx -t` 通过，近期 API/Worker 无目标错误模式。
+- SSH tunnel 未认证 health 返回 `401`，Keychain 认证 health 返回 `ok`；部署前后 `.env` 与 Nginx 配置一致。
+- 复采前 repo ID `1289` 的 embedding 为 250/250、旧 `startedAt=2026-09-21T18:30:23.830Z`。本次请求开始于 `2026-09-22T03:52:35Z`；复采仍返回 repo ID `1289`，主采集 `completed`、`chunksCollected=250`、`hnItemsCollected=9`、无 warning。
+- 本次新 embedding 为 `startedAt=2026-09-22T03:52:38.421Z`、`completedAt=2026-09-22T03:52:46.371Z`、250/250、`completed / 100%`；API 日志记录 outcome `applied`，且没有 `invalid_type`、`Hacker News:` 或 `Expected string, received undefined`。
+- `DF-20260822-001` 已依据上述生产业务证据置为 `closed`。
 ```
 
 ## Recent Progress Context
