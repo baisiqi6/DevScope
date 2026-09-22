@@ -22,7 +22,7 @@
 | `DF-20260818-004` | 分组不支持父子层级                                | `closed`   | `p2`   | 能力缺口 | confusing UX              |
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
-| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据稳定返回 400      | `fixed_pending_verification`     | `p2`   | 产品缺陷 | wrong data                |
+| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据失败              | `open`     | `p2`   | 产品缺陷 | wrong data                |
 | `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `closed` | `p1` | 能力缺口 | blocked |
 
 | `DF-20260905-001` | 3D 黑洞搜索定位未激活透镜且默认展示变化不明显 | `fixed_pending_verification` | `p2` | 产品缺陷 | confusing UX |
@@ -158,9 +158,9 @@
   - 2026-08-31: 增加分组更新/删除的 Client、CLI、MCP 映射；删除要求 `confirm=true`，CLI/MCP 回归测试通过，等待生产复查。
   - 2026-09-01: 生产 MCP 工具清单 35 项包含 `devscope_update_group`/`devscope_delete_group`，认证 health 与只读调用通过；本次未对真实分组执行写入，状态保留 fixed_pending_verification。
 
-### DF-20260822-001：仓库采集的 Hacker News 补充数据稳定返回 400
+### DF-20260822-001：仓库采集的 Hacker News 补充数据失败
 
-- Status: `fixed_pending_verification`
+- Status: `open`
 - Priority: `p2`
 - Time: 2026-08-22
 - Entry point: MCP `devscope_collect_repository`
@@ -180,6 +180,9 @@
   - 2026-08-24: 采集 AnySearch Skill/MCP、QuantDinger 与 RQAlpha 时 4/4 再次出现同一 HN 400 warning；四仓库 embedding 与分组均成功，累计证据继续支持这是稳定的 HN enrichment 缺陷。
   - 2026-08-31: 修复 Algolia `hitsPerPage` 参数并增加 limit 边界归一；SourceSnapshot 增加 `errorKind` 区分 400 参数错误、429/5xx/网络临时失败和未知错误，pipeline 回归测试通过，等待生产复查。
   - 2026-09-01: 发布 run `33475333993` 成功并完成生产 API/MCP 只读健康复核；本次未触发真实仓库重新采集，保留 fixed_pending_verification 以等待下一次安全采集样本。
+  - 2026-09-13: 云端采集 `DietrichGebert/ponytail` 时主采集与 embedding 620/620 成功，但 HN enrichment 因多条 Algolia hit 缺少可选 `story_text` 而触发 Zod `invalid_type`（`Expected string, received undefined`），`hnItemsCollected=0`。此前 400 参数错误已消失，但 enrichment 仍不可用，状态重新打开。
+  - 2026-09-18: 云端采集 `msitarzewski/agency-agents`（repo id `1289`）时主采集与 embedding 452/452 成功，HN enrichment 再次失败于 Zod `invalid_type`；除 `story_text` 外，本次 `hits[3].url` 也缺失（`Expected string, received undefined`）。证明 schema 对多个 Algolia 可选字段都按必填解析，修复范围应是把这些字段声明为 `.optional()`/nullable，而不是只处理 `story_text`。
+  - 2026-09-22: 云端采集 System One 组合 `mizorewww/laya-mlx`、`receptron/laya`、`typesafe-ai/skills`（repo ids `1290`–`1292`）时 3/3 复现同一 Zod `invalid_type` warning；主采集与 embedding（615/405/1017 chunks）全部成功。累计 open 状态下 5/5 样本稳定复现，可安全进入修复验证流程。
 
 ### DF-20260902-001：外部资源正文采集没有启用入口
 
