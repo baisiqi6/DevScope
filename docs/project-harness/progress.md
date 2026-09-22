@@ -7,6 +7,8 @@
 
 ## 当前状态
 
+2026-09-22（UTC）：`DF-20260822-001` 的 HN enrichment 根因已定位为 Algolia 合法可选字段缺失与本地 Zod `.nullable()` 契约不匹配。本地最小修复将标准列缺失值规范化为 `null`，同时保留原始 `rawJson`；focused tests、完整四项门禁和独立 Reviewer 均通过。当前未 push、未部署、未触发生产重新采集，observation 保持 `fixing`。
+
 2026-09-06（UTC）：PR #67 图谱材质与多视角黑洞升级已完成生产部署（run `34013772766`）。
 服务器和三应用镜像均为 `d2c4db162acf5ac16f562c8915610f7a1de4ed07`，无数据库迁移。
 业务库/Nginx/.env 备份可读，健康、访问控制与生产浏览器加载新版 shader 的检查通过。

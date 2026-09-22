@@ -1,40 +1,33 @@
 # Closeout Packet
 
-## Freshness Metadata
-
-- generated_at: `2026-09-06T05:31:29Z`
-- source_plan_sha256: `bdcdd2c5a44066d44675bf04818af314df1b8eb93137bc87cc258016ca492400`
-- canonical_plan_path: `docs/project-harness/tasks/graph-3d-release/plan.md`
-- checklist_item: `graph-3d-release`
 ## Subject
 
-- Checklist item: `graph-3d-release`
-- Reviewer: `graph_release_reviewer`
-- Updated at: `2026-09-06T05:31:29Z`
-- Workflow mode: `high-risk`
-- Canonical plan path: `docs/project-harness/tasks/graph-3d-release/plan.md`
+- Checklist item: `df-20260822-001-hn-optional-fields`
+- Reviewer: `dogfood_remediation_reviewer`
+- Updated at: `2026-09-22`
+- Canonical plan path: `docs/project-harness/tasks/df-20260822-001-hn-optional-fields/plan.md`
 
 ## Item Snapshot
 
-- Title: 3D 图谱视觉升级生产发布
+- Title: 修复 Hacker News 可选字段解析失败
 - Status: doing
 - Workflow status: closeout_requested
-- Priority: p2
-- Owner: codex
-- Session: codex-graph-release-20260906
+- Priority: p1
+- Owner: dogfood_remediation_worker
+- Session: codex-20260921-df-hn
 - Dependencies: None
 
 ## Acceptance
 
-独立审查与 CI 通过；明确备份及回滚；精确 SHA 部署成功并完成健康、认证、生产浏览器复核。
+HN Algolia 合法缺失字段被规范化为 null，错误类型 payload 仍失败；focused tests、typecheck、全仓库门禁与独立审查通过；生产重新采集前 observation 不关闭。
 
 ## Verification
 
-PR #67 / deploy 34013772766 成功；生产 d2c4db1 运行镜像、回滚、认证与浏览器已核对。详见 tasks/graph-3d-release/verification.md。
+最终本地修复：HN 合法缺失字段规范化为 null，rawJson 保留原始 hit，错误类型仍 fail closed；focused 51/51、全仓库 lint/typecheck/test/build、diff-check 通过；独立 Reviewer APPROVED，无 P0-P2；生产复采未执行，DF 保持 fixing。
 
 ## Handoff
 
-生产已发布，等待独立 closeout；DF-20260905-001 保留用户视觉反馈。
+本地实现可收口；未 commit/push/部署/生产采集。后续取得发布授权后走 PR/CI/部署并用新生产样本复采，成功后关闭 DF-20260822-001。
 
 ## Review Inputs
 
@@ -47,30 +40,59 @@ PR #67 / deploy 34013772766 成功；生产 d2c4db1 运行镜像、回滚、认�
 ## Canonical Plan Content
 
 ```md
-# 3D 图谱视觉升级生产发布
+# DF-20260822-001：Hacker News 可选字段兼容
 
-- Mode: high-risk
-- Scope: 发布 PR #67 的图谱材质、多视角黑洞与交互改进；代码提交 17d743d。
-- Authority: 用户于本会话明确要求“走正常的发布部署流程”。允许 push、PR、合并及生产部署。
-- Non-goals: 不迁移数据库，不执行技术栈清理，不改其他站点或凭据；不宣称相对论模拟或稳定 60 FPS。
+## Item
 
-## 执行与验收
+- Checklist item：`df-20260822-001-hn-optional-fields`
+- 关联 observation：`DF-20260822-001`
+- 风险模式：本地代码修复为 ordinary；发布与生产重新采集另需显式授权并升级为 high-risk
+- 分支：`codex/df-20260822-001-hn-optional-fields`
+- 当前阶段：本地实现、独立复审与完整门禁通过，等待发布授权与生产复采
 
-1. 核对代码及本地 lint/typecheck/test/build；独立 Reviewer 检查 diff、视觉和范围证据；PR quality/integration 均成功后合并。
-2. 部署前确认生产 35cb69d、工作树干净、三应用健康；已有业务库备份 28 项 TABLE DATA 可读、Nginx 与 .env 受限备份；保存回滚镜像定位。
-3. main 精确合并提交经手动 deploy.yml 发布，apply_database_migration=false、technology_stack_legacy_cleanup=false；等待成功。
-4. 独立回读 Git 与 3 镜像 revision、API/Web、Nginx、未认证 401 与认证 200；浏览器验证生产 shader 与图谱交互。
-5. verification.md 记录部署 run、SHA、备份/回滚与浏览器证据；独立 closeout 审查后关闭本发布节点。产品审美意见保留 DF-20260905-001 待用户反馈。
+## 目标
 
-## 回滚
+修复 HN Algolia 合法响应因 `story_text`、`url` 等可选字段缺失而被 Zod 判为非法的问题，使缺失值规范化为 `null`，同时保留对错误类型 payload 的失败语义。
 
-目标生产基线 35cb69d8f635675cbd735a26505816434ff09938。工作流保留三服务 :rollback 镜像；按 runbook 的回滚步骤恢复原镜像并复核健康；本次无 DB migration，常规回滚不恢复数据库。任何 CI/备份/版本/健康门禁失败均停止推进，不强制合并或修改访问控制。
+## 范围
 
-## 证据
+- 调整 `packages/db/src/pipeline.ts` 的 HN 响应边界 schema。
+- 增加缺失可选字段的最小回归测试。
+- 更新 `DF-20260822-001` 的修复进度，但在生产重新采集成功前不关闭 observation。
 
-- 本地门禁及多视角验收：.planning/2026-09-05-graph-craft/verification.md（私有本地 artifact，不包含凭据）。
-- PR: https://github.com/baisiqi6/DevScope/pull/67
-- 备份 locator 与部署结果写入同目录 verification.md，不复制到稳定架构文档。
+## 非目标
+
+- 不改变 HN 查询策略、limit、错误分类、存储表或原子提交语义。
+- 不放宽 `points`、`num_comments` 等字段出现错误类型时的校验。
+- 本 item 不自行 push、合并、部署或触发生产仓库采集。
+
+## 已确认根因
+
+- 2026-09-21 对 HN Algolia 查询 `agency-agents` 的实时只读样本包含 9 条结果，其中 6 条缺少 `story_text`，1 条缺少 `url`。
+- 当前 schema 使用 `.nullable()`，只接受显式 `null`，不接受字段缺失产生的 `undefined`。
+- 生产 dogfood 已在 `DietrichGebert/ponytail`、`msitarzewski/agency-agents` 与 System One 三个仓库样本中稳定复现。
+
+## 验收标准
+
+- 合法缺失的 HN 字段被规范化为 `null`，采集快照为 `success`。
+- 错误类型 payload 仍返回 `failure` 并保留旧来源。
+- `packages/db` focused test 与 typecheck 通过；完整门禁在交付前执行。
+- 独立 Reviewer 确认改动未扩大到其他采集边界。
+- 只有发布并用新的生产采集样本验证 HN enrichment 后，才可将 `DF-20260822-001` 标为 `closed`。
+
+## 当前 Handoff
+
+Worker 已完成 schema 与回归测试的最小修复；首轮 Reviewer 指出并推动修正 `rawJson` 原始语义问题，最终独立复审 `APPROVED`。本地实现可收口；生产发布与重新采集不在当前授权内。
+
+## 本地验证
+
+- HN 边界 schema 对六个可空字段接受缺失值并规范化为 `null`，仍拒绝错误类型。
+- 首轮 Reviewer 指出 `rawJson` 不应包含 schema transform 人为补出的 key；现已改为标准列读取 normalized hit，`rawJson` 保留上游原始 hit。
+- `corepack pnpm --filter @devscope/db test -- src/pipeline.test.ts`：51/51 通过。
+- `corepack pnpm --filter @devscope/db typecheck`：通过。
+- 最终 diff 的全仓库 `corepack pnpm lint`、`typecheck`、`test`、`build` 全部通过；lint/build 仅保留既有 18 条 Web warning 与 browserslist 提示。
+- `git diff --check`：通过。
+- 独立 Reviewer 最终 `APPROVED`，无 P0–P2；生产复采尚未执行，因此 observation 继续保持 `fixing`。
 ```
 
 ## Recent Progress Context
@@ -130,6 +152,8 @@ PR #67 / deploy 34013772766 成功；生产 d2c4db1 运行镜像、回滚、认�
 
 ## 当前 handoff
 
+- 图谱视觉升级 PR #67 已部署并完成独立发布收口；DF-20260905-001 等待用户视觉反馈。
+
 - Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
 - Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
@@ -150,19 +174,14 @@ PR #67 / deploy 34013772766 成功；生产 d2c4db1 运行镜像、回滚、认�
 ## Current Review Content
 
 ```md
-# 当前审查
+# 最新发布审查指针
 
-## Dogfood 五项整改生产发布
+- Task: graph-3d-release
+- Decision: APPROVE（2026-09-06 UTC）
+- 唯一正文：[生产 closeout 审查](../tasks/graph-3d-release/closeout-review.md)
+- 发布回执：[verification.md](../tasks/graph-3d-release/verification.md)
 
-- Checklist item：`dogfood-2026-08-production-release`
-- Reviewer：`dogfood_remediation_reviewer`，部署后独立只读复核。
-- 最终结论：`APPROVED`；无 P0–P2 发布阻断。
-- 发布证据：PR #59 合并为 `05aa9e192a5ca95cb49ffc628617afc0e36af83d`；deploy run `33475333993` 成功，`technology_stack_legacy_cleanup` 跳过。
-- 生产复核：服务器工作树 clean；migration `0013` 文件 SHA-256 与 journal 一致；迁移前 custom-format backup mode `600` 且 `pg_restore --list` 可读；API/Web/Worker 运行目标 revision，PostgreSQL healthy，隧道未认证 `401`、Keychain 认证 health/home `200`；MCP 35 tools 与 `technologyStacks` 删除影响预检可用；近期无持续 5xx/数据库错误。
-- 安全边界：未执行真实仓库 archive/delete 或重新采集；未修改 DNS、证书、Nginx、凭据或同机其他站点。
-- 完整回执见 [生产发布计划](../tasks/dogfood-2026-08-production-release/plan.md) 和 [closeout packet](closeout-packet.md)。
-
-本结论批准的是本批次生产发布和只读复核；相关 dogfood observation 因未执行真实破坏性/采集写入，继续保持 `fixed_pending_verification`，待后续安全 dogfood 样本再逐条关闭。
+本文件仅为导航；生产发布关闭不表示用户已认可最终审美或已验证稳定 60 FPS。
 ```
 
 ## Closeout Questions

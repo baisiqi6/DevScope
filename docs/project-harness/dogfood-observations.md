@@ -22,7 +22,7 @@
 | `DF-20260818-004` | 分组不支持父子层级                                | `closed`   | `p2`   | 能力缺口 | confusing UX              |
 | `DF-20260818-005` | 已采集仓库没有删除或归档入口                      | `fixed_pending_verification`  | `p2`   | 能力缺口 | stale data / confusing UX |
 | `DF-20260818-006` | MCP/CLI 未暴露已有分组编辑与原子移动能力          | `fixed_pending_verification`  | `p2`   | 操作摩擦 | confusing UX              |
-| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据失败              | `open`     | `p2`   | 产品缺陷 | wrong data                |
+| `DF-20260822-001` | 仓库采集的 Hacker News 补充数据失败              | `fixing`   | `p2`   | 产品缺陷 | wrong data                |
 | `DF-20260902-001` | 外部资源正文采集没有启用入口                    | `closed` | `p1` | 能力缺口 | blocked |
 
 | `DF-20260905-001` | 3D 黑洞搜索定位未激活透镜且默认展示变化不明显 | `fixed_pending_verification` | `p2` | 产品缺陷 | confusing UX |
@@ -160,7 +160,7 @@
 
 ### DF-20260822-001：仓库采集的 Hacker News 补充数据失败
 
-- Status: `open`
+- Status: `fixing`
 - Priority: `p2`
 - Time: 2026-08-22
 - Entry point: MCP `devscope_collect_repository`
@@ -183,6 +183,8 @@
   - 2026-09-13: 云端采集 `DietrichGebert/ponytail` 时主采集与 embedding 620/620 成功，但 HN enrichment 因多条 Algolia hit 缺少可选 `story_text` 而触发 Zod `invalid_type`（`Expected string, received undefined`），`hnItemsCollected=0`。此前 400 参数错误已消失，但 enrichment 仍不可用，状态重新打开。
   - 2026-09-18: 云端采集 `msitarzewski/agency-agents`（repo id `1289`）时主采集与 embedding 452/452 成功，HN enrichment 再次失败于 Zod `invalid_type`；除 `story_text` 外，本次 `hits[3].url` 也缺失（`Expected string, received undefined`）。证明 schema 对多个 Algolia 可选字段都按必填解析，修复范围应是把这些字段声明为 `.optional()`/nullable，而不是只处理 `story_text`。
   - 2026-09-22: 云端采集 System One 组合 `mizorewww/laya-mlx`、`receptron/laya`、`typesafe-ai/skills`（repo ids `1290`–`1292`）时 3/3 复现同一 Zod `invalid_type` warning；主采集与 embedding（615/405/1017 chunks）全部成功。累计 open 状态下 5/5 样本稳定复现，可安全进入修复验证流程。
+  - 2026-09-22: 本地最小修复将 Algolia 合法缺失的 `story_text`、`url` 等字段规范化为 `null`，错误类型仍 fail closed；pipeline focused tests 51/51 与 `@devscope/db` typecheck 通过，等待独立审查。生产重新采集前保持 `fixing`，不提前关闭。
+  - 2026-09-22: 首轮独立审查发现并修正 `rawJson` 被 schema transform 补 key 的语义回归；最终 Reviewer `APPROVED`，全仓库 lint/typecheck/test/build 通过。当前尚未 push、部署或生产复采，状态继续为 `fixing`。
 
 ### DF-20260902-001：外部资源正文采集没有启用入口
 
