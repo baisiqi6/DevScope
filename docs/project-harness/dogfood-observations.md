@@ -1,6 +1,14 @@
 # DevScope Dogfood Observations
 
-本文是 DevScope 持久 dogfood 会话中产品观察、缺陷与操作摩擦的唯一登记册。处理流程、证据要求和权限边界以 [运行手册](runbook.md#dogfood-反馈闭环) 为准；工程任务状态仍以 [Harness checklist](harness-checklist.json) 为准。
+> **已归档（2026-09-29）**：自本日期起新的 dogfood 产品反馈直接在本仓库创建带 `dogfood` label 的 GitHub Issue，本文不再更新。以下正文为历史证据归档；未关闭项已转为 Issue 继续跟踪：
+
+> - `DF-20260818-002`（分组成员重对象）→ #72
+> - `DF-20260818-003`（许可证语义）→ #73
+> - `DF-20260818-005`（归档/删除入口）→ #74
+> - `DF-20260818-006`（分组编辑/删除操作面）→ #75
+> - `DF-20260905-001`（3D 黑洞视觉验收）→ #76
+
+本文曾是 DevScope 持久 dogfood 会话中产品观察、缺陷与操作摩擦的唯一登记册。处理流程、证据要求和权限边界以 [运行手册](runbook.md#dogfood-反馈闭环) 为准；工程任务状态仍以 [Harness checklist](harness-checklist.json) 为准。
 
 ## 使用规则
 
@@ -186,6 +194,7 @@
   - 2026-09-22: 本地最小修复将 Algolia 合法缺失的 `story_text`、`url` 等字段规范化为 `null`，错误类型仍 fail closed；pipeline focused tests 51/51 与 `@devscope/db` typecheck 通过，等待独立审查。生产重新采集前保持 `fixing`，不提前关闭。
   - 2026-09-22: 首轮独立审查发现并修正 `rawJson` 被 schema transform 补 key 的语义回归；最终 Reviewer `APPROVED`，全仓库 lint/typecheck/test/build 通过。当前尚未 push、部署或生产复采，状态继续为 `fixing`。
   - 2026-09-22: PR #70 的 required `quality`/`integration` checks 通过并合并为 `791ebab9fd68f0e6866631d6450edec78134e660`；deploy run `35684007072` 以 migration/cleanup 均关闭的输入成功发布。生产复采 `msitarzewski/agency-agents`（repo ID `1289`）得到 `hnItemsCollected=9` 且无 HN warning；新 embedding `startedAt=2026-09-22T03:52:38.421Z`，250/250、`completed / 100%`，关闭 observation。
+  - 2026-09-29: 关闭后首次批量实战确认——PPT 工具链批次 7 仓库（repo ids `1307`–`1313`）全部 `completed` 且零 HN warning，其中 `presenton`、`slidev`、`reveal.js`、`opendesign` 4 个高 HN 讨论仓库各采得 `hnItemsCollected=20`。这是 dogfood 史上首次 HN 生态信号真实入库，修复在真实批量场景下稳定成立。
 
 ### DF-20260902-001：外部资源正文采集没有启用入口
 
@@ -229,7 +238,7 @@
   - 2026-09-05: 本地修复搜索选中联动，增加常态有界透镜、多视角黑洞图像及材质层次，移除全场景 Bloom。以真实生产 API 的只读数据完成本地浏览器验收；生产部署及用户视觉反馈尚待验证。默认 2D 的兼容策略保持不变。
   - 2026-09-06（UTC）: PR #67 / deploy 34013772766 已上线，生产浏览器确认新版 shader、搜索选中与透镜运行。技术发布验收通过，仍等待用户视觉反馈。
 
-## 新条目模板
+## 新条目模板（已停用，新反馈走 GitHub Issue）
 
 ```markdown
 ### DF-YYYYMMDD-NNN：<short title>
