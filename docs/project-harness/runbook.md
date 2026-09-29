@@ -474,19 +474,14 @@ Trending 任务会按设计失败并保留上一份成功快照，不能用 Rada
 
 生产持久会话通过 DevScope MCP 完成真实的仓库采集、分组、备注、搜索和分析。该会话使用公开的 API/MCP 边界，不为了完成操作而直接修改 PostgreSQL。
 
-所有跨会话保留的产品观察统一登记在 [Dogfood Observations](dogfood-observations.md)。本节只定义处理流程和最小字段，不在运行手册中复制 observation 正文。
+自 2026-09-29 起，dogfood 产品观察直接以本仓库 GitHub Issue 登记（带 `dogfood` label，待验证项另加 `needs-verification`），不再写入 [Dogfood Observations](dogfood-observations.md)；该文件为历史证据归档，不再更新。
 
-出现问题时，按以下最小格式沉淀：
+创建 Issue 时沿用以下最小字段（正文小节）：
 
 ```markdown
-### Dogfood observation: <short title>
-
-- Time:
+### 背景：用户意图与预期
+### 实际结果与复现
 - Entry point: MCP | CLI | Web
-- User intent:
-- Expected:
-- Actual:
-- Reproduction:
 - Evidence: request/job/execution/repository identifiers and redacted logs
 - Impact: blocked | wrong data | stale data | confusing UX | performance
 - Frequency: once | intermittent | reproducible
@@ -499,6 +494,6 @@ Trending 任务会按设计失败并保留上一份成功快照，不能用 Rada
 2. 保留可复现证据，不记录密码、Token、Basic Auth 值或完整私有数据；
 3. 在工程会话中对照源码、任务状态与数据库事实进行归因；
 4. 先增加失败复现或回归测试，再执行最小修复；
-5. 修复经过正常发布与生产复查后，才关闭 observation。
+5. 修复经过正常发布与生产复查后，才关闭对应 Issue。
 
-Dogfood observation 只有在可复现、有生产证据或有清晰失败条件时才进入 [Harness checklist](harness-checklist.json)。反馈不自动扩大生产写入权限，也不代替迁移门禁。
+确需跨 session 工程整改的 Issue 按 Harness 约定映射 checklist item（Issue #N ↔ `issue-N`）。反馈不自动扩大生产写入权限，也不代替迁移门禁。

@@ -95,7 +95,7 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
   创建、移动、聚合与排序体验；
 - 外部资源工作区与正文采集模块已通过 PR/CI、隔离 PostgreSQL 验证和生产 `0014`–`0016` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
-- 持久 dogfood 产品反馈统一进入 [dogfood-observations.md](dogfood-observations.md)，修复计划和 checklist 状态不得在该登记册重复维护；
+- 持久 dogfood 产品反馈自 2026-09-29 起直接创建带 `dogfood` label 的 GitHub Issue（未关闭项见 #72–#76）；[dogfood-observations.md](dogfood-observations.md) 已归档停用，仅保留历史证据；
 - 自动部署的成功证据与回滚 revision 已写入 [operations-8 verification](tasks/operations-8-proxy-independent-deploy/verification.md)；后续性能优化不得恢复服务器侧 `git pull/docker pull`。
 
 ## 更新规则
