@@ -120,3 +120,7 @@ docs: 更新中文开发文档
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
+
+## 许可证
+
+本项目自有代码和文档采用 [Apache License 2.0](LICENSE)。第三方组件、独立授权素材及外部数据的范围见 [第三方授权说明](THIRD_PARTY_NOTICES.md)；版权声明见 [NOTICE](NOTICE)。
