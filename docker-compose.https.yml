@@ -1,0 +1,64 @@
+# 必须单独运行，不能叠加业务 compose；--env-file 必须显式指向 TLS 专用文件。
+name: devscope-https
+
+services:
+  https:
+    image: ${DEVSCOPE_TLS_NGINX_IMAGE:?请设置 immutable Nginx image}
+    container_name: devscope-https
+    ports:
+      - '443:443'
+    volumes:
+      - type: bind
+        source: ./nginx/https/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DEVSCOPE_TLS_CONF_DIR:?请设置现有 nginx/conf.d 绝对路径}
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DEVSCOPE_TLS_STATE_DIR:?请设置 TLS state 绝对路径}/letsencrypt
+        target: /etc/letsencrypt
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    networks:
+      - existing
+
+  certbot:
+    image: ${DEVSCOPE_TLS_CERTBOT_IMAGE:?请设置 immutable Certbot image}
+    profiles: ['certbot']
+    volumes:
+      - type: bind
+        source: ${DEVSCOPE_TLS_STATE_DIR:?请设置 TLS state 绝对路径}/letsencrypt
+        target: /etc/letsencrypt
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DEVSCOPE_TLS_STATE_DIR:?请设置 TLS state 绝对路径}/work
+        target: /var/lib/letsencrypt
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DEVSCOPE_TLS_STATE_DIR:?请设置 TLS state 绝对路径}/logs
+        target: /var/log/letsencrypt
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DEVSCOPE_TLS_CONF_DIR:?请设置现有 nginx/conf.d 绝对路径}/server-local/acme-webroot
+        target: /var/www/acme
+        bind:
+          create_host_path: false
+    # ACME 要访问外网；不加入业务网络，不挂 Docker socket，不带 Nginx installer。
+    network_mode: bridge
+    restart: 'no'
+
+networks:
+  existing:
+    external: true
+    name: ${DEVSCOPE_TLS_NETWORK:?请设置现有 Docker network}

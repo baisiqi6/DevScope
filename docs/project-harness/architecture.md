@@ -34,6 +34,26 @@ Fastify + tRPC API :3100
 
 生产环境由 Nginx 作为唯一公开入口。Web、API 和 PostgreSQL 只绑定到回环地址，不能直接暴露到公网。
 
+### 独立 HTTPS 入口
+
+仓库提供 `docker-compose.https.yml`，以独立 project/container `devscope-https` 仅发布
+TCP 443，通过显式 external network 连接现有 `api:3100`、`web:3000`，不包含业务服务、
+数据库、共享 HTTP Nginx 或 `depends_on`。`nginx/https/nginx.conf` 只接受
+`devscope.cn` / `www.devscope.cn`，使用 TLS 1.2/1.3，不加载同机其他应用的 shared routes。
+
+HTTP 与 TLS 共用 `nginx/conf.d/devscope-locations.inc` 中原有四类代理路径，保留 Basic Auth、
+SSE、WebSocket 和基于真实 `$scheme` 的 `X-Forwarded-Proto`。TLS 额外精确加载服务器
+`devscope-auth.conf`（缺失则配置检查失败）；缺 htpasswd 或密码错误不会匿名代理到应用。
+完整证书目录只读挂入 TLS 容器，使 Certbot `live → archive` 轮换 symlink 持续可见。
+
+HTTP 入口的服务器专属片段分为 ACME bootstrap 和精确域名 redirect 两阶段，未安装时保留
+原默认 HTTP 行为。ACME 只从独立 webroot 公开单段 token 文件；TLS 外部验收后才启用域名
+308（共享应用的 HTTP locations 在两个目标域名仍保留原路由），IP/loopback/其他 Host 仍落
+默认 HTTP server。Certbot 为 profile-gated one-shot，
+只使用 `certonly` / `renew`，其 state/work/logs 持久化在服务器；无容器挂载 Docker socket。
+服务器 systemd timer 每日两次检查续期，wrapper 在成功后先 `nginx -t` 再 reload 独立 TLS
+edge；dry-run 不 reload。部署与验收状态不由本节推导，操作见 [运行手册](runbook.md#独立-https-入口与续期)。
+
 ## Monorepo 职责
 
 | 目录              | 职责                                                            |

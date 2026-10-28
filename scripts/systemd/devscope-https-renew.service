@@ -1,0 +1,16 @@
+[Unit]
+Description=DevScope independent HTTPS certificate renewal
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=devscope
+Group=devscope
+SupplementaryGroups=docker
+WorkingDirectory=/home/devscope/DevScope
+ExecStart=/bin/bash /home/devscope/DevScope/scripts/https-renew.sh /home/devscope/.config/devscope-https/runtime.env
+TimeoutStartSec=20min
+UMask=0077
+NoNewPrivileges=true

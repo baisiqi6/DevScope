@@ -1,0 +1,148 @@
+# Issue #79 Task 1 本地实现与验证
+
+- Worker: `https-worker`；session: `devscope-https-worker-20261028`。
+- 日期：2026-10-28。worktree：`/Users/Admin/projects/WorkTrees/DevScope-https`。
+- 分支：`codex/devscope-https`；实现基线：`7cd6c1caa5de1240d9e0a4342c8d37be47e7aeee`。
+- 范围：仅 Task 1 产品配置、续期脚本、隔离测试与文档；没有连接生产、签发真实证书、push、merge 或 deploy。
+- 入口已本人执行 installed Harness `accept issue-79 https-worker devscope-https-worker-20261028 --branch codex/devscope-https`、`sync issue-79`、`state`；accept 记录 active lease 至 `2026-10-28T19:02:24Z`。首次误用不带 item 的 `sync` 只返回 Usage，随后使用正确命令成功，没有改通用脚本。
+
+## 交付范围
+
+1. `nginx/conf.d/default.conf`：原四类 DevScope locations 原样提取为 `devscope-locations.inc`，原 auth wildcard、SSE、WebSocket、Host/IP/forwarded headers 不变；添加两个可选服务器 include。
+2. `nginx/https/nginx.conf`：独立 TLS main，直接代理既有 API/Web，精确必需 auth include；拒绝未知 SNI/Host，仅 TLS 1.2/1.3，无 HSTS；不加载共享其他应用 routes。
+3. `nginx/https/acme-location.conf`：bootstrap HTTP token-only webroot，raw URI 限制、目录/缺失/多级路径 404、禁止 symlink，不公开整个 conf.d 或证书目录。
+4. `nginx/https/http-domain.conf`：在 TLS 公网验收后才安装；精确两个目标域名，仅 DevScope fallback 308，复用原 shared routes 和 ACME 片段。
+5. `docker-compose.https.yml`：独立 project/container `devscope-https`，仅 443，explicit external network；profile-gated Certbot，无业务服务/数据库/depends_on/Docker socket。TLS env 与业务 `.env` 隔离，完整证书目录 readonly，缺 bind 源不自动造空目录。
+6. `scripts/https-renew.sh` 与两个 systemd units：固定 project/file/env；清除调用者 Compose/TLS 覆盖；Certbot renew 非零失败传播，成功后 `nginx -t` 再 reload 独立 TLS；dry-run 不 reload。GNU timeout 限定 15min/30s/30s，service 总 20min；timer 每日两次、随机延迟、Persistent，以服务器 `devscope` 执行，不依赖 Mac。
+7. `scripts/test-https.py`：标准库 + Docker/OpenSSL，真实 Nginx 请求矩阵与证书轮换、受控 subprocess double 的续期流程验证，无新增包依赖。
+8. 唯一 architecture/runbook/AGENT_INTERFACES 同步；没有改宿主机 MCP 配置。runbook 含 preflight、备份/镜像校验传输、bootstrap、独立 staging state、正式签发、TLS 验收后 redirect、续期/timer、诊断与精确回滚。
+
+Operator 在实现过程中澄清：最终精确域名 HTTP server 也必须保留 `shared-routes*.conf`，不能靠“旧消费者可能不用域名”作假设。实现采用该最小保留策略，ACME 独立文件在每个 server 中只 include 一次，不重复 location。canonical plan 由 Operator 管理，Worker 未改写。
+
+## RED / GREEN 与排查证据
+
+首次 RED（实现文件尚不存在）：
+
+```bash
+python3 scripts/test-https.py
+```
+
+实际 exit `1`：续期场景 5 failures，原因均为 `https-renew.sh: No such file or directory`；Docker setup 的断言为 `HTTPS implementation missing: nginx/https/nginx.conf`，报告 1 error；没有访问生产。随后增加实现，并逐项让真实请求与续期契约通过。
+
+过程中发现并修正的测试/环境问题（非隐藏）：
+
+- Docker 29 的 internal network 没有提供测试所需宿主映射，改成唯一命名独立 bridge，端口仍只绑定 `127.0.0.1`，没有加入现有网络。
+- 本机 Python 3.14 严格验证要求测试 CA 有 critical key usage，已补齐 CA/leaf 扩展，未关闭证书校验。
+- 缺 htpasswd 时真实 Nginx 对带凭据请求返回 `403`，不是初始假设的 `500`；期望调整为实际 fail-closed 状态，未放宽为任意状态。
+- Compose config 默认正确隐藏 profile-gated Certbot；测试先验证只含 edge，再显式激活 profile 验证完整配置。
+- 在运行中从宿主快速 rename 证书 symlink 的缺证书用例出现 bind 可见性时序差异；改成全新空证书 bind 的冷启动 `nginx -t`，明确得到 `cannot load certificate`。轮换测试仍保留真实 symlink 替换与实际 served cert 比对，没有靠静态 grep 替代。
+
+最终 GREEN（生产相同 immutable Nginx，amd64 在本机 arm64 上执行）：
+
+```bash
+HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19 python3 scripts/test-https.py
+bash -n scripts/https-renew.sh
+git diff --check
+```
+
+实际：`Ran 8 tests in 10.780s / OK`，exit `0`；shell syntax 与 diff whitespace 检查 exit `0`。
+完整最终聚焦输出：`.planning/https-docker-amd64.log`。此前 arm64 `nginx:1.30.0-alpine` 的当时 7 项矩阵也通过；最终扩充到 8 项的是 amd64 digest 运行。
+
+### 实际请求与状态
+
+| 边界 | 实际断言 |
+|---|---|
+| HTTP/TLS 未认证或错误密码 | `/`、`/_next/static/test.js`、`/api/health`、`/trpc/health`、`/api/agent/stream` 都 401 |
+| 两个 TLS 域名正确认证 | 主页/静态路由到 Web:3000，API/tRPC 到 API:3100，200；上游 Host 正确，spoofed forwarded proto 被真实 `https` 覆盖 |
+| 原 HTTP forwarded proto | 认证 tRPC 上游得到 `http` |
+| HTTP/TLS SSE | 首个 data 行在 1.5s 内到达，2s 后尾块可读；未缓冲整条流 |
+| HTTP/TLS WebSocket | Upgrade 请求得到 101 |
+| HTTP ACME | 两域名 token 200 且正文精确；带 query 仍 200；missing/目录/多级/token 含点/编码 token 404 |
+| ACME 公开范围 | 邻近路径、明文/编码穿越都仍 401；webroot 中指向 auth config 的 symlink 404；TLS 上同一 token path 401 |
+| 两阶段域名 HTTP | bootstrap 仍保留原业务认证；安装域名片段并 `nginx -t → reload` 后 `/api/health?x=1` 为同域同 path/query 的 308，ACME 200/404 |
+| 共享路径 | 两目标域名切换前后 `/supplier-search/` 202/相同正文、`/billmapper/` 203/相同正文；IP、loopback、other Host 仍保留相同共享路由，主页 401 不跳转 |
+| 缺配置/证书 | 删除精确 auth include 后 `nginx -t` 非零；缺 htpasswd 时匿名 401、正确凭据 403，未 proxy；空证书 bind 冷启动检查非零 |
+| 证书 reload | live→archive symlink 更换后仅磁盘变更时 served cert 不变；真实 `nginx -t` 与 reload 后 served cert 与新 DER 精确一致，仍通过测试 CA 验证 |
+| TLS 版本/未知 SNI | TLS 1.2 与 1.3 成功；1.0/1.1 拒绝；未知 SNI 拒绝 |
+
+续期 wrapper 使用受控 Docker/timeout doubles 检查**实际脚本调用与退出行为**：普通 renew、dry-run、renew exit17、nginx -t exit18、reload exit19、缺 env 文件；逐参数核对固定 project/file/env、`run --rm --no-deps certbot renew --non-interactive --cert-name devscope.cn`，失败分支不会继续，配置检查始终在 reload 前，dry-run 没有检查/reload，不输出私钥。该部分没有假称真实 ACME renew 已成功；真实 reload 由上述 Docker 证书用例单独证明。GNU timeout 的真实时钟触发与 systemd 执行留待服务器验收，本机验证的是有界调用参数和缺工具 fail-closed 路径设计。
+
+## 工程四门禁
+
+所有命令在此 worktree 执行，完整输出保留 `.planning/https-{lint,typecheck,test,build}.log`：
+
+| 命令 | 实际结果 | 既有噪音/边界 |
+|---|---|---|
+| `pnpm lint` | exit0；13/13 tasks（13 cached） | 原有前端 18 warnings、0 errors：`@next/next/no-img-element` 与 `node` unused；未顺手整改 |
+| `pnpm typecheck` | exit0；14/14 tasks（14 cached），后续 skills tsc 成功 | Turbo 回放日志中可能显示主工作树路径；不是当前进程跑到主树，明确缓存事实 |
+| `pnpm test` | exit0；11/11 Turbo tasks（11 cached），pipeline 本次 21/21 | 原 Worker integration test 1 skipped，数据库负向测试预期 stderr 等噪音已存在；不等同 CI 的真实 PostgreSQL required integration |
+| `pnpm build` | exit0；9/9 tasks（9 cached） | 使用缓存，不声称冷构建；未改应用代码/依赖/schema |
+
+`pnpm install --frozen-lockfile` 已由 Operator 在派发前完成；本次没有新增 dependency 或锁文件变更。真实 PostgreSQL integration 本轮未重跑（无数据库改动），required CI 仍由发布 Operator 承担，不能从四门禁推导生产可用。
+
+## 镜像与官方对照
+
+- 本地允许拉取的生产 Nginx immutable digest 已成功 pull，`nginx -v` 实际 `nginx/1.29.8`。初始本机已有 arm64 `nginx:1.30.0-alpine`；两者区分记录，没有将本机 tag 当生产镜像。
+- 既有 Certbot immutable image 本地 `--network none --version` 输出 `certbot 5.8.0`。`--help all` 确认 renew/cert-name/dry-run 等参数；隐藏无邮箱参数仍由该镜像 `_determine_account` 的 `register_unsafely_without_email` 分支支持，未连接 ACME、未创建真实账户。
+- [Certbot 5.8 官方指南](https://eff-certbot.readthedocs.io/en/stable/using.html)：核对 webroot、certonly、renew/dry-run 与 state 锁；[Nginx SSL 官方模块](https://nginx.org/en/docs/http/ngx_http_ssl_module.html)：核对 TLS 协议/default server 边界。实际配置有效性以本轮 Docker 请求为准。
+
+## 自审、残留与下一阶段
+
+- 自审已逐项核对 Task 1：公共路由精确提取、TLS 必需认证片段、两阶段顺序、token-only root、完整证书目录、作用域固定、失败传播/校验后 reload、无人值守 timer、中文唯一文档。未改应用、DB、同机其他站点配置、认证哈希或通用 Harness runtime。
+- 产品提交只包含上述 14 个允许文件（含本报告）；父级 plan/review/current pointers/checklist/state/events 保持未提交，未 stage 整个 task 目录或 Harness root。
+- 测试清理：`docker ps -a --filter name=devscope-https-test-` 与同前缀 network 查询均为空；临时测试 CA/私钥/htpasswd/token 随 temporary directory 清理。无端口 listener/业务数据残留。只保留 `.planning/` 日志、ignored brief/report 与本轮拉取的 Nginx image，便于独立审查；不 prune 本机镜像。
+- 尚未验证：生产 DNS/AAAA/80/443、正式与 staging ACME、现有认证文件具体内容、生产共享路径、真实系统证书链、服务器 GNU timeout/systemd/权限/timer 与未来续期。相关门禁明确留给 Operator，未替其完成或标记全局 done。
+- 已有 cache/warnings 不构成新回归，但不能包装成全量冷跑。没有外部续期告警送达机制；runbook 明示 journal/到期检查，不能承诺未验证的提醒。
+- 提交后按委派执行 `handoff issue-79 https-operator --actor https-worker --reason 'Task 1本地实现完成，待独立实现审查与生产发布'`，释放 Worker lease；独立实现 Reviewer/生产 Operator 决定下一步，不 closeout 全局 item。
+
+## Fix round 1：恢复共享代理请求体上限（唯一 P2）
+
+- 输入：独立 `code-review.md` 的唯一 P2。Worker 已重新 accept 同一 item/owner/session，并 `sync issue-79` / `state`；未改 canonical plan、父级审查文件或服务器专属配置。
+- 根因核对：原 default server 设 `client_max_body_size 10m`，新增精确域名 server 缺失该值；共享 locations 本身不覆写时，切换后继承 Nginx 默认 1m。既有固定 `return 202/203` 的 GET fixture 不能证明 POST 仍进入共享上游。
+- 最小产品修正：只给 `nginx/https/http-domain.conf` 的 server 添加一行 `client_max_body_size 10m;`。runbook 补充保持该继承边界的检查要求，无其他行为优化。
+- 覆盖文件：`scripts/test-https.py` 的 `DockerTests.test_03_acme_and_staged_redirect`。共享 fixture 改为真实 `proxy_pass`，mock 的 POST handler 完整读取 Content-Length 指定的 body，返回上游端口、path、字节数与 SHA-256。对 `devscope.cn` / `www.devscope.cn`、`/supplier-search/upload` / `/billmapper/upload`，在安装域名片段前后都实际发送 2,097,152 字节并精确比对同一上游及 body 摘要；另用 `Content-Length: 10485761` 和 `Expect: 100-continue` 验证 Nginx 在读取超限 body 前拒绝为 413（没有声称向 mock 传送了被拒绝的 body）。原 GET 202/203 与完整其他 HTTPS 矩阵仍保留。
+
+RED / GREEN 采用同一实际 amd64 镜像命令：
+
+```bash
+HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19 python3 scripts/test-https.py
+```
+
+- RED（只改测试，未补配置）：exit1；8 tests、1 failure，`test_03_acme_and_staged_redirect` 在切换后的 `/supplier-search/upload` 明确报 `413 != 200`，切换前的四组完整 POST/超限检查已通过；9.889s。证据 `.planning/https-fix1-red.log`。
+- GREEN（补 10m 后）：exit0；`Ran 8 tests in 10.332s / OK`。两域名 × 两共享 path × 切换前后共 8 组真实 2MiB 上游验证及 8 组超限 413 均通过。证据 `.planning/https-fix1-green.log`。
+- 四门禁重新执行：`pnpm lint` exit0，13/13 cached，原18 warnings/0 errors；`pnpm typecheck` exit0，14/14 cached；`pnpm test` exit0，11/11 cached，pipeline 本次21/21，原 Worker integration 1 skipped；`pnpm build` exit0，9/9 cached。日志为 `.planning/https-fix1-{lint,typecheck,test,build}.log`，未将缓存/原噪音写成冷跑或新增缺陷。
+- `git diff --check` exit0；测试前缀的 Docker containers/networks 查询均为空，临时请求体/证书随测试清理。没有生产请求、真实 ACME、push、merge、deploy 或共享配置变更。
+- 本轮产品-only 新提交范围仅配置、对应测试、runbook 必要行和本报告；不 amend 首次产品提交。随后再次 handoff 给 `https-operator`，复审和 Task 2 权限边界不变，不 closeout 或标记全局 done。
+
+## Fix round 2：正常发布刷新独立 TLS upstream（唯一 P1）
+
+- 输入：Operator 更新的 brief Files/Step5a 与 continuity 实现审查确认的唯一 P1；原请求体 P2 已 `ADDRESSED`，本轮未重改其配置。重新 accept 同一 item/owner/session，sync 当前 plan；canonical plan、review 与其他父级 metadata 未手工修改或暂存。
+- 根因：普通 deploy force-recreate API/Web 后其 IP 可变，原 workflow 仅检查并 reload 共享 HTTP，而独立 TLS 的静态 upstream 仍可能持有旧地址；loopback 健康和匿名401无法证明认证 HTTPS 主路径可用。
+- 最小产品修复：新增 `scripts/https-reload-if-present.sh`（固定 `devscope-https`、无参数/不读 runtime.env、不调用 Compose 或 Certbot），在 `.github/workflows/deploy.yml` 原共享 Nginx check/reload 后调用。每条 Docker 命令限30秒；先成功查询所有状态，确实不存在才 skip；停止、daemon/list/inspect 错误、配置检查与 reload 错误均非零，不自动启停/创建/重建。query 之后固定 `nginx -t → nginx -s reload`，实际 workflow 的 `set -euo pipefail` 使错误阻断后续完成宣告。
+
+### RED / GREEN 与真实覆盖
+
+```bash
+# RED：新增测试但尚无 helper、workflow 尚未接线。
+python3 scripts/test-https.py --renew-only
+# GREEN：默认新 TLS 镜像的完整矩阵。
+python3 scripts/test-https.py
+# 旧共享 Nginx 版本兼容矩阵；不将旧版本重新部署成新 TLS。
+HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19 python3 scripts/test-https.py
+```
+
+- RED：exit1，`Ran 4 tests in 2.000s`、10 subtest failures；7 个 helper 场景因文件不存在失败，3 个 workflow 执行场景证明只有原共享 reload 调用、遗漏 TLS 查询/刷新，且错误场景仍错误地到达完成。保存 `.planning/https-fix2-red.log`。没有修改后再倒推假 RED。
+- 最终新 Nginx 1.30.6 GREEN：`Ran 11 tests in 17.004s / OK`，exit0，保存 `.planning/https-fix2-green-1306.log`。
+- 最终旧 Nginx 1.29.8 兼容 GREEN：`Ran 11 tests in 15.176s / OK`，exit0，保存 `.planning/https-fix2-compat-1298.log`。两轮均保留此前认证、请求体、ACME、SSE/WS、TLS 协议与证书轮换矩阵。
+- `ReloadTests.test_reload_branches_and_exact_target`：真实执行 helper，Docker double 记录每个参数；覆盖 absent/running/stopped/daemon-error/inspect-error/check-error/reload-error，分别退出0/0/1/23/24/25/26；只能出现固定目标的 list/inspect/exec，失败后不继续，配置检查始终在 reload 前。测试层 timeout shim 检查30秒参数并使用标准库30秒 subprocess deadline；没有称 Mac 已提供 GNU timeout。
+- `ReloadTests.test_workflow_executes_reload_after_shared_proxy`：抽出真实 workflow 的受控 reload 区块，按其 fail-fast Bash 语义执行（不是 grep 出一个函数名就算接线），断言原共享 check/reload 后才调用 TLS helper。running/absent 能到达模拟完成标记；check-error/reload-error 非零且到不了完成。没有运行完整 GitHub/SSH deploy 或其中其他副作用命令。
+- `DockerTests.test_07_deploy_reload_refreshes_changed_upstream_ip_without_recreate`：真实创建新 mock upstream B，确认 B≠旧A；把 API/Web aliases 从旧端点移走，容器内真实 `getaddrinfo` 精确断言两个名称仅解析到B，旧A仍保留但显式退役返回502。reload 前已认证 TLS 主页/tRPC 实际502，运行真实 helper 后恢复200且上游port分别3000/3100，edge container ID完全不变。仅测试 CLI shim 把生产固定名映射到随机测试edge，其他 Docker 操作/配置检查/reload 都真实执行；没有借用本机或生产 `devscope-https` 容器，生产 helper 不能接受可变目标。
+
+### 镜像、门禁与边界
+
+- 按 Operator 本轮明确的版本选择，runbook 批准的 TLS env 与测试默认改为 `nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951`；本地 `nginx -v` 实际为 `nginx/1.30.6`。Operator 已拉取 amd64 image 并核验 manifest；本轮矩阵实际使用该已有 amd64 image，出现 arm64宿主运行amd64提示属于预期。
+- 本人也只读核对 [Nginx 下载页](https://nginx.org/en/download.html) 当前 stable 为1.30.6与 [security advisories](https://nginx.org/en/security_advisories.html)；不据版本列表推导原生产共享 HTTP 的漏洞可利用性，没有升级/鉴定/修复它，旧1.29.8只作兼容与历史证据。
+- 四门禁本轮重新执行均exit0：lint13/13 cached、原18 warnings/0 errors；typecheck14/14 cached；test11/11 cached，pipeline本次21/21且原Worker integration 1 skipped；build9/9 cached。保存 `.planning/https-fix2-{lint,typecheck,test,build}.log`。无冷跑或无噪音虚报。
+- helper shell syntax 与产品范围 `git diff --check` exit0。全树 diff check 曾只报告父级 `current/handoff-packet.md:182` EOF空行，已告知 Operator，未越权改父metadata或将其包含在产品提交。随机测试容器/网络查询为空，临时文件自动清理；本轮没有生产、ACME、push、merge 或 deploy。
+- 按 Operator 追加的维护澄清，仅在 runbook 说明：TLS main是单文件bind，未来 Git 替换inode的**单独获准配置更新**需先用新mount one-shot校验，再仅force-recreate独立https；本轮首次创建不受影响，常规应用发布仍只reload，不因此扩大成每次重建或更换mount架构。
+- 本轮产品-only新提交仅 workflow、定向helper、对应tests、必要runbook和本报告。提交后 handoff Operator，待独立复审；真实生产证书/续期/systemd/timer/正式发布仍为 Task2，未越权替代。

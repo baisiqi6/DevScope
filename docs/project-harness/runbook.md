@@ -354,7 +354,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 5. 服务器先验证 checksum、bundle target、fast-forward ancestry、磁盘空间和三个 image revision，再 `docker load`、更新 `latest` 与单一 `rollback` tag，并执行 `git merge --ff-only`；
 6. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
 7. 如有数据库迁移，单独审查、备份、执行和验证；
-8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；成功后删除本次 staging，失败时保留它用于诊断。
+8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；随后运行 `bash scripts/https-reload-if-present.sh` 刷新已安装的独立 TLS edge upstream。成功后删除本次 staging，失败时保留它用于诊断。
 
 生产服务器的 Mihomo 或其他公网代理不是常规部署链路的依赖。代理订阅失效不得通过关闭 checksum、改用镜像 `latest` 猜测值或恢复服务器侧 `git pull/docker pull` 绕过；应先保持现有生产容器不动，再修复受控的 runner→SSH 传输链路。`rollback` tag 只保存上一次运行镜像，业务健康检查失败时按本节回滚流程恢复。
 
@@ -416,6 +416,206 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 - `nginx/conf.d/server-local/.devscope.htpasswd`：Basic Auth 密码哈希。
 
 `server-local/` 已被 Git 忽略，但仍会被现有 Nginx 目录挂载读取。生产主机负责备份这些文件；部署不得删除、覆盖或提交它们。修改后只允许先执行 `nginx -t`，成功后再 reload。
+
+### 独立 HTTPS 入口与续期
+
+本节是操作流程，不表示已经上线。只覆盖 `devscope.cn` / `www.devscope.cn`，保留 Basic Auth
+和旧 SSH tunnel；不更换凭据、不发布多用户、不迁移数据库。只增加独立 TLS edge，现有
+`devscope-nginx`、API、Web、Worker、PostgreSQL 不得 restart/recreate；共享 Nginx 仅配置检查
+成功后 reload。不要为本次配置发布触发会重建三应用的常规 deploy workflow。
+
+#### 1. 发布前与备份
+
+先完成本地四门禁、`python3 scripts/test-https.py`、独立实现审查与 required CI；生产只从
+干净工作树 fast-forward 到已接受的精确提交，沿用 Git bundle/checksum→SSH，不在服务器
+`git pull`。再次核对备案放行、两域名 A/AAAA（存在 AAAA 时 IPv6 也必须能到达本入口）、
+80/443 云防火墙和主机监听、磁盘与 Docker 权限，443 不得被其他站点占用。缺少账号权限时
+暂停，不扩大开放端口或变更备案资料。
+
+```bash
+cd /home/devscope/DevScope
+git status --short
+docker ps --format '{{.Names}} {{.ID}} {{.Image}}'
+docker inspect --format '{{.Name}} {{.Id}} {{.Image}} {{.State.StartedAt}}' devscope-nginx devscope-api devscope-web devscope-worker devscope-postgres
+docker network inspect devscope_devscope-network --format '{{.Name}}'
+ss -ltn
+command -v timeout
+```
+
+若现有业务容器命名不同，以 `docker ps` 解析的确切名称保存身份，不盲目执行。记录共享
+`shared-routes.conf`、`devscope-auth.conf` 与 `.devscope.htpasswd` 的 SHA-256（不输出内容），
+以及 `/supplier-search/`、`/billmapper/` 的原 scheme/Host/path、状态与命中配置归属。相同
+502 不能独自证明路由未变。最终域名 HTTP server 同样 include 原 shared routes，只有
+DevScope fallback 308；共享应用不跳转到 TLS Web，也不在本轮新增 HTTPS。两个目标域名、
+IP/loopback/其他 Host 的共享路径均按相同请求对照基线，不依赖对既有消费者的推测。
+
+在 `/home/devscope/backups/devscope/` 建立本轮 mode `700` 专属目录，备份 `.env`、完整
+`nginx/`、已有 TLS state/runtime env、两个 systemd unit 的现有状态（如存在）；archive mode
+`600`，用 `tar -tf` 静默确认可读。私钥/ACME account/认证文件不出服务器、不进 Git、不展开
+打印。记录本轮原先不存在的文件，回滚才能只撤销本轮新增。没有 DB mutation，无需额外
+数据库恢复。保存准确目标 SHA、bundle/image archive 校验和及原五容器身份。
+
+镜像在受控本地/runner 拉取服务器架构，再 `docker save`，生成 SHA-256 清单，通过已有 SSH
+authority 上传，服务器验证 checksum 后 `docker load`。新 TLS edge 使用本轮明确选择的
+stable Nginx 1.30.6；原共享 HTTP 1.29.8 只保留兼容验证，不随本轮重建或升级，也不声称其
+安全问题已经鉴定/修复。不因拉取失败更换 `latest` 或临时启用代理。当前批准的 immutable images：
+
+```text
+nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
+```
+
+在服务器以安全编辑器建立 `/home/devscope/.config/devscope-https/runtime.env`（目录 `700`、
+文件 `600`，不 source 到 shell，不含业务 `.env` 内容）：
+
+```dotenv
+DEVSCOPE_TLS_NGINX_IMAGE=nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+DEVSCOPE_TLS_CERTBOT_IMAGE=certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
+DEVSCOPE_TLS_NETWORK=devscope_devscope-network
+DEVSCOPE_TLS_CONF_DIR=/home/devscope/DevScope/nginx/conf.d
+DEVSCOPE_TLS_STATE_DIR=/home/devscope/.local/state/devscope-https
+```
+
+每条 Compose 命令必须显式指定 `--project-name devscope-https --env-file ... --file
+docker-compose.https.yml`，绝不与业务 compose 叠加；运行前清除 shell 的 `COMPOSE_*` 和
+`DEVSCOPE_TLS_*` 覆盖。可在当前服务器 shell 定义无凭据的数组（后续命令沿用）：
+
+```bash
+unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES
+unset DEVSCOPE_TLS_NGINX_IMAGE DEVSCOPE_TLS_CERTBOT_IMAGE DEVSCOPE_TLS_NETWORK DEVSCOPE_TLS_CONF_DIR DEVSCOPE_TLS_STATE_DIR
+tls=(docker compose --project-name devscope-https --env-file /home/devscope/.config/devscope-https/runtime.env --file /home/devscope/DevScope/docker-compose.https.yml)
+install -d -m 700 /home/devscope/.local/state/devscope-https/{letsencrypt,work,logs}
+install -d -m 755 nginx/conf.d/server-local/acme-webroot/.well-known/acme-challenge
+"${tls[@]}" config --services
+```
+
+缺 bind 源目录/必需变量应直接失败；不得为“能启动”把认证文件替换为空文件。检查现有
+`devscope-auth.conf` 已启用 `auth_basic` 并引用原 `.devscope.htpasswd`；本轮不覆盖这两个文件。
+
+#### 2. HTTP bootstrap → staging → 正式证书
+
+只安装 `nginx/https/acme-location.conf` 为 `nginx/conf.d/server-local/devscope-acme.conf`，
+不要提前安装 `http-domain.conf`。目标文件如已存在先比较/备份，不覆盖来源不明内容。
+tracked `default.conf` 现通过公共 `.inc` 保持旧路由行为；两个新 include 在没有服务器专属
+文件时不改变 HTTP 行为。只在下列检查成功后 reload：
+
+```bash
+docker exec devscope-nginx nginx -t && docker exec devscope-nginx nginx -s reload
+```
+
+在专用 webroot 为两个域名分别放一次性随机 token，以外部未认证 HTTP 验证 200 且正文精确
+相符，缺失 token/目录/多级路径应 404，相邻 `.well-known`/穿越请求不能读取任何配置文件。
+主页、静态资源、`/api/`、`/trpc/`、`/api/agent/` 未认证仍 401；共享路由按相同 Host/path
+对照基线。测试 token 验收后仅删除本轮 token。公网 HTTP 不发送 Basic Auth。
+
+先建立**独立 staging state** 与独立 staging runtime env，除 `DEVSCOPE_TLS_STATE_DIR` 指向
+`/home/devscope/.local/state/devscope-https-staging` 外保持上述值；预先建立其
+`letsencrypt/work/logs` 目录。使用 `--staging` 的 `certonly` 命令演练；不要启动 TLS edge，
+不要把 staging state 挂入正式 edge。正式签发时用正式 env，去掉 `--staging`：
+
+```bash
+docker compose --project-name devscope-https --env-file /home/devscope/.config/devscope-https/staging.env --file /home/devscope/DevScope/docker-compose.https.yml --profile certbot run --rm --no-deps certbot certonly --staging --webroot -w /var/www/acme --cert-name devscope.cn -d devscope.cn -d www.devscope.cn --non-interactive --agree-tos --register-unsafely-without-email
+# 正式签发使用正式 runtime env，与 staging state 分离。
+"${tls[@]}" --profile certbot run --rm --no-deps certbot certonly --webroot -w /var/www/acme --cert-name devscope.cn -d devscope.cn -d www.devscope.cn --non-interactive --agree-tos --register-unsafely-without-email
+```
+
+`--register-unsafely-without-email` 是不擅自填写用户邮箱的无邮箱账户选择；如用户提供并确认
+通知邮箱，用 `--email` 取代它。不要输出账户或私钥。检查正式公开证书 SAN、issuer、有效期：
+
+```bash
+sudo openssl x509 -in /home/devscope/.local/state/devscope-https/letsencrypt/live/devscope.cn/fullchain.pem -noout -issuer -dates -ext subjectAltName
+"${tls[@]}" run --rm --no-deps https nginx -t
+"${tls[@]}" up -d --no-deps https
+"${tls[@]}" ps
+```
+
+`up` 只包含 `https`，不要不带 service 执行业务 compose 命令。TLS main 精确 include 认证
+片段；配置缺失则 `nginx -t`/启动失败，htpasswd 缺失时认证请求失败而非匿名放行。
+
+#### 3. 外部 TLS 验收后再启用 308
+
+从外部对两个域名使用系统可信 CA（不使用 `-k`、不关闭校验）确认 SAN/链/到期时间，未认证
+主页、静态资源、API、tRPC、SSE 均 401。随后用安全凭据注入，经**已验证证书的 HTTPS** 验证
+首页、页面实际引用的静态资源、health 和只读列表；不要把凭据写进 URL、命令参数、截图或
+日志。只允许 HTTPS 或 SSH loopback 发送认证，不触发采集/DB 写入。对照实际 edge 证书与
+磁盘证书指纹；磁盘证书更新不是线上已加载的证据。
+
+确认以上通过后，安装 `nginx/https/http-domain.conf` 为
+`nginx/conf.d/server-local/devscope-http-domain.conf`，`nginx -t && nginx -s reload` 仅 reload
+共享 HTTP Nginx。复核两个精确域名 DevScope 业务路径 308 到同域同 path/query 的 HTTPS，
+共享应用 paths 继续命中原 HTTP locations，不跳转；ACME 仍
+200/404；IP、`127.0.0.1` 与其他 Host 不强制跳转，原 tunnel 继续使用。复核原五个容器的 ID、
+image、StartedAt 与备份时完全一致；共享路由配置摘要不变。未启用 HSTS/preload/includeSubDomains，
+不以此切换替代未来应用鉴权。
+
+后续正常应用发布会 recreate API/Web，静态 upstream 地址可能变化，不能依靠每日续期偶然
+reload 恢复。workflow 在原共享 Nginx check/reload 之后调用固定容器名的
+`https-reload-if-present.sh`，无需 TLS runtime env 或 Certbot。成功查询后确认没有该容器才
+兼容跳过；已安装停止、Docker 查询失败、配置检查或 reload 失败均非零并阻断发布完成。
+每条 Docker 调用限30秒，始终 `nginx -t` 在 reload 前；不会创建、启动或重建代理。应用常规
+部署与本轮“只新增入口、原五容器不重建”的接入发布是不同操作，不混用其命令。
+
+维护边界：TLS main `nginx.conf` 当前为单文件 bind。未来 Git 更新若替换源文件 inode，现有
+mount 可能仍指向旧文件，不能只做 reload 就宣称配置更新。那类单独获准的 TLS 配置变更应
+先用 `"${tls[@]}" run --rm --no-deps https nginx -t` 校验新挂载，再仅
+`"${tls[@]}" up -d --no-deps --force-recreate https` 使新 main 生效；绝不重建共享代理。
+本轮首次创建不受影响，常规 API/Web 发布仍只调用上述 reload helper，不因此每次重建 TLS。
+
+域名 HTTP server 必须显式保留 `client_max_body_size 10m`，使无局部 override 的共享代理仍与
+旧默认 server 一致；不能只用空体 GET 验证。隔离回归覆盖两个目标域名、两个共享路径切换
+前后的真实 2 MiB POST 上游接收，以及超过 10 MiB 的 413 边界。
+
+#### 4. 续期演练、无人值守与诊断
+
+续期 wrapper 只读取显式 TLS env，以固定 project/service 调用 `renew --cert-name devscope.cn`。
+需要服务器 GNU coreutils `timeout`：Certbot 有 15 分钟上限，配置检查/reload 分别 30 秒；
+错误非零传播，不继续 reload。Certbot 本身的证书 state 锁防并发，本轮不建立第二套调度器。
+
+```bash
+bash scripts/https-renew.sh /home/devscope/.config/devscope-https/runtime.env --dry-run
+# dry-run 成功仅证明 ACME 演练，不替换正式证书、不 reload。
+bash scripts/https-renew.sh /home/devscope/.config/devscope-https/runtime.env
+# 普通 renew 可能尚未到期；仍须 nginx -t 成功才平滑 reload 独立 edge。
+sudo install -m 644 scripts/systemd/devscope-https-renew.service /etc/systemd/system/devscope-https-renew.service
+sudo install -m 644 scripts/systemd/devscope-https-renew.timer /etc/systemd/system/devscope-https-renew.timer
+sudo systemctl daemon-reload
+sudo systemctl start devscope-https-renew.service
+sudo systemctl enable --now devscope-https-renew.timer
+systemctl status devscope-https-renew.service --no-pager
+systemctl list-timers devscope-https-renew.timer --all
+journalctl -u devscope-https-renew.service --since '2 days ago' --no-pager
+```
+
+unit 在服务器以 `devscope`（有 Docker 权限）执行，无需本地电脑在线或保持 SSH 登录。
+timer 每日 00/12 时加最多 1 小时随机延迟，`Persistent=true` 补错过检查，service 总上限
+20 分钟。确认 `devscope` 可读 runtime env、可访问 Docker socket，unit path 与实际安装位置
+一致；timer 下一次时间、service 成功退出与未来真实续期是不同证据。Certbot 会写服务器
+state/logs，脱敏查看必要错误，不打印 key/account。
+
+失败定位顺序：journal exit code/超时 → 80 challenge/DNS/AAAA/防火墙 → state 权限与空间 →
+`"${tls[@]}" exec -T https nginx -t` → TLS edge logs 与证书日期/指纹；核对仍有效的旧证书可用。
+超时如留下 one-shot 容器，先按 `com.docker.compose.project=devscope-https` 和
+`com.docker.compose.service=certbot` 的标签精确定位，再仅清理已确认的本轮资源。禁止 prune、
+重建共享服务或把续期失败降级为公网带密码 HTTP。现有 timer 不提供外部告警送达保证，
+需按运维机制检查失败与到期时间，不能将未验证的提醒承诺为已配置。
+
+#### 5. 精确回滚
+
+仅撤销本轮新增 redirect/bootstrap 片段（或恢复其本轮备份）及本轮 tracked 配置版本，
+保留 `shared-routes.conf`、`devscope-auth.conf`、`.devscope.htpasswd`；共享 Nginx 必须先
+`nginx -t` 成功再 reload，失败时恢复已知良好文件而非 restart。先撤销 redirect，确认旧
+IP/loopback/tunnel 可用，再停止独立 TLS edge 和本轮 timer：
+
+```bash
+sudo systemctl disable --now devscope-https-renew.timer
+sudo systemctl stop devscope-https-renew.service
+"${tls[@]}" stop https
+```
+
+恢复原先已存在的 units/runtime 文件与启用状态时使用备份，不误删前次有效部署。证书、ACME
+state、logs 和备份保留诊断，不 `down -v`/prune；不重建任何原五容器。仅续期失败而证书仍
+有效时不必下线 HTTPS，应保持入口、报告非零失败并及时处理。记录每阶段实际执行、回滚
+状态、未验证项；本地/CI 成功或签发成功均不能代替生产 closeout。
 
 ### 数据库密码轮换
 
