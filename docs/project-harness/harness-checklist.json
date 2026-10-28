@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-10-28T17:56:01Z",
+  "updated_at": "2026-10-28T18:46:57Z",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -951,48 +951,50 @@
     {
       "id": "issue-79",
       "title": "devscope.cn 独立 HTTPS 与自动续期",
-      "status": "doing",
+      "status": "done",
       "priority": "p1",
-      "owner": "https-operator",
-      "selected_in_session": "devscope-https-20261028",
-      "updated_at": "2026-10-28T17:56:01Z",
+      "owner": null,
+      "selected_in_session": null,
+      "updated_at": "2026-10-28T18:46:57Z",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": null,
       "acceptance": "两域名可信 TLS、域名 HTTP 308、业务 Basic Auth 与旧 tunnel 保留、自动续期 dry-run 和 timer 可验证；原五容器/共享路由不重建不回归；独立审查与生产证据齐全",
-      "verification": "Task1 d295c2f：正常发布定向TLS reload接线完成；真实upstream IP A→B先502后helper恢复200、edge ID不变；新stable1.30.6与旧HTTP1.29.8各11/11，四门禁exit0，待独立复审。生产尚未执行。",
-      "handoff": "本地实现已完成，Operator进入独立实现审查；不得把本地成功当生产验收。",
+      "verification": "PR80与required CI双绿；独立生产Reviewer APPROVE并绑定closeout packet。两域可信TLS/认证/17静态/同源API/HTTP308/真实renew dry-run/服务器timer均验收，原五容器与原配置/8组共享路由不变量通过。配置e577c1e9，业务镜像未重建；备案号页脚另项。",
+      "handoff": "已完成生产操作；最终Reviewer只读复核运行证据并绑定closeout packet，审批后Operator mark-done。后续仅文档PR，不重建应用。",
       "plan_path": "docs/project-harness/tasks/issue-79/plan.md",
       "workflow": {
         "mode": "high-risk",
-        "status": "review_approved",
-        "updated_at": "2026-10-28T17:56:01Z",
-        "branch": "codex/devscope-https",
+        "status": "closed",
+        "updated_at": "2026-10-28T18:46:57Z",
+        "branch": "codex/devscope-https-closeout",
         "handoff_from": "https-worker"
       },
       "artifacts": {
         "plan": "docs/project-harness/tasks/issue-79/plan.md",
-        "branch": "codex/devscope-https",
+        "branch": "codex/devscope-https-closeout",
         "review_packet": "docs/project-harness/current/review-packet.md",
-        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md",
+        "closeout_packet": "docs/project-harness/current/closeout-packet.md"
       },
       "review": {
         "decision": "approved",
-        "reviewer": "https-final-reviewer",
-        "phase": "review_requested",
-        "updated_at": "2026-10-28T17:56:01Z",
-        "reviewed_packet_sha256": "26da7200607e52b25f559135a429c98c7b3aec01008f8b4da90c4701b24ccbac",
-        "source_plan_sha256": "9293a93f04b04f13cfc2874238eff8b29f22c19f99960f3e4738e196cfa7a03d",
-        "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
-        "summary": "Whole-branch limited-fresh APPROVE at e251d3b: no substantive P0-P3 findings; code merge and controlled Task2 readiness only, required CI and all production ACME/TLS/auth/timer/container invariants remain pending; no deployment authority or final closeout.",
-        "artifact": "docs/project-harness/tasks/issue-79/release-review.md"
+        "reviewer": "https-production-reviewer",
+        "phase": "closeout_requested",
+        "updated_at": "2026-10-28T18:45:32Z",
+        "reviewed_packet_sha256": "5d40ca9c41f3281f8ff82eaf7d834deb7695a9c760ffe67fc428e27684ba6587",
+        "source_plan_sha256": "2d6e11a63f08d0f3a24073c9b9d6acf475486ea80e2be88ae0847a44226ac586",
+        "reviewed_packet_locator": "docs/project-harness/current/closeout-packet.md",
+        "summary": "APPROVE：独立只读复核双域可信TLS/401/308、真实renew dry-run与systemd运行证据、原五容器与保护配置及共享路由不变量；认证业务读取为已审Operator脱敏回执，无P0-P3阻塞；未来实际换证及GUI/页脚等不在本次证明范围。",
+        "artifact": "docs/project-harness/tasks/issue-79/production-review.md"
       },
       "lease": {
         "owner": "https-operator",
         "session": "devscope-https-20261028",
-        "acquired_at": "2026-10-28T17:46:36Z",
-        "expires_at": "2026-10-28T19:46:36Z",
-        "ttl_minutes": 120
+        "acquired_at": "2026-10-28T18:33:04Z",
+        "expires_at": "2026-10-28T20:33:04Z",
+        "ttl_minutes": 120,
+        "released_at": "2026-10-28T18:46:57Z"
       }
     }
   ]

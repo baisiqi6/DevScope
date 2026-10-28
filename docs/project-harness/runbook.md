@@ -465,12 +465,25 @@ nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee178842
 certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
 ```
 
+按平台导出、离线 load 后，Docker 可能只恢复平台 manifest 内容 ID，不恢复 registry/index
+引用。先确认 archive 校验成功，再核验 amd64 ID 与以下批准内容一致；不要因
+`No such image` 改用未核验镜像。为 one-shot Certbot 加本任务专属版本 tag，防止常规
+`image prune` 删除无 tag 的暂时未运行镜像；实际运行仍固定内容 ID。若 tag 已存在，先核对
+内容，不覆盖来源不明 tag，也不改任何全局 `latest`：
+
+```bash
+docker image inspect --platform linux/amd64 sha256:84ed8c0dd296c188bfc24ed506f46589e9285fb0b11cf3a04d91d524d3067e11 --format '{{.Id}} {{.Architecture}}'
+docker image inspect --platform linux/amd64 sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9 --format '{{.Id}} {{.Architecture}}'
+docker tag sha256:84ed8c0dd296c188bfc24ed506f46589e9285fb0b11cf3a04d91d524d3067e11 devscope-https/nginx:1.30.6-amd64
+docker tag sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9 devscope-https/certbot:5.8.0-amd64
+```
+
 在服务器以安全编辑器建立 `/home/devscope/.config/devscope-https/runtime.env`（目录 `700`、
 文件 `600`，不 source 到 shell，不含业务 `.env` 内容）：
 
 ```dotenv
-DEVSCOPE_TLS_NGINX_IMAGE=nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
-DEVSCOPE_TLS_CERTBOT_IMAGE=certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
+DEVSCOPE_TLS_NGINX_IMAGE=sha256:84ed8c0dd296c188bfc24ed506f46589e9285fb0b11cf3a04d91d524d3067e11
+DEVSCOPE_TLS_CERTBOT_IMAGE=sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9
 DEVSCOPE_TLS_NETWORK=devscope_devscope-network
 DEVSCOPE_TLS_CONF_DIR=/home/devscope/DevScope/nginx/conf.d
 DEVSCOPE_TLS_STATE_DIR=/home/devscope/.local/state/devscope-https
@@ -484,6 +497,7 @@ docker-compose.https.yml`，绝不与业务 compose 叠加；运行前清除 she
 unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES
 unset DEVSCOPE_TLS_NGINX_IMAGE DEVSCOPE_TLS_CERTBOT_IMAGE DEVSCOPE_TLS_NETWORK DEVSCOPE_TLS_CONF_DIR DEVSCOPE_TLS_STATE_DIR
 tls=(docker compose --project-name devscope-https --env-file /home/devscope/.config/devscope-https/runtime.env --file /home/devscope/DevScope/docker-compose.https.yml)
+install -d -m 700 /home/devscope/.local/state/devscope-https
 install -d -m 700 /home/devscope/.local/state/devscope-https/{letsencrypt,work,logs}
 install -d -m 755 nginx/conf.d/server-local/acme-webroot/.well-known/acme-challenge
 "${tls[@]}" config --services
@@ -491,6 +505,10 @@ install -d -m 755 nginx/conf.d/server-local/acme-webroot/.well-known/acme-challe
 
 缺 bind 源目录/必需变量应直接失败；不得为“能启动”把认证文件替换为空文件。检查现有
 `devscope-auth.conf` 已启用 `auth_basic` 并引用原 `.devscope.htpasswd`；本轮不覆盖这两个文件。
+
+通过 SSH 批处理执行时，优先传输脚本文件后运行；若用 `ssh ... bash -s`，需为
+`docker compose run` 等交互式入口显式重定向 `</dev/null`，避免其消耗剩余脚本 stdin。
+不能因前置 `nginx -t` 返回0就推断后续up已执行，仍须检查容器、监听和外部请求。
 
 #### 2. HTTP bootstrap → staging → 正式证书
 
@@ -510,7 +528,8 @@ docker exec devscope-nginx nginx -t && docker exec devscope-nginx nginx -s reloa
 
 先建立**独立 staging state** 与独立 staging runtime env，除 `DEVSCOPE_TLS_STATE_DIR` 指向
 `/home/devscope/.local/state/devscope-https-staging` 外保持上述值；预先建立其
-`letsencrypt/work/logs` 目录。使用 `--staging` 的 `certonly` 命令演练；不要启动 TLS edge，
+根目录（mode700）及 `letsencrypt/work/logs` 目录；不能只对叶子mkdir而遗漏上级权限。
+使用 `--staging` 的 `certonly` 命令演练；不要启动 TLS edge，
 不要把 staging state 挂入正式 edge。正式签发时用正式 env，去掉 `--staging`：
 
 ```bash
@@ -587,7 +606,7 @@ journalctl -u devscope-https-renew.service --since '2 days ago' --no-pager
 ```
 
 unit 在服务器以 `devscope`（有 Docker 权限）执行，无需本地电脑在线或保持 SSH 登录。
-timer 每日 00/12 时加最多 1 小时随机延迟，`Persistent=true` 补错过检查，service 总上限
+timer 按服务器系统时区每日 00/12 时加最多 1 小时随机延迟，`Persistent=true` 补错过检查，service 总上限
 20 分钟。确认 `devscope` 可读 runtime env、可访问 Docker socket，unit path 与实际安装位置
 一致；timer 下一次时间、service 成功退出与未来真实续期是不同证据。Certbot 会写服务器
 state/logs，脱敏查看必要错误，不打印 key/account。
@@ -598,6 +617,11 @@ state/logs，脱敏查看必要错误，不打印 key/account。
 `com.docker.compose.service=certbot` 的标签精确定位，再仅清理已确认的本轮资源。禁止 prune、
 重建共享服务或把续期失败降级为公网带密码 HTTP。现有 timer 不提供外部告警送达保证，
 需按运维机制检查失败与到期时间，不能将未验证的提醒承诺为已配置。
+
+Certbot 非交互式真实演练/到期续期还可能自行随机等待数分钟。确认进程和其日志中的
+`Non-interactive renewal: random delay` 后等待有界任务，不因暂时没有新stdout就判定挂起；
+本轮真实dry-run曾等待约360秒，再完整成功。普通renew返回0也可能只是尚未到期；应分别
+记录“演练成功”“service执行成功”“线上证书指纹”和将来的真实换证，不混为一次续期已发生。
 
 #### 5. 精确回滚
 

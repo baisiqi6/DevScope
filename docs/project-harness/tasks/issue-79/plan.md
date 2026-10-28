@@ -26,11 +26,13 @@
 
 - Issue: https://github.com/baisiqi6/DevScope/issues/79；已搜索全部相关 Issue/open PR，无重叠，认领已读回。
 - Branch: `codex/devscope-https`；base `7cd6c1caa5de1240d9e0a4342c8d37be47e7aeee`。
+- 生产代码PR #80已合并，配置发布目标 `e577c1e9eb9045ed74a1ed725516d1f19564a810`；发布后文档/receipt收口分支为 `codex/devscope-https-closeout`，不再次部署应用。
 - 2026-10-28：两条 A 记录均为现有服务器，域名 HTTP 返回 DevScope `401`，不再返回备案拦截；TLS 尚不存在。
 - 生产 HEAD 和三应用仍为 `791ebab9fd68f0e6866631d6450edec78134e660`；原五个容器 ID、image、StartedAt 作为不重建基线留存。
 - 共享 `/supplier-search/` 与 `/billmapper/` 在本次变更前均为 `502`；本任务要求不新增回归，不将其原有失败写成健康或顺手修复。
 - Nginx immutable image 已有 `nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19`。
 - 新 TLS edge 选用官网当前 stable `nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951`，amd64 manifest `sha256:84ed8c0dd296c188bfc24ed506f46589e9285fb0b11cf3a04d91d524d3067e11`（官方镜像创建于 2026-10-21）。官网已有覆盖旧支线的安全修复公告，不能把“旧镜像可启动”当新入口版本选择；不在本轮顺手升级共享 HTTP 服务，也不声称已判断其具体可利用性。
+- 离线导入实测只保留平台manifest ID，因此实际runtime env使用该同一批准内容的 `sha256:84ed8c...` / Certbot `sha256:398c472...`，并添加本任务版本tag防one-shot镜像被常规prune；不是更换镜像内容或使用latest。具体完整值与恢复流程只维护runbook，运行证据见verification。
 - Certbot 官方文档当前为 5.8.0；manifest list `certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20`，amd64 manifest `sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9`。
 
 ## Task 1: 本地配置、续期与隔离验收（Worker）
@@ -62,20 +64,21 @@
 
 ## Task 2: 独立审查、发布与生产接入（Operator）
 
-- [ ] 配置审查在生产 mutation 前完成：Reviewer 读取真实 diff、测试、runbook 和当前 exact packet；无阻塞 finding 才进入发布。
-- [ ] 刷新远端语义重叠、main/rules/checks；push task branch、关联 PR `Refs #79`，跑 required `quality` 和真实 PostgreSQL `integration`；遵循允许 merge method，attach PR。工程合并不等于生产验收，Issue 在最终生产 closeout 后单独关闭。
-- [ ] 生产 preflight 再核对容器、HEAD、干净 worktree、未占用 443、磁盘、共享 routes/auth 哈希和两条现有共享 path 状态；仅记录哈希/身份元数据，不输出 hash 文件内容。
-- [ ] 在 `/home/devscope/backups/devscope/` 创建 mode 700 本轮配置备份，文件 mode 600；不触及业务库，本轮没有 DB mutation，不做多余恢复/迁移。备份 .env、nginx 配置和必要的当前 TLS/runtime/timer 状态，验证 archive 可读且不打印私钥。
-- [ ] 用 bundle/checksum 将精确已合并提交 fast-forward 到 server；本轮只配置变更，不运行会重建三应用的常规应用 deploy workflow，不将 server HEAD 前进等同于三应用镜像变更。
-- [ ] 新 TLS Nginx 1.30.6 与 Certbot 镜像通过本地/runner pull amd64 → docker save → SSH → checksum → docker load，避免服务器代理/GitHub/GHCR 依赖；无 checksum 则停止。共享 HTTP Nginx 镜像保持原样。
-- [ ] bootstrap 仅添加指定 ACME server-local 文件；`nginx -t` 后 reload。两域名独立随机 token 均公开 HTTP 200，缺失 token 404，受保护路径仍 401，其他 path 与 baseline 一致。
-- [ ] staging ACME 演练使用单独 cert state，不能把测试 CA 证书部署公网；再正式签发，读取公开证书 SAN/issuer/dates 验证，不输出 key/account。
-- [ ] 仅创建独立 TLS project，确认公网受信任证书，两域名认证/未认证路径正确；如 443 云侧阻塞，只读确认后处理明确的 DevScope 443 规则，不开放其他端口。需要云账号重新登录时向用户明确报告，不获取聊天凭据。
-- [ ] TLS 已能从公网访问后再启用域名 HTTP redirect，校验后 reload；保留旧 IP/loopback/tunnel。检查 API/Web/Worker/DB 和共享 Nginx 的 container ID、image 和 StartedAt 与前值完全一致。
-- [ ] 正式证书 `renew --dry-run` 成功；安装并启用 scoped systemd timer，验证 service 成功退出、timer 下一次时间、失败诊断入口；不虚报真正未来续期已发生。
-- [ ] 仅通过验证过证书的 HTTPS 或 loopback 安全注入现有 Keychain 认证，验证首页、17 类当前静态资源（按页面实际引用提取）、health 和只读仓库列表；不触发采集或数据库写入。
-- [ ] 真实浏览器可选验证只读页面，不将 Basic Auth 填入公网 HTTP；凭据不出现在截图/日志/URL。
-- [ ] 最终独立 closeout 审查生产 receipt（证书、TLS/redirect/认证、renew、timer、容器不变量和共享路径），成功后按 installed Harness exact-packet gate 收口；生产结果写 `verification.md`、progress，稳定操作留 runbook。
+- [x] 配置审查在生产 mutation 前完成：Reviewer 读取真实 diff、测试、runbook 和当前 exact packet；无阻塞 finding 才进入发布。
+- [x] 刷新远端语义重叠、main/rules/checks；push task branch、关联 PR `Refs #79`，跑 required `quality` 和真实 PostgreSQL `integration`；遵循允许 merge method，attach PR。工程合并不等于生产验收，Issue 在最终生产 closeout 后单独关闭。
+- [x] 生产 preflight 再核对容器、HEAD、干净 worktree、未占用 443、磁盘、共享 routes/auth 哈希和两条现有共享 path 状态；仅记录哈希/身份元数据，不输出 hash 文件内容。
+- [x] 在 `/home/devscope/backups/devscope/` 创建 mode 700 本轮配置备份，文件 mode 600；不触及业务库，本轮没有 DB mutation，不做多余恢复/迁移。备份 .env、nginx 配置和必要的当前 TLS/runtime/timer 状态，验证 archive 可读且不打印私钥。
+- [x] 用 bundle/checksum 将精确已合并提交 fast-forward 到 server；本轮只配置变更，不运行会重建三应用的常规应用 deploy workflow，不将 server HEAD 前进等同于三应用镜像变更。
+- [x] 新 TLS Nginx 1.30.6 与 Certbot 镜像通过本地/runner pull amd64 → docker save → SSH → checksum → docker load，避免服务器代理/GitHub/GHCR 依赖；无 checksum 则停止。共享 HTTP Nginx 镜像保持原样。
+- [x] bootstrap 仅添加指定 ACME server-local 文件；`nginx -t` 后 reload。两域名独立随机 token 均公开 HTTP 200，缺失 token 404，受保护路径仍 401，其他 path 与 baseline 一致。
+- [x] staging ACME 演练使用单独 cert state，不能把测试 CA 证书部署公网；再正式签发，读取公开证书 SAN/issuer/dates 验证，不输出 key/account。
+- [x] 仅创建独立 TLS project，确认公网受信任证书，两域名认证/未认证路径正确；如 443 云侧阻塞，只读确认后处理明确的 DevScope 443 规则，不开放其他端口。需要云账号重新登录时向用户明确报告，不获取聊天凭据。
+- [x] TLS 已能从公网访问后再启用域名 HTTP redirect，校验后 reload；保留旧 IP/loopback/tunnel。检查 API/Web/Worker/DB 和共享 Nginx 的 container ID、image 和 StartedAt 与前值完全一致。
+- [x] 正式证书 `renew --dry-run` 成功；安装并启用 scoped systemd timer，验证 service 成功退出、timer 下一次时间、失败诊断入口；不虚报真正未来续期已发生。
+- [x] 仅通过验证过证书的 HTTPS 或 loopback 安全注入现有 Keychain 认证，验证首页、17 类当前静态资源（按页面实际引用提取）、health 和只读仓库列表；不触发采集或数据库写入。
+- [x] 可选已登录浏览器GUI回归本轮未执行（无UI改动），不冒称全站UI验收；实际验证同源`/api/trpc`、公开TLS/认证、HTML/17静态资源及真实只读业务。未向公网HTTP发送凭据，凭据不出现在截图/日志/URL。
+
+最终收口门禁（状态只由Harness维护，不在plan重复维护审批状态）：独立 Reviewer 审查实际生产receipt（证书、TLS/redirect/认证、renew、timer、容器不变量和共享路径），通过exact-packet gate记录verdict；Operator之后才可mark-done。生产结果在verification/progress，稳定操作在runbook。
 
 ## 回滚与退出条件
 
