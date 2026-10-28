@@ -1,41 +1,45 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-10-28T17:45:42Z",
+  "generated_at": "2026-10-28T17:56:48Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "c53886b3a096da9de034bccd4287bc40f28cfa92471257ba665d119bb66f29da",
+    "checklist_sha256": "c4f4428b11292fb7df3cc09bbdd2c4ddc31548bbb9ae67acd87203cc7364d803",
     "coordinate_ledger_included": false
   },
   "current_status": "",
   "current_item": {
     "id": "issue-79",
     "title": "devscope.cn 独立 HTTPS 与自动续期",
-    "status": "todo",
-    "owner": null,
-    "selected_in_session": null,
-    "updated_at": "2026-10-28T17:45:42Z",
+    "status": "doing",
+    "owner": "https-operator",
+    "selected_in_session": "devscope-https-20261028",
+    "updated_at": "2026-10-28T17:56:01Z",
     "workflow": {
       "mode": "high-risk",
-      "status": "handoff_requested",
-      "updated_at": "2026-10-28T17:45:42Z",
+      "status": "review_approved",
+      "updated_at": "2026-10-28T17:56:01Z",
       "branch": "codex/devscope-https",
-      "handoff_from": "https-worker",
-      "handoff_target": "https-operator"
+      "handoff_from": "https-worker"
     },
     "lease": {
-      "owner": "https-worker",
-      "session": "devscope-https-worker-20261028",
-      "acquired_at": "2026-10-28T17:35:45Z",
-      "expires_at": "2026-10-28T19:35:45Z",
-      "ttl_minutes": 120,
-      "released_at": "2026-10-28T17:45:42Z"
+      "owner": "https-operator",
+      "session": "devscope-https-20261028",
+      "acquired_at": "2026-10-28T17:46:36Z",
+      "expires_at": "2026-10-28T19:46:36Z",
+      "ttl_minutes": 120
     },
-    "active_lease": null,
+    "active_lease": {
+      "owner": "https-operator",
+      "session": "devscope-https-20261028",
+      "acquired_at": "2026-10-28T17:46:36Z",
+      "expires_at": "2026-10-28T19:46:36Z",
+      "ttl_minutes": 120
+    },
     "execution": {
-      "lease_state": "released",
-      "current_executor": null,
-      "last_executor": "https-worker",
+      "lease_state": "active",
+      "current_executor": "https-operator",
+      "last_executor": "https-operator",
       "last_executor_source": "lease.owner"
     },
     "coordination": {
@@ -51,28 +55,28 @@
       "handoff_packet": "docs/project-harness/current/handoff-packet.md"
     },
     "review": {
-      "decision": "changes_requested",
-      "reviewer": "https-code-reviewer",
+      "decision": "approved",
+      "reviewer": "https-final-reviewer",
       "phase": "review_requested",
-      "updated_at": "2026-10-28T17:32:29Z",
-      "reviewed_packet_sha256": "edc477baa842242ba9d5def049c04077a5019eb3409103549e2762bbc8101271",
-      "source_plan_sha256": "8a823e52489e54f5031221e6beb8f7cacb0dc324eac82f78e36dc752513dc0cb",
+      "updated_at": "2026-10-28T17:56:01Z",
+      "reviewed_packet_sha256": "26da7200607e52b25f559135a429c98c7b3aec01008f8b4da90c4701b24ccbac",
+      "source_plan_sha256": "9293a93f04b04f13cfc2874238eff8b29f22c19f99960f3e4738e196cfa7a03d",
       "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
-      "summary": "Continuity复审：原共享body-limit P2已ADDRESSED；新增有界发布集成审查确认P1：API/Web重建后现有workflow仅reload共享HTTP，独立TLS静态upstream可能停留旧IP。先更新canonical plan再做最小兼容。",
-      "artifact": "docs/project-harness/tasks/issue-79/code-review.md"
+      "summary": "Whole-branch limited-fresh APPROVE at e251d3b: no substantive P0-P3 findings; code merge and controlled Task2 readiness only, required CI and all production ACME/TLS/auth/timer/container invariants remain pending; no deployment authority or final closeout.",
+      "artifact": "docs/project-harness/tasks/issue-79/release-review.md"
     },
     "plan_path": "docs/project-harness/tasks/issue-79/plan.md"
   },
   "checklist_summary": {
-    "todo": 2,
-    "doing": 0,
+    "todo": 1,
+    "doing": 1,
     "done": 21,
     "blocked": 0
   },
   "workflow_summary": {
     "closed": 21,
-    "handoff_requested": 1,
-    "released": 1
+    "released": 1,
+    "review_approved": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -111,120 +115,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "https-worker",
-      "artifacts": [
-        "docs/project-harness/current/handoff-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-10-28T17:28:38Z",
-      "id": "evt-20261028T172838Z-46923378",
-      "idempotency_key": "ASSIGN:issue-79:handoff_requested:https-worker",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "handoff_requested",
-      "summary": "Task 1唯一P2已修复并完成本地RED/GREEN，待独立复审与生产发布",
-      "target": "https-operator",
-      "task": "issue-79",
-      "type": "ASSIGN",
-      "visible_header": "[ASSIGN] id=evt-20261028T172838Z-46923378 task=issue-79 actor=https-worker target=https-operator status=handoff_requested artifacts=docs/project-harness/current/handoff-packet.md"
-    },
-    {
-      "actor": "https-operator",
-      "artifacts": [],
-      "branch": "codex/devscope-https",
-      "causation_id": null,
-      "created_at": "2026-10-28T17:30:44Z",
-      "id": "evt-20261028T173044Z-bfbb83e8",
-      "idempotency_key": "ACCEPT:issue-79:running:https-operator",
-      "metadata": {
-        "force_reason": null,
-        "session": "devscope-https-20261028"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "https-operator accepted issue-79",
-      "target": "https-operator",
-      "task": "issue-79",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20261028T173044Z-bfbb83e8 task=issue-79 actor=https-operator target=https-operator status=running branch=codex/devscope-https"
-    },
-    {
-      "actor": "https-operator",
-      "artifacts": [
-        "docs/project-harness/current/review-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-10-28T17:30:44Z",
-      "id": "evt-20261028T173044Z-84960c89",
-      "idempotency_key": "REVIEW:issue-79:requested:https-operator",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "requested",
-      "summary": "Review requested for issue-79",
-      "target": "https-code-reviewer",
-      "task": "issue-79",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20261028T173044Z-84960c89 task=issue-79 actor=https-operator target=https-code-reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
-    },
-    {
-      "actor": "https-code-reviewer",
-      "artifacts": [
-        "docs/project-harness/tasks/issue-79/code-review.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-10-28T17:32:29Z",
-      "id": "evt-20261028T173229Z-86392f7c",
-      "idempotency_key": "REVIEW:issue-79:changes_requested:https-code-reviewer",
-      "metadata": {
-        "reviewed_packet_sha256": "edc477baa842242ba9d5def049c04077a5019eb3409103549e2762bbc8101271",
-        "source_plan_sha256": "8a823e52489e54f5031221e6beb8f7cacb0dc324eac82f78e36dc752513dc0cb"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "changes_requested",
-      "summary": "Continuity复审：原共享body-limit P2已ADDRESSED；新增有界发布集成审查确认P1：API/Web重建后现有workflow仅reload共享HTTP，独立TLS静态upstream可能停留旧IP。先更新canonical plan再做最小兼容。",
-      "target": "https-operator",
-      "task": "issue-79",
-      "type": "REVIEW",
-      "visible_header": "[REVIEW] id=evt-20261028T173229Z-86392f7c task=issue-79 actor=https-code-reviewer target=https-operator status=changes_requested artifacts=docs/project-harness/tasks/issue-79/code-review.md"
-    },
-    {
-      "actor": "https-operator",
-      "artifacts": [],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-10-28T17:35:17Z",
-      "id": "evt-20261028T173517Z-8ce0055d",
-      "idempotency_key": "RELEASE:issue-79:released:https-operator",
-      "metadata": {
-        "force_reason": null
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "released",
-      "summary": "https-operator released issue-79",
-      "target": null,
-      "task": "issue-79",
-      "type": "RELEASE",
-      "visible_header": "[RELEASE] id=evt-20261028T173517Z-8ce0055d task=issue-79 actor=https-operator status=released"
-    },
     {
       "actor": "https-operator",
       "artifacts": [
@@ -294,6 +184,123 @@
       "task": "issue-79",
       "type": "ASSIGN",
       "visible_header": "[ASSIGN] id=evt-20261028T174542Z-d902643f task=issue-79 actor=https-worker target=https-operator status=handoff_requested artifacts=docs/project-harness/current/handoff-packet.md"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [],
+      "branch": "codex/devscope-https",
+      "causation_id": null,
+      "created_at": "2026-10-28T17:46:36Z",
+      "id": "evt-20261028T174636Z-29a2f53e",
+      "idempotency_key": "ACCEPT:issue-79:running:https-operator",
+      "metadata": {
+        "force_reason": null,
+        "session": "devscope-https-20261028"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "https-operator accepted issue-79",
+      "target": "https-operator",
+      "task": "issue-79",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20261028T174636Z-29a2f53e task=issue-79 actor=https-operator target=https-operator status=running branch=codex/devscope-https"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T17:46:36Z",
+      "id": "evt-20261028T174636Z-b18ad765",
+      "idempotency_key": "REVIEW:issue-79:requested:https-operator",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for issue-79",
+      "target": "https-code-reviewer",
+      "task": "issue-79",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20261028T174636Z-b18ad765 task=issue-79 actor=https-operator target=https-code-reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "https-code-reviewer",
+      "artifacts": [
+        "docs/project-harness/tasks/issue-79/code-review.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T17:48:07Z",
+      "id": "evt-20261028T174807Z-bda68bb8",
+      "idempotency_key": "REVIEW:issue-79:approved:https-code-reviewer",
+      "metadata": {
+        "reviewed_packet_sha256": "ea919a18ffe7143c9392260520e3e1327abdfd290bcae74c6e75daf16386c8c2",
+        "source_plan_sha256": "c8ac65a88f55b9af719bbee3976af98fe62ffc5ac68b778bb4201ec97a249e27"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Task1 continuity复审APPROVE：原P2与P1均ADDRESSED；定向helper及workflow失败传播完整，真实DNS/IP切换502→helper→200且edge ID不变，新旧镜像各11/11记录吻合。无新实质finding；生产Task2尚待独立验收。",
+      "target": "https-operator",
+      "task": "issue-79",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20261028T174807Z-bda68bb8 task=issue-79 actor=https-code-reviewer target=https-operator status=approved artifacts=docs/project-harness/tasks/issue-79/code-review.md"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [
+        "docs/project-harness/current/review-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T17:52:05Z",
+      "id": "evt-20261028T175205Z-3babe127",
+      "idempotency_key": "REVIEW:issue-79:requested:https-operator",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "requested",
+      "summary": "Review requested for issue-79",
+      "target": "https-final-reviewer",
+      "task": "issue-79",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20261028T175205Z-3babe127 task=issue-79 actor=https-operator target=https-final-reviewer status=requested artifacts=docs/project-harness/current/review-packet.md"
+    },
+    {
+      "actor": "https-final-reviewer",
+      "artifacts": [
+        "docs/project-harness/tasks/issue-79/release-review.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T17:56:01Z",
+      "id": "evt-20261028T175601Z-4283b35f",
+      "idempotency_key": "REVIEW:issue-79:approved:https-final-reviewer",
+      "metadata": {
+        "reviewed_packet_sha256": "26da7200607e52b25f559135a429c98c7b3aec01008f8b4da90c4701b24ccbac",
+        "source_plan_sha256": "9293a93f04b04f13cfc2874238eff8b29f22c19f99960f3e4738e196cfa7a03d"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "Whole-branch limited-fresh APPROVE at e251d3b: no substantive P0-P3 findings; code merge and controlled Task2 readiness only, required CI and all production ACME/TLS/auth/timer/container invariants remain pending; no deployment authority or final closeout.",
+      "target": "https-operator",
+      "task": "issue-79",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20261028T175601Z-4283b35f task=issue-79 actor=https-final-reviewer target=https-operator status=approved artifacts=docs/project-harness/tasks/issue-79/release-review.md"
     }
   ]
 }

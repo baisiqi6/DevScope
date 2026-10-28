@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-10-28T17:52:05Z",
+  "updated_at": "2026-10-28T17:56:01Z",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -955,7 +955,7 @@
       "priority": "p1",
       "owner": "https-operator",
       "selected_in_session": "devscope-https-20261028",
-      "updated_at": "2026-10-28T17:52:05Z",
+      "updated_at": "2026-10-28T17:56:01Z",
       "dependencies": [],
       "blocked_by": [],
       "blocked_reason": null,
@@ -965,8 +965,8 @@
       "plan_path": "docs/project-harness/tasks/issue-79/plan.md",
       "workflow": {
         "mode": "high-risk",
-        "status": "review_requested",
-        "updated_at": "2026-10-28T17:52:05Z",
+        "status": "review_approved",
+        "updated_at": "2026-10-28T17:56:01Z",
         "branch": "codex/devscope-https",
         "handoff_from": "https-worker"
       },
@@ -978,14 +978,14 @@
       },
       "review": {
         "decision": "approved",
-        "reviewer": "https-code-reviewer",
+        "reviewer": "https-final-reviewer",
         "phase": "review_requested",
-        "updated_at": "2026-10-28T17:48:07Z",
-        "reviewed_packet_sha256": "ea919a18ffe7143c9392260520e3e1327abdfd290bcae74c6e75daf16386c8c2",
-        "source_plan_sha256": "c8ac65a88f55b9af719bbee3976af98fe62ffc5ac68b778bb4201ec97a249e27",
+        "updated_at": "2026-10-28T17:56:01Z",
+        "reviewed_packet_sha256": "26da7200607e52b25f559135a429c98c7b3aec01008f8b4da90c4701b24ccbac",
+        "source_plan_sha256": "9293a93f04b04f13cfc2874238eff8b29f22c19f99960f3e4738e196cfa7a03d",
         "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
-        "summary": "Task1 continuity复审APPROVE：原P2与P1均ADDRESSED；定向helper及workflow失败传播完整，真实DNS/IP切换502→helper→200且edge ID不变，新旧镜像各11/11记录吻合。无新实质finding；生产Task2尚待独立验收。",
-        "artifact": "docs/project-harness/tasks/issue-79/code-review.md"
+        "summary": "Whole-branch limited-fresh APPROVE at e251d3b: no substantive P0-P3 findings; code merge and controlled Task2 readiness only, required CI and all production ACME/TLS/auth/timer/container invariants remain pending; no deployment authority or final closeout.",
+        "artifact": "docs/project-harness/tasks/issue-79/release-review.md"
       },
       "lease": {
         "owner": "https-operator",
