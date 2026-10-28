@@ -21,7 +21,10 @@ DevScope 提供统一 API Client、`devscope` CLI 和 MCP stdio Server。CLI 与
 | `DEVSCOPE_USERNAME` | 成对   | Nginx Basic Auth 用户名                            |
 | `DEVSCOPE_PASSWORD` | 成对   | Nginx Basic Auth 密码                              |
 
-用户名和密码必须同时设置。它们从调用进程环境读取，不会自动从项目 `.env` 加载。远程访问必须使用 HTTPS；尚未配置 HTTPS 时，应先通过 SSH tunnel 映射到本机回环地址。
+用户名和密码必须同时设置。它们从调用进程环境读取，不会自动从项目 `.env` 加载。远程优先使用
+`https://devscope.cn`（须先按运行手册完成证书与访问控制验收），不得关闭 TLS 校验。
+原 SSH tunnel 的本机回环入口继续保留，适合受控运维或 HTTPS 尚未验收的阶段；不要把带认证的
+Client 指向公网 HTTP，也不要用公网 HTTP 的 308 代替安全连接。
 
 本地示例：
 
@@ -32,7 +35,7 @@ export DEVSCOPE_BASE_URL=http://localhost:3100
 受保护环境示例：
 
 ```bash
-export DEVSCOPE_BASE_URL=https://devscope.example.com
+export DEVSCOPE_BASE_URL=https://devscope.cn
 export DEVSCOPE_USERNAME='your-username'
 export DEVSCOPE_PASSWORD='your-password'
 ```

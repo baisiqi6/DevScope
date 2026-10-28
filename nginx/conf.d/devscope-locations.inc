@@ -1,0 +1,49 @@
+    # API - tRPC 请求
+    location /trpc/ {
+        include /etc/nginx/conf.d/server-local/devscope-auth*.conf;
+        proxy_pass http://api_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # API - Agent SSE 长连接
+    location /api/agent/ {
+        include /etc/nginx/conf.d/server-local/devscope-auth*.conf;
+        proxy_pass http://api_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 支持
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
+    # API - 其他 /api 路径
+    location /api/ {
+        include /etc/nginx/conf.d/server-local/devscope-auth*.conf;
+        proxy_pass http://api_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Web - 其余所有请求
+    location / {
+        include /etc/nginx/conf.d/server-local/devscope-auth*.conf;
+        proxy_pass http://web_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
