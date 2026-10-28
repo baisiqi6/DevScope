@@ -354,7 +354,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 5. 服务器先验证 checksum、bundle target、fast-forward ancestry、磁盘空间和三个 image revision，再 `docker load`、更新 `latest` 与单一 `rollback` tag，并执行 `git merge --ff-only`；
 6. 只重建 DevScope 的 `web`、`api`、`worker` 等目标服务；
 7. 如有数据库迁移，单独审查、备份、执行和验证；
-8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；成功后删除本次 staging，失败时保留它用于诊断。
+8. 使用 `nginx -t` 验证配置后执行 reload，不随意 restart 共享 Nginx；随后运行 `bash scripts/https-reload-if-present.sh` 刷新已安装的独立 TLS edge upstream。成功后删除本次 staging，失败时保留它用于诊断。
 
 生产服务器的 Mihomo 或其他公网代理不是常规部署链路的依赖。代理订阅失效不得通过关闭 checksum、改用镜像 `latest` 猜测值或恢复服务器侧 `git pull/docker pull` 绕过；应先保持现有生产容器不动，再修复受控的 runner→SSH 传输链路。`rollback` tag 只保存上一次运行镜像，业务健康检查失败时按本节回滚流程恢复。
 
@@ -456,11 +456,12 @@ IP/loopback/其他 Host 的共享路径均按相同请求对照基线，不依�
 数据库恢复。保存准确目标 SHA、bundle/image archive 校验和及原五容器身份。
 
 镜像在受控本地/runner 拉取服务器架构，再 `docker save`，生成 SHA-256 清单，通过已有 SSH
-authority 上传，服务器验证 checksum 后 `docker load`。优先复用服务器已有 Nginx digest；
-不因拉取失败更换 `latest` 或临时启用代理。当前批准的 immutable images：
+authority 上传，服务器验证 checksum 后 `docker load`。新 TLS edge 使用本轮明确选择的
+stable Nginx 1.30.6；原共享 HTTP 1.29.8 只保留兼容验证，不随本轮重建或升级，也不声称其
+安全问题已经鉴定/修复。不因拉取失败更换 `latest` 或临时启用代理。当前批准的 immutable images：
 
 ```text
-nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19
+nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
 ```
 
@@ -468,7 +469,7 @@ certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6
 文件 `600`，不 source 到 shell，不含业务 `.env` 内容）：
 
 ```dotenv
-DEVSCOPE_TLS_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19
+DEVSCOPE_TLS_NGINX_IMAGE=nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 DEVSCOPE_TLS_CERTBOT_IMAGE=certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
 DEVSCOPE_TLS_NETWORK=devscope_devscope-network
 DEVSCOPE_TLS_CONF_DIR=/home/devscope/DevScope/nginx/conf.d
@@ -546,6 +547,19 @@ sudo openssl x509 -in /home/devscope/.local/state/devscope-https/letsencrypt/liv
 200/404；IP、`127.0.0.1` 与其他 Host 不强制跳转，原 tunnel 继续使用。复核原五个容器的 ID、
 image、StartedAt 与备份时完全一致；共享路由配置摘要不变。未启用 HSTS/preload/includeSubDomains，
 不以此切换替代未来应用鉴权。
+
+后续正常应用发布会 recreate API/Web，静态 upstream 地址可能变化，不能依靠每日续期偶然
+reload 恢复。workflow 在原共享 Nginx check/reload 之后调用固定容器名的
+`https-reload-if-present.sh`，无需 TLS runtime env 或 Certbot。成功查询后确认没有该容器才
+兼容跳过；已安装停止、Docker 查询失败、配置检查或 reload 失败均非零并阻断发布完成。
+每条 Docker 调用限30秒，始终 `nginx -t` 在 reload 前；不会创建、启动或重建代理。应用常规
+部署与本轮“只新增入口、原五容器不重建”的接入发布是不同操作，不混用其命令。
+
+维护边界：TLS main `nginx.conf` 当前为单文件 bind。未来 Git 更新若替换源文件 inode，现有
+mount 可能仍指向旧文件，不能只做 reload 就宣称配置更新。那类单独获准的 TLS 配置变更应
+先用 `"${tls[@]}" run --rm --no-deps https nginx -t` 校验新挂载，再仅
+`"${tls[@]}" up -d --no-deps --force-recreate https` 使新 main 生效；绝不重建共享代理。
+本轮首次创建不受影响，常规 API/Web 发布仍只调用上述 reload helper，不因此每次重建 TLS。
 
 域名 HTTP server 必须显式保留 `client_max_body_size 10m`，使无局部 override 的共享代理仍与
 旧默认 server 一致；不能只用空体 GET 验证。隔离回归覆盖两个目标域名、两个共享路径切换

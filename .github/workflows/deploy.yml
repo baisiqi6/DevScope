@@ -330,6 +330,9 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -t
             docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx nginx -s reload
 
+            # 已安装的独立 TLS edge 同样需要刷新静态 upstream；失败阻断发布。
+            bash scripts/https-reload-if-present.sh
+
             # 清理旧镜像
             docker image prune -f
 

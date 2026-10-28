@@ -12,13 +12,14 @@ import socket
 import ssl
 import subprocess
 import tempfile
+import textwrap
 import time
 import unittest
 import uuid
 import warnings
 
 ROOT = Path(__file__).resolve().parents[1]
-NGINX = os.environ.get("HTTPS_TEST_NGINX_IMAGE", "nginx:1.30.0-alpine")
+NGINX = os.environ.get("HTTPS_TEST_NGINX_IMAGE", "nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951")
 PYTHON = os.environ.get("HTTPS_TEST_PYTHON_IMAGE", "python:3.12.3-slim")
 
 
@@ -91,7 +92,7 @@ class ComposeTests(unittest.TestCase):
                        "--file", str(ROOT / "docker-compose.https.yml"), "config", "--format", "json"]
             env = {key: value for key, value in os.environ.items() if not key.startswith(("DEVSCOPE_TLS_", "COMPOSE_"))}
             self.assertNotEqual(run(*command, check=False, env=env).returncode, 0)
-            envfile.write_text("DEVSCOPE_TLS_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19\n"
+            envfile.write_text("DEVSCOPE_TLS_NGINX_IMAGE=nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951\n"
                                "DEVSCOPE_TLS_CERTBOT_IMAGE=certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20\n"
                                f"DEVSCOPE_TLS_STATE_DIR={tmp}/state\nDEVSCOPE_TLS_CONF_DIR={tmp}/conf\nDEVSCOPE_TLS_NETWORK=isolated-test-network\n")
             config = json.loads(run(*command, env=env).stdout)
@@ -115,12 +116,89 @@ class ComposeTests(unittest.TestCase):
             self.assertTrue(all(mount["read_only"] for mount in https["volumes"]))
 
 
+class ReloadTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="devscope-reload-test-")
+        self.path = Path(self.tmp.name)
+        docker = self.path / "docker"
+        docker.write_text("""#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ['CALLS'], 'a') as out: out.write(json.dumps(args)+'\\n')
+case = os.environ.get('TEST_CASE', 'running')
+if args[:2] == ['container', 'ls']:
+    if case == 'daemon-error': sys.exit(23)
+    if case != 'absent': print('devscope-https')
+elif args[0] == 'inspect':
+    if case == 'inspect-error': sys.exit(24)
+    print('false' if case == 'stopped' else 'true')
+elif args[0] == 'exec':
+    if '-t' in args and case == 'check-error': sys.exit(25)
+    if 'reload' in args and case == 'reload-error': sys.exit(26)
+elif args[0] != 'compose': sys.exit(99)
+""")
+        docker.chmod(0o700)
+        timeout = self.path / "timeout"
+        timeout.write_text("""#!/usr/bin/env python3
+import subprocess, sys
+assert sys.argv[1:3] == ['--foreground', '30s']
+try: sys.exit(subprocess.run(sys.argv[3:], timeout=30).returncode)
+except subprocess.TimeoutExpired: sys.exit(124)
+""")
+        timeout.chmod(0o700)
+        self.callsfile = self.path / "calls"
+        self.env = {**os.environ, "PATH": f"{self.path}:{os.environ['PATH']}", "CALLS": str(self.callsfile)}
+        self.expected = [["container", "ls", "--all", "--filter", "name=^/devscope-https$", "--format", "{{.Names}}"],
+                         ["inspect", "--format", "{{.State.Running}}", "devscope-https"],
+                         ["exec", "devscope-https", "nginx", "-t"],
+                         ["exec", "devscope-https", "nginx", "-s", "reload"]]
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def calls(self):
+        return [json.loads(line) for line in self.callsfile.read_text().splitlines()]
+
+    def test_reload_branches_and_exact_target(self):
+        for case, code, count in [("absent", 0, 1), ("running", 0, 4), ("stopped", 1, 2),
+                                  ("daemon-error", 23, 1), ("inspect-error", 24, 2),
+                                  ("check-error", 25, 3), ("reload-error", 26, 4)]:
+            with self.subTest(case=case):
+                self.callsfile.write_text("")
+                result = run("bash", str(ROOT / "scripts/https-reload-if-present.sh"), check=False,
+                             env={**self.env, "TEST_CASE": case})
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(self.calls(), self.expected[:count])
+
+    def test_workflow_executes_reload_after_shared_proxy(self):
+        workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+        start = workflow.index("            # API/Web 容器重建后 upstream 地址可能变化。")
+        end = workflow.index("            # 清理旧镜像", start)
+        snippet = textwrap.dedent(workflow[start:end]) + "\nprintf 'completed\\n'\n"
+        shared = [["compose", "-f", "docker-compose.yml", "-f", "docker-compose.prod.yml",
+                   "exec", "-T", "nginx", "nginx", "-t"],
+                  ["compose", "-f", "docker-compose.yml", "-f", "docker-compose.prod.yml",
+                   "exec", "-T", "nginx", "nginx", "-s", "reload"]]
+        for case, code, count in [("running", 0, 4), ("absent", 0, 1), ("check-error", 25, 3),
+                                  ("reload-error", 26, 4)]:
+            with self.subTest(case=case):
+                self.callsfile.write_text("")
+                result = run("bash", "-e", "-c", snippet, cwd=ROOT, check=False,
+                             env={**self.env, "TEST_CASE": case})
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(self.calls(), shared + self.expected[:count])
+                self.assertEqual("completed" in result.stdout, code == 0)
+
+
 MOCK = r'''
 import hashlib, http.server, json, threading, time
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
+    retired = False
     def log_message(self, *args): pass
     def do_GET(self):
+        if Handler.retired:
+            self.send_response(502); self.send_header('Content-Length', '0'); self.end_headers(); return
         for path, status, body in [('/supplier-search/', 202, b'shared-supplier'), ('/billmapper/', 203, b'shared-bill')]:
             if self.path.startswith(path):
                 self.send_response(status); self.send_header('Content-Length', str(len(body)))
@@ -139,6 +217,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200); self.send_header('Content-Length', str(len(body)))
         self.end_headers(); self.wfile.write(body)
     def do_POST(self):
+        if self.path == '/_retire':
+            Handler.retired = True
+            self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers(); return
         payload = self.rfile.read(int(self.headers.get('Content-Length', '0')))
         body = json.dumps({'port': self.server.server_port, 'path': self.path,
                            'bytes': len(payload), 'sha256': hashlib.sha256(payload).hexdigest()}).encode()
@@ -406,6 +487,56 @@ class DockerTests(unittest.TestCase):
                 with self.assertRaises(ssl.SSLError):
                     context.wrap_socket(sock, server_hostname="devscope.cn")
 
+    def test_07_deploy_reload_refreshes_changed_upstream_ip_without_recreate(self):
+        old = self.name + "-upstream"
+        old_ip = run("docker", "inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", old).stdout.strip()
+        edge_id = run("docker", "inspect", "--format", "{{.Id}}", self.tls).stdout.strip()
+        new = self.start("upstream-next", ["--network-alias", "api", "--network-alias", "web",
+                                          "-v", f"{self.path}/mock.py:/mock.py:ro"], PYTHON, "python", "/mock.py")
+        new_ip = run("docker", "inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", new).stdout.strip()
+        self.assertNotEqual(new_ip, old_ip)
+        # 保留旧 A 的地址但移除业务 aliases；旧进程明确报错，新 API/Web 只由 B 提供。
+        run("docker", "network", "disconnect", self.name, old)
+        run("docker", "network", "connect", "--ip", old_ip, "--alias", "stale-upstream", self.name, old)
+        resolved = json.loads(run("docker", "exec", new, "python", "-c",
+                                 "import json,socket; print(json.dumps({name:sorted({a[4][0] for a in socket.getaddrinfo(name,None,socket.AF_INET)}) for name in ['api','web']}))").stdout)
+        self.assertEqual(resolved, {"api": [new_ip], "web": [new_ip]})
+        run("docker", "exec", old, "python", "-c",
+            "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:3100/_retire', method='POST')).read()")
+        self.assert_status("/trpc/health", 502, tls=True, auth=self.password)
+        self.assert_status("/", 502, tls=True, auth=self.password)
+        # 生产 helper 不接受可变目标；仅测试 CLI 边界映射到本轮随机名称，实调用 Docker。
+        shim_dir = self.path / "reload-bin"
+        shim_dir.mkdir()
+        shim = shim_dir / "docker"
+        shim.write_text("""#!/usr/bin/env python3
+import os, subprocess, sys
+args = [os.environ['TEST_TLS'] if arg == 'devscope-https' else
+        'name=^/' + os.environ['TEST_TLS'] + '$' if arg == 'name=^/devscope-https$' else arg
+        for arg in sys.argv[1:]]
+result = subprocess.run([os.environ['REAL_DOCKER'], *args], capture_output=True)
+sys.stdout.buffer.write(result.stdout.replace(os.environ['TEST_TLS'].encode(), b'devscope-https'))
+sys.stderr.buffer.write(result.stderr)
+sys.exit(result.returncode)
+""")
+        shim.chmod(0o700)
+        timeout = shim_dir / "timeout"
+        timeout.write_text("""#!/usr/bin/env python3
+import subprocess, sys
+assert sys.argv[1:3] == ['--foreground', '30s']
+try: sys.exit(subprocess.run(sys.argv[3:], timeout=30).returncode)
+except subprocess.TimeoutExpired: sys.exit(124)
+""")
+        timeout.chmod(0o700)
+        run("bash", str(ROOT / "scripts/https-reload-if-present.sh"),
+            env={**os.environ, "PATH": f"{shim_dir}:{os.environ['PATH']}",
+                 "TEST_TLS": self.tls, "REAL_DOCKER": shutil.which("docker")})
+        time.sleep(0.3)
+        for path, port in [("/trpc/health", 3100), ("/", 3000)]:
+            body, _ = self.assert_status(path, 200, tls=True, auth=self.password)
+            self.assertEqual(json.loads(body)["port"], port)
+        self.assertEqual(run("docker", "inspect", "--format", "{{.Id}}", self.tls).stdout.strip(), edge_id)
+
     @classmethod
     def tearDownClass(cls):
         for name in reversed(cls.containers):
@@ -419,7 +550,8 @@ if __name__ == "__main__":
     parser.add_argument("--renew-only", action="store_true")
     args = parser.parse_args()
     suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromTestCase(RenewTests),
-                               unittest.defaultTestLoader.loadTestsFromTestCase(ComposeTests)])
+                               unittest.defaultTestLoader.loadTestsFromTestCase(ComposeTests),
+                               unittest.defaultTestLoader.loadTestsFromTestCase(ReloadTests)])
     if not args.renew_only:
         suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(DockerTests))
     raise SystemExit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())

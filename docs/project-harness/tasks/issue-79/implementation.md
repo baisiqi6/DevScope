@@ -113,3 +113,36 @@ HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097
 - 四门禁重新执行：`pnpm lint` exit0，13/13 cached，原18 warnings/0 errors；`pnpm typecheck` exit0，14/14 cached；`pnpm test` exit0，11/11 cached，pipeline 本次21/21，原 Worker integration 1 skipped；`pnpm build` exit0，9/9 cached。日志为 `.planning/https-fix1-{lint,typecheck,test,build}.log`，未将缓存/原噪音写成冷跑或新增缺陷。
 - `git diff --check` exit0；测试前缀的 Docker containers/networks 查询均为空，临时请求体/证书随测试清理。没有生产请求、真实 ACME、push、merge、deploy 或共享配置变更。
 - 本轮产品-only 新提交范围仅配置、对应测试、runbook 必要行和本报告；不 amend 首次产品提交。随后再次 handoff 给 `https-operator`，复审和 Task 2 权限边界不变，不 closeout 或标记全局 done。
+
+## Fix round 2：正常发布刷新独立 TLS upstream（唯一 P1）
+
+- 输入：Operator 更新的 brief Files/Step5a 与 continuity 实现审查确认的唯一 P1；原请求体 P2 已 `ADDRESSED`，本轮未重改其配置。重新 accept 同一 item/owner/session，sync 当前 plan；canonical plan、review 与其他父级 metadata 未手工修改或暂存。
+- 根因：普通 deploy force-recreate API/Web 后其 IP 可变，原 workflow 仅检查并 reload 共享 HTTP，而独立 TLS 的静态 upstream 仍可能持有旧地址；loopback 健康和匿名401无法证明认证 HTTPS 主路径可用。
+- 最小产品修复：新增 `scripts/https-reload-if-present.sh`（固定 `devscope-https`、无参数/不读 runtime.env、不调用 Compose 或 Certbot），在 `.github/workflows/deploy.yml` 原共享 Nginx check/reload 后调用。每条 Docker 命令限30秒；先成功查询所有状态，确实不存在才 skip；停止、daemon/list/inspect 错误、配置检查与 reload 错误均非零，不自动启停/创建/重建。query 之后固定 `nginx -t → nginx -s reload`，实际 workflow 的 `set -euo pipefail` 使错误阻断后续完成宣告。
+
+### RED / GREEN 与真实覆盖
+
+```bash
+# RED：新增测试但尚无 helper、workflow 尚未接线。
+python3 scripts/test-https.py --renew-only
+# GREEN：默认新 TLS 镜像的完整矩阵。
+python3 scripts/test-https.py
+# 旧共享 Nginx 版本兼容矩阵；不将旧版本重新部署成新 TLS。
+HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19 python3 scripts/test-https.py
+```
+
+- RED：exit1，`Ran 4 tests in 2.000s`、10 subtest failures；7 个 helper 场景因文件不存在失败，3 个 workflow 执行场景证明只有原共享 reload 调用、遗漏 TLS 查询/刷新，且错误场景仍错误地到达完成。保存 `.planning/https-fix2-red.log`。没有修改后再倒推假 RED。
+- 最终新 Nginx 1.30.6 GREEN：`Ran 11 tests in 17.004s / OK`，exit0，保存 `.planning/https-fix2-green-1306.log`。
+- 最终旧 Nginx 1.29.8 兼容 GREEN：`Ran 11 tests in 15.176s / OK`，exit0，保存 `.planning/https-fix2-compat-1298.log`。两轮均保留此前认证、请求体、ACME、SSE/WS、TLS 协议与证书轮换矩阵。
+- `ReloadTests.test_reload_branches_and_exact_target`：真实执行 helper，Docker double 记录每个参数；覆盖 absent/running/stopped/daemon-error/inspect-error/check-error/reload-error，分别退出0/0/1/23/24/25/26；只能出现固定目标的 list/inspect/exec，失败后不继续，配置检查始终在 reload 前。测试层 timeout shim 检查30秒参数并使用标准库30秒 subprocess deadline；没有称 Mac 已提供 GNU timeout。
+- `ReloadTests.test_workflow_executes_reload_after_shared_proxy`：抽出真实 workflow 的受控 reload 区块，按其 fail-fast Bash 语义执行（不是 grep 出一个函数名就算接线），断言原共享 check/reload 后才调用 TLS helper。running/absent 能到达模拟完成标记；check-error/reload-error 非零且到不了完成。没有运行完整 GitHub/SSH deploy 或其中其他副作用命令。
+- `DockerTests.test_07_deploy_reload_refreshes_changed_upstream_ip_without_recreate`：真实创建新 mock upstream B，确认 B≠旧A；把 API/Web aliases 从旧端点移走，容器内真实 `getaddrinfo` 精确断言两个名称仅解析到B，旧A仍保留但显式退役返回502。reload 前已认证 TLS 主页/tRPC 实际502，运行真实 helper 后恢复200且上游port分别3000/3100，edge container ID完全不变。仅测试 CLI shim 把生产固定名映射到随机测试edge，其他 Docker 操作/配置检查/reload 都真实执行；没有借用本机或生产 `devscope-https` 容器，生产 helper 不能接受可变目标。
+
+### 镜像、门禁与边界
+
+- 按 Operator 本轮明确的版本选择，runbook 批准的 TLS env 与测试默认改为 `nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951`；本地 `nginx -v` 实际为 `nginx/1.30.6`。Operator 已拉取 amd64 image 并核验 manifest；本轮矩阵实际使用该已有 amd64 image，出现 arm64宿主运行amd64提示属于预期。
+- 本人也只读核对 [Nginx 下载页](https://nginx.org/en/download.html) 当前 stable 为1.30.6与 [security advisories](https://nginx.org/en/security_advisories.html)；不据版本列表推导原生产共享 HTTP 的漏洞可利用性，没有升级/鉴定/修复它，旧1.29.8只作兼容与历史证据。
+- 四门禁本轮重新执行均exit0：lint13/13 cached、原18 warnings/0 errors；typecheck14/14 cached；test11/11 cached，pipeline本次21/21且原Worker integration 1 skipped；build9/9 cached。保存 `.planning/https-fix2-{lint,typecheck,test,build}.log`。无冷跑或无噪音虚报。
+- helper shell syntax 与产品范围 `git diff --check` exit0。全树 diff check 曾只报告父级 `current/handoff-packet.md:182` EOF空行，已告知 Operator，未越权改父metadata或将其包含在产品提交。随机测试容器/网络查询为空，临时文件自动清理；本轮没有生产、ACME、push、merge 或 deploy。
+- 按 Operator 追加的维护澄清，仅在 runbook 说明：TLS main是单文件bind，未来 Git 替换inode的**单独获准配置更新**需先用新mount one-shot校验，再仅force-recreate独立https；本轮首次创建不受影响，常规应用发布仍只reload，不因此扩大成每次重建或更换mount架构。
+- 本轮产品-only新提交仅 workflow、定向helper、对应tests、必要runbook和本报告。提交后 handoff Operator，待独立复审；真实生产证书/续期/systemd/timer/正式发布仍为 Task2，未越权替代。
