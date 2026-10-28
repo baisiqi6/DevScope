@@ -94,3 +94,22 @@ git diff --check
 - 尚未验证：生产 DNS/AAAA/80/443、正式与 staging ACME、现有认证文件具体内容、生产共享路径、真实系统证书链、服务器 GNU timeout/systemd/权限/timer 与未来续期。相关门禁明确留给 Operator，未替其完成或标记全局 done。
 - 已有 cache/warnings 不构成新回归，但不能包装成全量冷跑。没有外部续期告警送达机制；runbook 明示 journal/到期检查，不能承诺未验证的提醒。
 - 提交后按委派执行 `handoff issue-79 https-operator --actor https-worker --reason 'Task 1本地实现完成，待独立实现审查与生产发布'`，释放 Worker lease；独立实现 Reviewer/生产 Operator 决定下一步，不 closeout 全局 item。
+
+## Fix round 1：恢复共享代理请求体上限（唯一 P2）
+
+- 输入：独立 `code-review.md` 的唯一 P2。Worker 已重新 accept 同一 item/owner/session，并 `sync issue-79` / `state`；未改 canonical plan、父级审查文件或服务器专属配置。
+- 根因核对：原 default server 设 `client_max_body_size 10m`，新增精确域名 server 缺失该值；共享 locations 本身不覆写时，切换后继承 Nginx 默认 1m。既有固定 `return 202/203` 的 GET fixture 不能证明 POST 仍进入共享上游。
+- 最小产品修正：只给 `nginx/https/http-domain.conf` 的 server 添加一行 `client_max_body_size 10m;`。runbook 补充保持该继承边界的检查要求，无其他行为优化。
+- 覆盖文件：`scripts/test-https.py` 的 `DockerTests.test_03_acme_and_staged_redirect`。共享 fixture 改为真实 `proxy_pass`，mock 的 POST handler 完整读取 Content-Length 指定的 body，返回上游端口、path、字节数与 SHA-256。对 `devscope.cn` / `www.devscope.cn`、`/supplier-search/upload` / `/billmapper/upload`，在安装域名片段前后都实际发送 2,097,152 字节并精确比对同一上游及 body 摘要；另用 `Content-Length: 10485761` 和 `Expect: 100-continue` 验证 Nginx 在读取超限 body 前拒绝为 413（没有声称向 mock 传送了被拒绝的 body）。原 GET 202/203 与完整其他 HTTPS 矩阵仍保留。
+
+RED / GREEN 采用同一实际 amd64 镜像命令：
+
+```bash
+HTTPS_TEST_NGINX_IMAGE=nginx@sha256:8aa63af009a39ecd6c28d61da578a5447378c10bb097a069e3a3e0fb42bb6b19 python3 scripts/test-https.py
+```
+
+- RED（只改测试，未补配置）：exit1；8 tests、1 failure，`test_03_acme_and_staged_redirect` 在切换后的 `/supplier-search/upload` 明确报 `413 != 200`，切换前的四组完整 POST/超限检查已通过；9.889s。证据 `.planning/https-fix1-red.log`。
+- GREEN（补 10m 后）：exit0；`Ran 8 tests in 10.332s / OK`。两域名 × 两共享 path × 切换前后共 8 组真实 2MiB 上游验证及 8 组超限 413 均通过。证据 `.planning/https-fix1-green.log`。
+- 四门禁重新执行：`pnpm lint` exit0，13/13 cached，原18 warnings/0 errors；`pnpm typecheck` exit0，14/14 cached；`pnpm test` exit0，11/11 cached，pipeline 本次21/21，原 Worker integration 1 skipped；`pnpm build` exit0，9/9 cached。日志为 `.planning/https-fix1-{lint,typecheck,test,build}.log`，未将缓存/原噪音写成冷跑或新增缺陷。
+- `git diff --check` exit0；测试前缀的 Docker containers/networks 查询均为空，临时请求体/证书随测试清理。没有生产请求、真实 ACME、push、merge、deploy 或共享配置变更。
+- 本轮产品-only 新提交范围仅配置、对应测试、runbook 必要行和本报告；不 amend 首次产品提交。随后再次 handoff 给 `https-operator`，复审和 Task 2 权限边界不变，不 closeout 或标记全局 done。

@@ -547,6 +547,10 @@ sudo openssl x509 -in /home/devscope/.local/state/devscope-https/letsencrypt/liv
 image、StartedAt 与备份时完全一致；共享路由配置摘要不变。未启用 HSTS/preload/includeSubDomains，
 不以此切换替代未来应用鉴权。
 
+域名 HTTP server 必须显式保留 `client_max_body_size 10m`，使无局部 override 的共享代理仍与
+旧默认 server 一致；不能只用空体 GET 验证。隔离回归覆盖两个目标域名、两个共享路径切换
+前后的真实 2 MiB POST 上游接收，以及超过 10 MiB 的 413 边界。
+
 #### 4. 续期演练、无人值守与诊断
 
 续期 wrapper 只读取显式 TLS env，以固定 project/service 调用 `renew --cert-name devscope.cn`。

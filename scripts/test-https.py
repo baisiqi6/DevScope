@@ -2,6 +2,7 @@
 """隔离 HTTPS/HTTP 与续期契约测试；只用 Python 标准库、Docker 和 OpenSSL。"""
 import argparse
 import base64
+import hashlib
 import http.client
 import json
 import os
@@ -115,11 +116,15 @@ class ComposeTests(unittest.TestCase):
 
 
 MOCK = r'''
-import http.server, json, threading, time
+import hashlib, http.server, json, threading, time
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     def log_message(self, *args): pass
     def do_GET(self):
+        for path, status, body in [('/supplier-search/', 202, b'shared-supplier'), ('/billmapper/', 203, b'shared-bill')]:
+            if self.path.startswith(path):
+                self.send_response(status); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body); return
         if self.headers.get('Upgrade', '').lower() == 'websocket':
             self.send_response(101); self.send_header('Upgrade', 'websocket')
             self.send_header('Connection', 'Upgrade'); self.end_headers(); return
@@ -131,6 +136,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = json.dumps({'port': self.server.server_port, 'path': self.path,
                            'proto': self.headers.get('X-Forwarded-Proto'),
                            'host': self.headers.get('Host')}).encode()
+        self.send_response(200); self.send_header('Content-Length', str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+    def do_POST(self):
+        payload = self.rfile.read(int(self.headers.get('Content-Length', '0')))
+        body = json.dumps({'port': self.server.server_port, 'path': self.path,
+                           'bytes': len(payload), 'sha256': hashlib.sha256(payload).hexdigest()}).encode()
         self.send_response(200); self.send_header('Content-Length', str(len(body)))
         self.end_headers(); self.wfile.write(body)
 for port in [3100, 3000]:
@@ -163,7 +174,7 @@ class DockerTests(unittest.TestCase):
         cls.token.parent.mkdir(parents=True)
         cls.token.write_text("challenge-only")
         shutil.copy(ROOT / "nginx/https/acme-location.conf", cls.local / "devscope-acme.conf")
-        cls.local.joinpath("shared-routes.conf").write_text('location /supplier-search/ { return 202 "shared-supplier"; }\nlocation /billmapper/ { return 203 "shared-bill"; }\n')
+        cls.local.joinpath("shared-routes.conf").write_text('location /supplier-search/ { proxy_pass http://api_backend; }\nlocation /billmapper/ { proxy_pass http://web_backend; }\n')
         certdir = cls.path / "certs/live/devscope.cn"
         certdir.mkdir(parents=True)
         cls.path.joinpath("extensions.cnf").write_text("subjectAltName=DNS:devscope.cn,DNS:www.devscope.cn\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nbasicConstraints=critical,CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n")
@@ -221,14 +232,14 @@ class DockerTests(unittest.TestCase):
         return int(run("docker", "port", name, port).stdout.strip().rsplit(":", 1)[1])
 
     @classmethod
-    def request(cls, path, tls=False, auth=None, host="devscope.cn", headers=None):
+    def request(cls, path, tls=False, auth=None, host="devscope.cn", headers=None, method="GET", body=None):
         conn = http.client.HTTPConnection("127.0.0.1", cls.tls_port if tls else cls.http_port, timeout=5)
         if tls:
             conn.sock = cls.context.wrap_socket(socket.create_connection(("127.0.0.1", cls.tls_port), timeout=5), server_hostname=host)
         request_headers = {"Host": host, **(headers or {})}
         if auth:
             request_headers["Authorization"] = "Basic " + base64.b64encode(("test:" + auth).encode()).decode()
-        conn.request("GET", path, headers=request_headers)
+        conn.request(method, path, body=body, headers=request_headers)
         return conn, conn.getresponse()
 
     def assert_status(self, path, status, **kwargs):
@@ -264,6 +275,20 @@ class DockerTests(unittest.TestCase):
                                headers={"Upgrade": "websocket", "Connection": "Upgrade"})
 
     def test_03_acme_and_staged_redirect(self):
+        payload = b"shared-body-test" * (2 * 1024 * 1024 // 16)
+        expected_sha = hashlib.sha256(payload).hexdigest()
+
+        def assert_shared_post_limits():
+            for host in ["devscope.cn", "www.devscope.cn"]:
+                for path, port in [("/supplier-search/upload", 3100), ("/billmapper/upload", 3000)]:
+                    body, _ = self.assert_status(path, 200, host=host, method="POST", body=payload)
+                    self.assertEqual(json.loads(body), {"port": port, "path": path,
+                                                       "bytes": 2097152, "sha256": expected_sha})
+                    # Nginx 按 Content-Length 在读 body 前拒绝；Expect 避免发送已被拒绝的 10MiB+ body。
+                    self.assert_status(path, 413, host=host, method="POST", body=b"",
+                                       headers={"Content-Length": "10485761", "Expect": "100-continue"})
+
+        assert_shared_post_limits()
         path = "/.well-known/acme-challenge/token-123_ABC"
         for host in ["devscope.cn", "www.devscope.cn"]:
             self.assertEqual(self.assert_status(path, 200, host=host)[0], b"challenge-only")
@@ -291,6 +316,7 @@ class DockerTests(unittest.TestCase):
         run("docker", "exec", self.http, "nginx", "-s", "reload")
         time.sleep(0.3)
         try:
+            assert_shared_post_limits()
             for host in ["devscope.cn", "www.devscope.cn"]:
                 _, headers = self.assert_status("/api/health?x=1", 308, host=host)
                 self.assertEqual(headers["Location"], f"https://{host}/api/health?x=1")
