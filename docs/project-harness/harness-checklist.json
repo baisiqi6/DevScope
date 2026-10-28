@@ -1,7 +1,7 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "updated_at": "2026-09-22",
+  "updated_at": "2026-10-28T17:52:05Z",
   "items": [
     {
       "id": "data-correctness-1a-release-id-bigint",
@@ -946,6 +946,53 @@
         "expires_at": "2026-09-22T05:27:52Z",
         "ttl_minutes": 120,
         "released_at": "2026-09-22T04:01:04Z"
+      }
+    },
+    {
+      "id": "issue-79",
+      "title": "devscope.cn 独立 HTTPS 与自动续期",
+      "status": "doing",
+      "priority": "p1",
+      "owner": "https-operator",
+      "selected_in_session": "devscope-https-20261028",
+      "updated_at": "2026-10-28T17:52:05Z",
+      "dependencies": [],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "acceptance": "两域名可信 TLS、域名 HTTP 308、业务 Basic Auth 与旧 tunnel 保留、自动续期 dry-run 和 timer 可验证；原五容器/共享路由不重建不回归；独立审查与生产证据齐全",
+      "verification": "Task1 d295c2f：正常发布定向TLS reload接线完成；真实upstream IP A→B先502后helper恢复200、edge ID不变；新stable1.30.6与旧HTTP1.29.8各11/11，四门禁exit0，待独立复审。生产尚未执行。",
+      "handoff": "本地实现已完成，Operator进入独立实现审查；不得把本地成功当生产验收。",
+      "plan_path": "docs/project-harness/tasks/issue-79/plan.md",
+      "workflow": {
+        "mode": "high-risk",
+        "status": "review_requested",
+        "updated_at": "2026-10-28T17:52:05Z",
+        "branch": "codex/devscope-https",
+        "handoff_from": "https-worker"
+      },
+      "artifacts": {
+        "plan": "docs/project-harness/tasks/issue-79/plan.md",
+        "branch": "codex/devscope-https",
+        "review_packet": "docs/project-harness/current/review-packet.md",
+        "handoff_packet": "docs/project-harness/current/handoff-packet.md"
+      },
+      "review": {
+        "decision": "approved",
+        "reviewer": "https-code-reviewer",
+        "phase": "review_requested",
+        "updated_at": "2026-10-28T17:48:07Z",
+        "reviewed_packet_sha256": "ea919a18ffe7143c9392260520e3e1327abdfd290bcae74c6e75daf16386c8c2",
+        "source_plan_sha256": "c8ac65a88f55b9af719bbee3976af98fe62ffc5ac68b778bb4201ec97a249e27",
+        "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
+        "summary": "Task1 continuity复审APPROVE：原P2与P1均ADDRESSED；定向helper及workflow失败传播完整，真实DNS/IP切换502→helper→200且edge ID不变，新旧镜像各11/11记录吻合。无新实质finding；生产Task2尚待独立验收。",
+        "artifact": "docs/project-harness/tasks/issue-79/code-review.md"
+      },
+      "lease": {
+        "owner": "https-operator",
+        "session": "devscope-https-20261028",
+        "acquired_at": "2026-10-28T17:46:36Z",
+        "expires_at": "2026-10-28T19:46:36Z",
+        "ttl_minutes": 120
       }
     }
   ]

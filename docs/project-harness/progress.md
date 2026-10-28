@@ -1,11 +1,13 @@
 # DevScope Harness 进展
 
-> 更新时间：2026-09-22（UTC）
+> 更新时间：2026-10-28（UTC）
 > 生产运行基线：HN 可选字段修复 PR #70 已部署；运行 revision `791ebab9fd68f0e6866631d6450edec78134e660`
 > 部署形态：Standalone
-> 当前状态：dogfood 整改已完成本地实现、独立审查、生产迁移、部署与只读复核；其中 `DF-20260902-001` 已完成生产受控验证并关闭，其余 observation 仍按各自证据保持 `fixed_pending_verification`
+> 当前状态：Issue #79 独立 HTTPS 已完成本地实现、回归测试和 Task 1 独立审查，进入发布准备；生产尚未切换。历史 dogfood 状态以对应 Issue/回执为准。
 
 ## 当前状态
+
+2026-10-28（UTC）：用户确认 `devscope.cn` 备案通过，并批准独立 HTTPS/自动续期方案。Issue #79 的独立 TLS project、Basic Auth/SSE/WS/ACME 隔离、共享 HTTP 路由保留和正常发布后的 TLS upstream 刷新已实现；请求体继承 P2 与发布兼容 P1 均已修复并获独立 Reviewer `APPROVE`。新 stable Nginx 1.30.6 与旧共享 HTTP 1.29.8 均通过隔离矩阵，Operator 复跑四门禁与新镜像 11/11 成功（保留既有缓存/18 warnings/1 skip 说明）。当前仍为原生产 revision，未签发真实证书、未变更生产配置；详见 [计划](tasks/issue-79/plan.md) 与 [验证](tasks/issue-79/verification.md)。
 
 2026-09-22（UTC）：PR #70 已通过 required checks 并完成无迁移生产部署（run `35684007072`）。服务器 HEAD 与 API/Web/Worker revision 均为 `791ebab9fd68f0e6866631d6450edec78134e660`；显式 `.env`/Nginx/custom dump 备份可用，健康、认证与配置不变量通过。生产复采 `msitarzewski/agency-agents` 得到 9 条 HN、无 warning，本次新 embedding 250/250、`completed / 100%`；独立 release closeout `APPROVED`，`DF-20260822-001` 与 release item 均已关闭。
 
