@@ -1,82 +1,23 @@
 {
   "project": "devscope",
   "harness_root": "docs/project-harness",
-  "generated_at": "2026-10-28T17:56:48Z",
+  "generated_at": "2026-10-28T18:53:40Z",
   "source": {
     "checklist_path": "docs/project-harness/harness-checklist.json",
-    "checklist_sha256": "c4f4428b11292fb7df3cc09bbdd2c4ddc31548bbb9ae67acd87203cc7364d803",
+    "checklist_sha256": "8a02e52743c8a6162d4df499f57915341b7b9538fe6c5a8cddc1c800db0ffaaf",
     "coordinate_ledger_included": false
   },
   "current_status": "",
-  "current_item": {
-    "id": "issue-79",
-    "title": "devscope.cn 独立 HTTPS 与自动续期",
-    "status": "doing",
-    "owner": "https-operator",
-    "selected_in_session": "devscope-https-20261028",
-    "updated_at": "2026-10-28T17:56:01Z",
-    "workflow": {
-      "mode": "high-risk",
-      "status": "review_approved",
-      "updated_at": "2026-10-28T17:56:01Z",
-      "branch": "codex/devscope-https",
-      "handoff_from": "https-worker"
-    },
-    "lease": {
-      "owner": "https-operator",
-      "session": "devscope-https-20261028",
-      "acquired_at": "2026-10-28T17:46:36Z",
-      "expires_at": "2026-10-28T19:46:36Z",
-      "ttl_minutes": 120
-    },
-    "active_lease": {
-      "owner": "https-operator",
-      "session": "devscope-https-20261028",
-      "acquired_at": "2026-10-28T17:46:36Z",
-      "expires_at": "2026-10-28T19:46:36Z",
-      "ttl_minutes": 120
-    },
-    "execution": {
-      "lease_state": "active",
-      "current_executor": "https-operator",
-      "last_executor": "https-operator",
-      "last_executor_source": "lease.owner"
-    },
-    "coordination": {
-      "responsible_operator": "unknown",
-      "responsible_operator_source": "unknown",
-      "unblock_owner": null,
-      "unblock_owner_source": "unknown"
-    },
-    "artifacts": {
-      "plan": "docs/project-harness/tasks/issue-79/plan.md",
-      "branch": "codex/devscope-https",
-      "review_packet": "docs/project-harness/current/review-packet.md",
-      "handoff_packet": "docs/project-harness/current/handoff-packet.md"
-    },
-    "review": {
-      "decision": "approved",
-      "reviewer": "https-final-reviewer",
-      "phase": "review_requested",
-      "updated_at": "2026-10-28T17:56:01Z",
-      "reviewed_packet_sha256": "26da7200607e52b25f559135a429c98c7b3aec01008f8b4da90c4701b24ccbac",
-      "source_plan_sha256": "9293a93f04b04f13cfc2874238eff8b29f22c19f99960f3e4738e196cfa7a03d",
-      "reviewed_packet_locator": "docs/project-harness/current/review-packet.md",
-      "summary": "Whole-branch limited-fresh APPROVE at e251d3b: no substantive P0-P3 findings; code merge and controlled Task2 readiness only, required CI and all production ACME/TLS/auth/timer/container invariants remain pending; no deployment authority or final closeout.",
-      "artifact": "docs/project-harness/tasks/issue-79/release-review.md"
-    },
-    "plan_path": "docs/project-harness/tasks/issue-79/plan.md"
-  },
+  "current_item": null,
   "checklist_summary": {
     "todo": 1,
-    "doing": 1,
-    "done": 21,
+    "doing": 0,
+    "done": 22,
     "blocked": 0
   },
   "workflow_summary": {
-    "closed": 21,
-    "released": 1,
-    "review_approved": 1
+    "closed": 22,
+    "released": 1
   },
   "paths": {
     "scope": "docs/project-harness/scope.md",
@@ -115,99 +56,6 @@
   },
   "open_risks": [],
   "recent_events": [
-    {
-      "actor": "https-operator",
-      "artifacts": [
-        "docs/project-harness/tasks/issue-79/plan.md"
-      ],
-      "branch": "codex/devscope-https",
-      "causation_id": null,
-      "created_at": "2026-10-28T17:35:17Z",
-      "id": "evt-20261028T173517Z-d98afe09",
-      "idempotency_key": "ASSIGN:issue-79:assigned:https-operator",
-      "metadata": {
-        "force_reason": null,
-        "session": "devscope-https-worker-20261028"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "assigned",
-      "summary": "https-operator assigned issue-79 to https-worker",
-      "target": "https-worker",
-      "task": "issue-79",
-      "type": "ASSIGN",
-      "visible_header": "[ASSIGN] id=evt-20261028T173517Z-d98afe09 task=issue-79 actor=https-operator target=https-worker status=assigned branch=codex/devscope-https artifacts=docs/project-harness/tasks/issue-79/plan.md"
-    },
-    {
-      "actor": "https-worker",
-      "artifacts": [],
-      "branch": "codex/devscope-https",
-      "causation_id": null,
-      "created_at": "2026-10-28T17:35:45Z",
-      "id": "evt-20261028T173545Z-148ee0bc",
-      "idempotency_key": "ACCEPT:issue-79:running:https-worker",
-      "metadata": {
-        "force_reason": null,
-        "session": "devscope-https-worker-20261028"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "https-worker accepted issue-79",
-      "target": "https-worker",
-      "task": "issue-79",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20261028T173545Z-148ee0bc task=issue-79 actor=https-worker target=https-worker status=running branch=codex/devscope-https"
-    },
-    {
-      "actor": "https-worker",
-      "artifacts": [
-        "docs/project-harness/current/handoff-packet.md"
-      ],
-      "branch": null,
-      "causation_id": null,
-      "created_at": "2026-10-28T17:45:42Z",
-      "id": "evt-20261028T174542Z-d902643f",
-      "idempotency_key": "ASSIGN:issue-79:handoff_requested:https-worker",
-      "metadata": {},
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "handoff_requested",
-      "summary": "Task 1发布兼容P1与TLS版本选择已实现验证，待独立复审",
-      "target": "https-operator",
-      "task": "issue-79",
-      "type": "ASSIGN",
-      "visible_header": "[ASSIGN] id=evt-20261028T174542Z-d902643f task=issue-79 actor=https-worker target=https-operator status=handoff_requested artifacts=docs/project-harness/current/handoff-packet.md"
-    },
-    {
-      "actor": "https-operator",
-      "artifacts": [],
-      "branch": "codex/devscope-https",
-      "causation_id": null,
-      "created_at": "2026-10-28T17:46:36Z",
-      "id": "evt-20261028T174636Z-29a2f53e",
-      "idempotency_key": "ACCEPT:issue-79:running:https-operator",
-      "metadata": {
-        "force_reason": null,
-        "session": "devscope-https-20261028"
-      },
-      "parent": null,
-      "pr": null,
-      "publish_status": "local_only",
-      "schema_version": 1,
-      "status": "running",
-      "summary": "https-operator accepted issue-79",
-      "target": "https-operator",
-      "task": "issue-79",
-      "type": "ACCEPT",
-      "visible_header": "[ACCEPT] id=evt-20261028T174636Z-29a2f53e task=issue-79 actor=https-operator target=https-operator status=running branch=codex/devscope-https"
-    },
     {
       "actor": "https-operator",
       "artifacts": [
@@ -301,6 +149,98 @@
       "task": "issue-79",
       "type": "REVIEW",
       "visible_header": "[REVIEW] id=evt-20261028T175601Z-4283b35f task=issue-79 actor=https-final-reviewer target=https-operator status=approved artifacts=docs/project-harness/tasks/issue-79/release-review.md"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [],
+      "branch": "codex/devscope-https-closeout",
+      "causation_id": null,
+      "created_at": "2026-10-28T18:33:04Z",
+      "id": "evt-20261028T183304Z-2ab9fb64",
+      "idempotency_key": "ACCEPT:issue-79:running:https-operator",
+      "metadata": {
+        "force_reason": null,
+        "session": "devscope-https-20261028"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "running",
+      "summary": "https-operator accepted issue-79",
+      "target": "https-operator",
+      "task": "issue-79",
+      "type": "ACCEPT",
+      "visible_header": "[ACCEPT] id=evt-20261028T183304Z-2ab9fb64 task=issue-79 actor=https-operator target=https-operator status=running branch=codex/devscope-https-closeout"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [
+        "docs/project-harness/current/closeout-packet.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T18:40:18Z",
+      "id": "evt-20261028T184018Z-eb7932a0",
+      "idempotency_key": "RESULT:issue-79:closeout_requested:https-operator",
+      "metadata": {},
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "closeout_requested",
+      "summary": "Closeout requested for issue-79",
+      "target": "https-production-reviewer",
+      "task": "issue-79",
+      "type": "RESULT",
+      "visible_header": "[RESULT] id=evt-20261028T184018Z-eb7932a0 task=issue-79 actor=https-operator target=https-production-reviewer status=closeout_requested artifacts=docs/project-harness/current/closeout-packet.md"
+    },
+    {
+      "actor": "https-production-reviewer",
+      "artifacts": [
+        "docs/project-harness/tasks/issue-79/production-review.md"
+      ],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T18:45:32Z",
+      "id": "evt-20261028T184532Z-ee1fbb08",
+      "idempotency_key": "REVIEW:issue-79:approved:https-production-reviewer",
+      "metadata": {
+        "reviewed_packet_sha256": "5d40ca9c41f3281f8ff82eaf7d834deb7695a9c760ffe67fc428e27684ba6587",
+        "source_plan_sha256": "2d6e11a63f08d0f3a24073c9b9d6acf475486ea80e2be88ae0847a44226ac586"
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "approved",
+      "summary": "APPROVE：独立只读复核双域可信TLS/401/308、真实renew dry-run与systemd运行证据、原五容器与保护配置及共享路由不变量；认证业务读取为已审Operator脱敏回执，无P0-P3阻塞；未来实际换证及GUI/页脚等不在本次证明范围。",
+      "target": "https-operator",
+      "task": "issue-79",
+      "type": "REVIEW",
+      "visible_header": "[REVIEW] id=evt-20261028T184532Z-ee1fbb08 task=issue-79 actor=https-production-reviewer target=https-operator status=approved artifacts=docs/project-harness/tasks/issue-79/production-review.md"
+    },
+    {
+      "actor": "https-operator",
+      "artifacts": [],
+      "branch": null,
+      "causation_id": null,
+      "created_at": "2026-10-28T18:46:57Z",
+      "id": "evt-20261028T184657Z-306cbb2d",
+      "idempotency_key": "CLOSE:issue-79:done:https-operator",
+      "metadata": {
+        "force_reason": null
+      },
+      "parent": null,
+      "pr": null,
+      "publish_status": "local_only",
+      "schema_version": 1,
+      "status": "done",
+      "summary": "https-operator closed issue-79",
+      "target": null,
+      "task": "issue-79",
+      "type": "CLOSE",
+      "visible_header": "[CLOSE] id=evt-20261028T184657Z-306cbb2d task=issue-79 actor=https-operator status=done"
     }
   ]
 }

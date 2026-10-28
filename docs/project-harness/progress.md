@@ -1,13 +1,13 @@
 # DevScope Harness 进展
 
 > 更新时间：2026-10-28（UTC）
-> 生产运行基线：HN 可选字段修复 PR #70 已部署；运行 revision `791ebab9fd68f0e6866631d6450edec78134e660`
+> 生产运行基线：HTTPS 配置 PR #80 已部署，server HEAD `e577c1e9eb9045ed74a1ed725516d1f19564a810`；三业务镜像仍为 `791ebab9fd68f0e6866631d6450edec78134e660`，本次未重建
 > 部署形态：Standalone
-> 当前状态：Issue #79 独立 HTTPS 已完成本地实现、回归测试和 Task 1 独立审查，进入发布准备；生产尚未切换。历史 dogfood 状态以对应 Issue/回执为准。
+> 当前状态：Issue #79 HTTPS、跳转、认证、续期演练与服务器timer已完成生产验证和独立closeout，Harness已关闭。历史dogfood状态以对应Issue/回执为准。
 
 ## 当前状态
 
-2026-10-28（UTC）：用户确认 `devscope.cn` 备案通过，并批准独立 HTTPS/自动续期方案。Issue #79 的独立 TLS project、Basic Auth/SSE/WS/ACME 隔离、共享 HTTP 路由保留和正常发布后的 TLS upstream 刷新已实现；请求体继承 P2 与发布兼容 P1 均已修复并获独立 Reviewer `APPROVE`。新 stable Nginx 1.30.6 与旧共享 HTTP 1.29.8 均通过隔离矩阵，Operator 复跑四门禁与新镜像 11/11 成功（保留既有缓存/18 warnings/1 skip 说明）。当前仍为原生产 revision，未签发真实证书、未变更生产配置；详见 [计划](tasks/issue-79/plan.md) 与 [验证](tasks/issue-79/verification.md)。
+2026-10-28（UTC）：PR #80通过required quality/integration与独立发布前审查后完成配置-only生产接入。`devscope.cn`/`www.devscope.cn` 可信HTTPS、认证首页/API/同源前端API/17静态资源、HTTP308、真实renew dry-run及服务器timer已验证；原五容器ID/image/StartedAt、原auth/.env/Compose和共享路由保持不变。初次离线镜像引用、一次CAA查询失败与SSH stdin问题均安全定位恢复，详细事实见 [verification](tasks/issue-79/verification.md)。独立生产Reviewer APPROVE并通过exact-packet gate，Harness已关闭；不把三业务镜像描述为本轮重建，不称未来真实到期换证已发生。备案号页脚留待独立Web发布。
 
 2026-09-22（UTC）：PR #70 已通过 required checks 并完成无迁移生产部署（run `35684007072`）。服务器 HEAD 与 API/Web/Worker revision 均为 `791ebab9fd68f0e6866631d6450edec78134e660`；显式 `.env`/Nginx/custom dump 备份可用，健康、认证与配置不变量通过。生产复采 `msitarzewski/agency-agents` 得到 9 条 HN、无 warning，本次新 embedding 250/250、`completed / 100%`；独立 release closeout `APPROVED`，`DF-20260822-001` 与 release item 均已关闭。
 
@@ -30,8 +30,8 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 已关闭；失败 URL 未写入正文，未绕过 SSRF 防线。
 
 - [Harness checklist](harness-checklist.json)：product-11a 已完成 `done` closeout，独立 Reviewer `APPROVED`；
-- [Current task pointer](current/task_plan.md)：graph-3d-release 已关闭，Harness 已清空当前计划指针；
-- 生产 API、Web、Worker 当前运行图谱升级 revision `d2c4db162acf5ac16f562c8915610f7a1de4ed07`；此前 product-11a 是历史基线；
+- [Current task pointer](current/task_plan.md)：由Harness派生，当前任务以checklist/指针为准，不以历史发布段落判断；
+- 三业务运行revision以本文顶端最近日期化基线为准；后续图谱/product-11a内容为历史快照；
 - 本批次生产部署 run `33475333993` 已通过 Git bundle + 精确 SHA 镜像归档 + SSH 链路完成，并显式执行
   migration `0013`；服务器无需访问 GitHub/GHCR，数据库备份、迁移与业务服务健康检查均通过。
 
@@ -72,7 +72,7 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 
 ## 当前生产基线
 
-当前为上述 2026-09-06 图谱发布；下列内容仅为历史快照。
+当前基线以本文顶端最近日期化记录为准；下列内容仅为历史快照。
 
 ### 2026-09-01 历史快照
 
@@ -89,11 +89,13 @@ server/images revision 一致、正文表/claim 列/约束存在、认证 health
 
 ## 当前 handoff
 
+- Issue #79 已完成独立生产closeout；后续备案号公示需要单独Web发布，本轮未重建业务服务。
+
 - 图谱视觉升级 PR #67 已部署并完成独立发布收口；DF-20260905-001 等待用户视觉反馈。
 
 - Dogfood 五项整改已通过完整门禁和独立 Reviewer `APPROVED` 并完成 Harness closeout；五条 observation 均为
   `fixed_pending_verification`；PR #59、migration `0013`、deploy run `33475333993` 已完成，未执行真实仓库删除或重新采集；
-- Issue #54 已完成，当前没有 `doing` item；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
+- Issue #54 已完成；后续 dogfood 可通过树状分组 UI/API/CLI/MCP 验证真实
   创建、移动、聚合与排序体验；
 - 外部资源工作区与正文采集模块已通过 PR/CI、隔离 PostgreSQL 验证和生产 `0014`–`0016` 迁移部署；文章、论文和网站仍与 GitHub 仓库分别管理；
 - `product-6-public-multi-user-hardening` 仍为 `todo`，不与 Issue #54 并行启动；
